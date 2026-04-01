@@ -1,0 +1,12 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["$TURBO_EXTENDS$", "api#build"],
+      "outputs": ["$TURBO_EXTENDS$", "dist/**"]
+    },
+    "dev": {
+      "with": ["api#dev"]
+    }
+  }
+}
