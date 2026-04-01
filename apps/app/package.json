@@ -6,7 +6,7 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "portless run --name task-tracker vite dev",
+    "dev": "portless run --name app.task-tracker vite dev",
     "dev:raw": "vite dev --port 3000",
     "build": "vite build",
     "check-types": "tsc --noEmit -p tsconfig.json",
@@ -36,7 +36,6 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.4",
     "jsdom": "^28.1.0",
-    "portless": "^0.9.1",
     "typescript": "^5.7.2",
     "vite": "^7.3.1",
     "vite-tsconfig-paths": "^5.1.4",

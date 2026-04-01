@@ -11,6 +11,9 @@ importers:
       opensrc:
         specifier: ^0.6.0
         version: 0.6.0
+      portless:
+        specifier: ^0.9.1
+        version: 0.9.1
       prettier:
         specifier: ^3.7.4
         version: 3.7.4
@@ -106,9 +109,6 @@ importers:
       jsdom:
         specifier: ^28.1.0
         version: 28.1.0
-      portless:
-        specifier: ^0.9.1
-        version: 0.9.1
       typescript:
         specifier: ^5.7.2
         version: 5.9.2

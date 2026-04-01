@@ -9,7 +9,10 @@ pnpm install
 pnpm dev
 ```
 
-By default the app now runs through Portless at `https://task-tracker.localhost`.
+By default the workspace now runs through Portless with stable subdomains:
+
+- App: `https://app.task-tracker.localhost:1355`
+- API: `https://api.task-tracker.localhost:1355`
 
 If you want to bypass Portless and run plain Vite on port 3000:
 

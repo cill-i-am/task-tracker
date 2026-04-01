@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/index.ts",
+    "dev": "portless run --name api.task-tracker tsx watch src/index.ts",
+    "dev:raw": "tsx watch src/index.ts",
     "check-types": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
