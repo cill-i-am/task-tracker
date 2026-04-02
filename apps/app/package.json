@@ -11,6 +11,7 @@
     "dev": "portless run --name app.task-tracker node ../../scripts/vite-portless-dev.mjs",
     "dev:raw": "vite dev --port 3000",
     "preview": "vite preview",
+    "sandbox:dev": "node ../../scripts/vite-sandbox-dev.mjs",
     "test": "vitest run"
   },
   "dependencies": {
@@ -21,6 +22,7 @@
     "@tanstack/react-router-ssr-query": "latest",
     "@tanstack/react-start": "latest",
     "@tanstack/router-plugin": "^1.132.0",
+    "@task-tracker/sandbox-core": "workspace:*",
     "lucide-react": "^0.545.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

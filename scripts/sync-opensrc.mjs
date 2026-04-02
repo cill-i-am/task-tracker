@@ -7,6 +7,11 @@ if (process.env.CI === "true") {
   process.exit(0);
 }
 
+if (process.env.TASK_TRACKER_SANDBOX === "1") {
+  console.log("Skipping opensrc sync inside sandbox containers.");
+  process.exit(0);
+}
+
 const workspacePackages = ["apps/api/package.json", "apps/app/package.json"];
 
 const extraPackages = ["portless"];
@@ -23,7 +28,7 @@ for (const packagePath of workspacePackages) {
 
   const packageJson = JSON.parse(readFileSync(fullPath, "utf8"));
   for (const dependency of Object.keys(packageJson.dependencies ?? {})) {
-    if (skippedPackages.has(dependency)) {
+    if (skippedPackages.has(dependency) || dependency.startsWith("@task-tracker/")) {
       continue;
     }
     packages.add(dependency);

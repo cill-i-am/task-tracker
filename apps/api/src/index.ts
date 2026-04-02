@@ -7,11 +7,13 @@ import {
   HttpApiGroup,
 } from "@effect/platform";
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
+import { makeHealthPayload } from "@task-tracker/sandbox-core";
 import { Config, Effect, Layer, Schema } from "effect";
 
 const StatusResponse = Schema.Struct({
   ok: Schema.Boolean,
   service: Schema.String,
+  sandboxId: Schema.String,
 });
 
 const Api = HttpApi.make("TaskTrackerApi").add(
@@ -24,10 +26,9 @@ const SystemLive = HttpApiBuilder.group(Api, "system", (handlers) =>
   handlers
     .handle("root", () => Effect.succeed("task-tracker api"))
     .handle("health", () =>
-      Effect.succeed({
-        ok: true,
-        service: "api",
-      })
+      Effect.succeed(
+        makeHealthPayload("api", process.env.SANDBOX_ID ?? "local")
+      )
     )
 );
 

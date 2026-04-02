@@ -1,0 +1,21 @@
+{
+  "name": "@task-tracker/sandbox-core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check-types": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --globals"
+  },
+  "dependencies": {
+    "effect": "^3.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "5.9.2",
+    "vitest": "^3.0.5"
+  }
+}

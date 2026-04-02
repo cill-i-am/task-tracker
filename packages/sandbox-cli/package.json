@@ -1,0 +1,30 @@
+{
+  "name": "@task-tracker/sandbox-cli",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check-types": "tsc --noEmit -p tsconfig.json",
+    "sandbox:down": "tsx src/cli.ts down",
+    "sandbox:list": "tsx src/cli.ts list",
+    "sandbox:logs": "tsx src/cli.ts logs",
+    "sandbox:status": "tsx src/cli.ts status",
+    "sandbox:up": "tsx src/cli.ts up",
+    "sandbox:url": "tsx src/cli.ts url",
+    "test": "vitest run --globals"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.75.0",
+    "@effect/platform": "^0.96.0",
+    "@effect/platform-node": "^0.106.0",
+    "@task-tracker/sandbox-core": "workspace:*",
+    "effect": "^3.21.0"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.84.2",
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "5.9.2",
+    "vitest": "^3.0.5"
+  }
+}
