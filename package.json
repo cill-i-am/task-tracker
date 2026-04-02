@@ -13,7 +13,13 @@
     "opensrc:sync": "node scripts/sync-opensrc.mjs",
     "postinstall": "pnpm run opensrc:sync",
     "prebuild": "pnpm run opensrc:sync",
-    "prepare": "lefthook install"
+    "prepare": "node scripts/prepare.mjs",
+    "sandbox:down": "turbo run sandbox:down --filter=@task-tracker/sandbox-cli",
+    "sandbox:list": "turbo run sandbox:list --filter=@task-tracker/sandbox-cli",
+    "sandbox:logs": "turbo run sandbox:logs --filter=@task-tracker/sandbox-cli",
+    "sandbox:status": "turbo run sandbox:status --filter=@task-tracker/sandbox-cli",
+    "sandbox:up": "turbo run sandbox:up --filter=@task-tracker/sandbox-cli",
+    "sandbox:url": "turbo run sandbox:url --filter=@task-tracker/sandbox-cli"
   },
   "devDependencies": {
     "lefthook": "^2.1.4",

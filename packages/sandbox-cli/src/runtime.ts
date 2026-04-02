@@ -1,0 +1,888 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+
+import {
+  buildSandboxUrls,
+  deriveSandboxIdentity,
+  makeSandboxResourceNames,
+  reconcileSandboxRecord,
+} from "@task-tracker/sandbox-core";
+import type {
+  SandboxPorts,
+  SandboxRecord,
+  SandboxUrls,
+} from "@task-tracker/sandbox-core";
+import { Effect } from "effect";
+
+import { bringSandboxUp } from "./lifecycle.js";
+import type { SandboxUpResult } from "./lifecycle.js";
+import {
+  buildPortlessAliasAddCommands,
+  buildPortlessAliasRemoveCommands,
+} from "./portless.js";
+import { isPortAvailable, isPortOpen, runCommand } from "./process.js";
+import { SandboxNotFoundError } from "./sandbox-not-found-error.js";
+import { SandboxPreflightError } from "./sandbox-preflight-error.js";
+
+const SANDBOX_PROXY_PORT = 1355;
+const SANDBOX_DEV_IMAGE = "task-tracker-sandbox-dev:latest";
+const SANDBOX_DOCKERFILE = path.join(
+  "packages",
+  "sandbox-cli",
+  "docker",
+  "sandbox-dev.Dockerfile"
+);
+const SANDBOX_WORKSPACE_ROOT = path.resolve(
+  fileURLToPath(new URL("../../../", import.meta.url))
+);
+const SANDBOX_DEFAULT_DB = "task_tracker";
+const SANDBOX_POSTGRES_PASSWORD = "postgres";
+const SANDBOX_POSTGRES_USER = "postgres";
+const DEFAULT_PORTS: SandboxPorts = {
+  app: 4300,
+  api: 4301,
+  postgres: 5439,
+};
+
+interface RegistryPayload {
+  readonly sandboxes: readonly SandboxRecord[];
+}
+
+export interface WorktreeContext {
+  readonly repoRoot: string;
+  readonly worktreePath: string;
+}
+
+export interface SandboxStatusResult {
+  readonly record: SandboxRecord;
+  readonly urls: SandboxUrls;
+}
+
+export interface SandboxListResult {
+  readonly entries: readonly SandboxStatusResult[];
+}
+
+export interface SandboxLogResult {
+  readonly content: string;
+}
+
+export interface WorktreeResolver {
+  readonly resolveCurrent: () => Promise<WorktreeContext>;
+}
+
+export interface SandboxIdResolver {
+  readonly resolve: (
+    repoRoot: string,
+    worktreePath: string,
+    takenSlugs: ReadonlySet<string>
+  ) => ReturnType<typeof deriveSandboxIdentity>;
+}
+
+export interface SandboxRegistry {
+  readonly list: () => Promise<SandboxRecord[]>;
+  readonly findByWorktree: (
+    worktreePath: string
+  ) => Promise<SandboxRecord | undefined>;
+  readonly upsert: (record: SandboxRecord) => Promise<void>;
+  readonly removeByWorktree: (worktreePath: string) => Promise<void>;
+}
+
+export interface DockerEngine {
+  readonly ensureAvailable: () => Promise<void>;
+  readonly ensureDevImage: () => Promise<string>;
+  readonly startStack: (record: SandboxRecord) => Promise<void>;
+  readonly stopStack: (record: SandboxRecord) => Promise<void>;
+  readonly runningContainerNames: () => Promise<Set<string>>;
+  readonly collectLogs: (record: SandboxRecord) => Promise<string>;
+}
+
+export interface PortAllocator {
+  readonly allocate: (
+    existing: SandboxPorts | undefined,
+    reservedPorts: ReadonlySet<number>
+  ) => Promise<SandboxPorts>;
+}
+
+export interface PortlessService {
+  readonly ensureProxyRunning: () => Promise<void>;
+  readonly registerAliases: (record: SandboxRecord) => Promise<void>;
+  readonly removeAliases: (record: SandboxRecord) => Promise<void>;
+  readonly removeAliasesBySlug: (hostnameSlug: string) => Promise<void>;
+}
+
+export interface HealthChecker {
+  readonly waitForReady: (record: SandboxRecord) => Promise<void>;
+}
+
+export interface SandboxLifecycle {
+  readonly up: () => Promise<SandboxUpResult>;
+  readonly down: () => Promise<SandboxRecord>;
+  readonly status: () => Promise<SandboxStatusResult>;
+  readonly list: () => Promise<SandboxListResult>;
+  readonly logs: () => Promise<SandboxLogResult>;
+  readonly url: () => Promise<SandboxStatusResult>;
+}
+
+export interface SandboxRuntime {
+  readonly worktreeResolver: WorktreeResolver;
+  readonly sandboxIdResolver: SandboxIdResolver;
+  readonly sandboxRegistry: SandboxRegistry;
+  readonly dockerEngine: DockerEngine;
+  readonly portAllocator: PortAllocator;
+  readonly portlessService: PortlessService;
+  readonly healthChecker: HealthChecker;
+  readonly lifecycle: SandboxLifecycle;
+}
+
+export function makeSandboxRuntime(): SandboxRuntime {
+  const worktreeResolver: WorktreeResolver = {
+    resolveCurrent: async () => {
+      const worktreeResult = await exec(
+        runCommand("git", ["rev-parse", "--show-toplevel"], {
+          cwd: process.cwd(),
+        })
+      );
+      const commonDirResult = await exec(
+        runCommand("git", ["rev-parse", "--git-common-dir"], {
+          cwd: process.cwd(),
+        })
+      );
+      const worktreePath = worktreeResult.stdout.trim();
+      const gitCommonDir = commonDirResult.stdout.trim();
+      const resolvedCommonDir = path.resolve(worktreePath, gitCommonDir);
+      const repoRoot =
+        path.basename(resolvedCommonDir) === ".git"
+          ? path.dirname(resolvedCommonDir)
+          : resolvedCommonDir;
+
+      return {
+        repoRoot,
+        worktreePath,
+      };
+    },
+  };
+
+  const sandboxIdResolver: SandboxIdResolver = {
+    resolve: (repoRoot, worktreePath, takenSlugs) =>
+      deriveSandboxIdentity({
+        repoRoot,
+        worktreePath,
+        takenSlugs,
+      }),
+  };
+
+  const sandboxRegistry: SandboxRegistry = {
+    list: async () => {
+      const registryPath = getRegistryPath();
+      await fs.mkdir(path.dirname(registryPath), { recursive: true });
+
+      try {
+        const raw = await fs.readFile(registryPath, "utf8");
+        if (raw.trim().length === 0) {
+          return [];
+        }
+
+        const payload = JSON.parse(raw) as RegistryPayload;
+        return [...(payload.sandboxes ?? [])];
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return [];
+        }
+        throw toPreflightError(error, "Failed to read sandbox registry");
+      }
+    },
+    findByWorktree: async (worktreePath) => {
+      const records = await sandboxRegistry.list();
+      return records.find((record) => record.worktreePath === worktreePath);
+    },
+    upsert: async (record) => {
+      const records = await sandboxRegistry.list();
+      const next = [
+        ...records.filter(
+          (entry) => entry.worktreePath !== record.worktreePath
+        ),
+        record,
+      ];
+      await writeRegistryFile(next);
+    },
+    removeByWorktree: async (worktreePath) => {
+      const records = await sandboxRegistry.list();
+      await writeRegistryFile(
+        records.filter((entry) => entry.worktreePath !== worktreePath)
+      );
+    },
+  };
+
+  const portAllocator: PortAllocator = {
+    allocate: async (existing, reservedPorts) => {
+      const allocated = new Set<number>();
+
+      const app = await allocateRuntimePort(
+        "app",
+        existing,
+        reservedPorts,
+        allocated
+      );
+      const api = await allocateRuntimePort(
+        "api",
+        existing,
+        reservedPorts,
+        allocated
+      );
+      const postgres = await allocateRuntimePort(
+        "postgres",
+        existing,
+        reservedPorts,
+        allocated
+      );
+
+      return {
+        app,
+        api,
+        postgres,
+      };
+    },
+  };
+
+  const dockerEngine: DockerEngine = {
+    ensureAvailable: async () => {
+      await exec(runCommand("docker", ["info"]));
+    },
+    ensureDevImage: async () => {
+      await exec(
+        runCommand(
+          "docker",
+          ["build", "-f", SANDBOX_DOCKERFILE, "-t", SANDBOX_DEV_IMAGE, "."],
+          {
+            cwd: SANDBOX_WORKSPACE_ROOT,
+          }
+        )
+      );
+
+      return SANDBOX_DEV_IMAGE;
+    },
+    startStack: async (record) => {
+      const resourceNames = makeSandboxResourceNames(record.sandboxId);
+      const image = await dockerEngine.ensureDevImage();
+
+      await ensureDockerNetwork(resourceNames.network);
+      await ensureDockerVolume(resourceNames.postgresVolume);
+      await ensureDockerVolume(resourceNames.appNodeModulesVolume);
+      await ensureDockerVolume(resourceNames.apiNodeModulesVolume);
+      await ensureDockerVolume(resourceNames.pnpmStoreVolume);
+
+      const internalDatabaseUrl =
+        `postgresql://${SANDBOX_POSTGRES_USER}:${SANDBOX_POSTGRES_PASSWORD}` +
+        `@${resourceNames.postgresContainer}:5432/${SANDBOX_DEFAULT_DB}`;
+
+      await ensurePostgresContainer(record, resourceNames);
+      await recreateNodeServiceContainer({
+        containerName: resourceNames.apiContainer,
+        network: resourceNames.network,
+        publishedPort: record.ports.api,
+        image,
+        worktreePath: record.worktreePath,
+        nodeModulesVolume: resourceNames.apiNodeModulesVolume,
+        pnpmStoreVolume: resourceNames.pnpmStoreVolume,
+        filter: "api",
+        sandboxId: record.sandboxId,
+        databaseUrl: internalDatabaseUrl,
+      });
+      await recreateNodeServiceContainer({
+        containerName: resourceNames.appContainer,
+        network: resourceNames.network,
+        publishedPort: record.ports.app,
+        image,
+        worktreePath: record.worktreePath,
+        nodeModulesVolume: resourceNames.appNodeModulesVolume,
+        pnpmStoreVolume: resourceNames.pnpmStoreVolume,
+        filter: "app",
+        sandboxId: record.sandboxId,
+        databaseUrl: internalDatabaseUrl,
+      });
+    },
+    stopStack: async (record) => {
+      const resourceNames = makeSandboxResourceNames(record.sandboxId);
+      await removeContainer(resourceNames.appContainer);
+      await removeContainer(resourceNames.apiContainer);
+      await removeContainer(resourceNames.postgresContainer);
+      await exec(
+        runCommand("docker", ["network", "rm", resourceNames.network], {
+          allowNonZero: true,
+        })
+      );
+    },
+    runningContainerNames: async () => {
+      const result = await exec(
+        runCommand("docker", ["ps", "--format", "{{.Names}}"])
+      );
+      return new Set(
+        result.stdout
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+      );
+    },
+    collectLogs: async (record) => {
+      const sections = await Promise.all([
+        collectContainerLogs("app", record.containers.app),
+        collectContainerLogs("api", record.containers.api),
+        collectContainerLogs("postgres", record.containers.postgres),
+      ]);
+
+      return sections.join("\n\n");
+    },
+  };
+
+  const portlessService: PortlessService = {
+    ensureProxyRunning: async () => {
+      await exec(
+        runCommand("portless", [
+          "proxy",
+          "start",
+          "-p",
+          String(SANDBOX_PROXY_PORT),
+        ])
+      );
+    },
+    registerAliases: async (record) => {
+      const commands = buildPortlessAliasAddCommands({
+        hostnameSlug: record.hostnameSlug,
+        ports: record.ports,
+      });
+
+      for (const [command, ...args] of commands) {
+        await exec(runCommand(command, args));
+      }
+    },
+    removeAliases: async (record) => {
+      for (const [command, ...args] of buildPortlessAliasRemoveCommands(
+        record.hostnameSlug
+      )) {
+        await exec(runCommand(command, args, { allowNonZero: true }));
+      }
+    },
+    removeAliasesBySlug: async (hostnameSlug) => {
+      for (const [command, ...args] of buildPortlessAliasRemoveCommands(
+        hostnameSlug
+      )) {
+        await exec(runCommand(command, args, { allowNonZero: true }));
+      }
+    },
+  };
+
+  const healthChecker: HealthChecker = {
+    waitForReady: async (record) => {
+      const startedAt = Date.now();
+
+      while (Date.now() - startedAt < 60_000) {
+        const postgresReady = await exec(
+          runCommand(
+            "docker",
+            [
+              "exec",
+              record.containers.postgres,
+              "pg_isready",
+              "-U",
+              SANDBOX_POSTGRES_USER,
+              "-d",
+              SANDBOX_DEFAULT_DB,
+            ],
+            { allowNonZero: true }
+          )
+        );
+        const apiReady = await checkHttpHealth(
+          record.ports.api,
+          "api",
+          record.sandboxId
+        );
+        const appReady = await checkHttpHealth(
+          record.ports.app,
+          "app",
+          record.sandboxId
+        );
+
+        if (postgresReady.exitCode === 0 && apiReady && appReady) {
+          return;
+        }
+
+        await delay(1000);
+      }
+
+      throw new SandboxPreflightError({
+        message:
+          "Sandbox containers started but did not become healthy within 60 seconds",
+      });
+    },
+  };
+
+  const lifecycle: SandboxLifecycle = {
+    up: async () => {
+      const context = await worktreeResolver.resolveCurrent();
+      const records = await sandboxRegistry.list();
+      const existingRecord = records.find(
+        (record) => record.worktreePath === context.worktreePath
+      );
+      const takenSlugs = new Set(
+        records
+          .filter((record) => record.worktreePath !== context.worktreePath)
+          .map((record) => record.hostnameSlug)
+      );
+      const reservedPorts = new Set(
+        records
+          .filter((record) => record.worktreePath !== context.worktreePath)
+          .flatMap((record) => [
+            record.ports.app,
+            record.ports.api,
+            record.ports.postgres,
+          ])
+      );
+
+      return bringSandboxUp({
+        repoRoot: context.repoRoot,
+        worktreePath: context.worktreePath,
+        now: new Date().toISOString(),
+        takenSlugs,
+        existingRecord,
+        ensurePrerequisites: async () => {
+          await dockerEngine.ensureAvailable();
+          await portlessService.ensureProxyRunning();
+        },
+        allocatePorts: () =>
+          portAllocator.allocate(existingRecord?.ports, reservedPorts),
+        startStack: (record) => dockerEngine.startStack(record),
+        waitForHealth: (record) => healthChecker.waitForReady(record),
+        registerAliases: (record) => portlessService.registerAliases(record),
+        persist: (record) => sandboxRegistry.upsert(record),
+      });
+    },
+    down: async () => {
+      const context = await worktreeResolver.resolveCurrent();
+      const record = await sandboxRegistry.findByWorktree(context.worktreePath);
+      if (!record) {
+        const identity = sandboxIdResolver.resolve(
+          context.repoRoot,
+          context.worktreePath,
+          new Set()
+        );
+        await portlessService.removeAliasesBySlug(identity.hostnameSlug);
+        await stopSandboxResources(identity.sandboxId);
+
+        return makeEphemeralSandboxRecord({
+          sandboxId: identity.sandboxId,
+          repoRoot: context.repoRoot,
+          worktreePath: context.worktreePath,
+          hostnameSlug: identity.hostnameSlug,
+          status: "stopped",
+        });
+      }
+
+      await portlessService.removeAliases(record);
+      await dockerEngine.stopStack(record);
+      await sandboxRegistry.removeByWorktree(context.worktreePath);
+
+      return record;
+    },
+    status: async () => {
+      const context = await worktreeResolver.resolveCurrent();
+      const record = await sandboxRegistry.findByWorktree(context.worktreePath);
+      if (!record) {
+        throw new SandboxNotFoundError({
+          worktreePath: context.worktreePath,
+          message: "No sandbox is registered for this worktree",
+        });
+      }
+
+      const containerNames = await dockerEngine.runningContainerNames();
+      const portsInUse = new Set<number>();
+      if (await isPortOpen(record.ports.app)) {
+        portsInUse.add(record.ports.app);
+      }
+      if (await isPortOpen(record.ports.api)) {
+        portsInUse.add(record.ports.api);
+      }
+      if (await isPortOpen(record.ports.postgres)) {
+        portsInUse.add(record.ports.postgres);
+      }
+
+      const reconciled = reconcileSandboxRecord(record, {
+        containersPresent: containerNames,
+        portsInUse,
+        now: new Date().toISOString(),
+      });
+      await sandboxRegistry.upsert(reconciled);
+
+      return {
+        record: reconciled,
+        urls: buildSandboxUrls(
+          {
+            hostnameSlug: reconciled.hostnameSlug,
+            ports: reconciled.ports,
+          },
+          {
+            aliasesHealthy: true,
+            proxyPort: SANDBOX_PROXY_PORT,
+          }
+        ),
+      };
+    },
+    list: async () => {
+      const records = await sandboxRegistry.list();
+      return {
+        entries: records.map((record) => ({
+          record,
+          urls: buildSandboxUrls(
+            {
+              hostnameSlug: record.hostnameSlug,
+              ports: record.ports,
+            },
+            {
+              aliasesHealthy: true,
+              proxyPort: SANDBOX_PROXY_PORT,
+            }
+          ),
+        })),
+      };
+    },
+    logs: async () => {
+      const context = await worktreeResolver.resolveCurrent();
+      const record = await sandboxRegistry.findByWorktree(context.worktreePath);
+      if (!record) {
+        throw new SandboxNotFoundError({
+          worktreePath: context.worktreePath,
+          message: "No sandbox is registered for this worktree",
+        });
+      }
+
+      return {
+        content: await dockerEngine.collectLogs(record),
+      };
+    },
+    url: () => lifecycle.status(),
+  };
+
+  return {
+    worktreeResolver,
+    sandboxIdResolver,
+    sandboxRegistry,
+    dockerEngine,
+    portAllocator,
+    portlessService,
+    healthChecker,
+    lifecycle,
+  };
+}
+
+async function exec<A>(
+  effect: Effect.Effect<A, SandboxPreflightError | Error | unknown, never>
+): Promise<A> {
+  try {
+    return await Effect.runPromise(effect);
+  } catch (error) {
+    throw error instanceof Error
+      ? error
+      : toPreflightError(error, "Sandbox command failed");
+  }
+}
+
+function getRegistryPath(): string {
+  return path.join(os.homedir(), ".task-tracker", "sandboxes", "registry.json");
+}
+
+async function writeRegistryFile(
+  records: readonly SandboxRecord[]
+): Promise<void> {
+  const registryPath = getRegistryPath();
+  await fs.mkdir(path.dirname(registryPath), { recursive: true });
+  await fs.writeFile(
+    registryPath,
+    `${JSON.stringify({ sandboxes: records }, null, 2)}\n`,
+    "utf8"
+  );
+}
+
+async function allocateRuntimePort(
+  service: keyof SandboxPorts,
+  existing: SandboxPorts | undefined,
+  reservedPorts: ReadonlySet<number>,
+  allocated: Set<number>
+): Promise<number> {
+  const existingPort = existing?.[service];
+  if (
+    existingPort !== undefined &&
+    !reservedPorts.has(existingPort) &&
+    !allocated.has(existingPort)
+  ) {
+    allocated.add(existingPort);
+    return existingPort;
+  }
+
+  const protectedExistingPorts = new Set<number>();
+  for (const [otherService, port] of Object.entries(existing ?? {})) {
+    if (
+      otherService !== service &&
+      port !== undefined &&
+      !reservedPorts.has(port)
+    ) {
+      protectedExistingPorts.add(port);
+    }
+  }
+
+  let port = DEFAULT_PORTS[service];
+  while (
+    reservedPorts.has(port) ||
+    protectedExistingPorts.has(port) ||
+    allocated.has(port) ||
+    !(await isPortAvailable(port))
+  ) {
+    port += 1;
+    if (port > DEFAULT_PORTS[service] + 100) {
+      throw new SandboxPreflightError({
+        message: `Could not allocate a free ${service} port in the sandbox range`,
+      });
+    }
+  }
+
+  allocated.add(port);
+  return port;
+}
+
+async function ensureDockerNetwork(name: string): Promise<void> {
+  const inspect = await exec(
+    runCommand("docker", ["network", "inspect", name], { allowNonZero: true })
+  );
+  if (inspect.exitCode !== 0) {
+    await exec(runCommand("docker", ["network", "create", name]));
+  }
+}
+
+async function ensureDockerVolume(name: string): Promise<void> {
+  await exec(runCommand("docker", ["volume", "create", name]));
+}
+
+async function ensurePostgresContainer(
+  record: SandboxRecord,
+  resourceNames: ReturnType<typeof makeSandboxResourceNames>
+): Promise<void> {
+  const inspect = await exec(
+    runCommand(
+      "docker",
+      ["container", "inspect", resourceNames.postgresContainer],
+      { allowNonZero: true }
+    )
+  );
+  if (inspect.exitCode === 0) {
+    const [container] = JSON.parse(inspect.stdout) as readonly {
+      readonly HostConfig?: {
+        readonly PortBindings?: Record<
+          string,
+          readonly { readonly HostPort?: string }[] | null
+        >;
+      };
+      readonly NetworkSettings?: {
+        readonly Networks?: Record<string, unknown>;
+      };
+    }[];
+
+    const hostPort =
+      container?.HostConfig?.PortBindings?.["5432/tcp"]?.[0]?.HostPort;
+    const attachedToSandboxNetwork = Boolean(
+      container?.NetworkSettings?.Networks?.[resourceNames.network]
+    );
+
+    if (
+      hostPort === String(record.ports.postgres) &&
+      attachedToSandboxNetwork
+    ) {
+      await exec(
+        runCommand("docker", ["start", resourceNames.postgresContainer], {
+          allowNonZero: true,
+        })
+      );
+      return;
+    }
+
+    await removeContainer(resourceNames.postgresContainer);
+  }
+
+  await exec(
+    runCommand("docker", [
+      "run",
+      "-d",
+      "--name",
+      resourceNames.postgresContainer,
+      "--network",
+      resourceNames.network,
+      "-p",
+      `127.0.0.1:${record.ports.postgres}:5432`,
+      "-e",
+      `POSTGRES_DB=${SANDBOX_DEFAULT_DB}`,
+      "-e",
+      `POSTGRES_PASSWORD=${SANDBOX_POSTGRES_PASSWORD}`,
+      "-e",
+      `POSTGRES_USER=${SANDBOX_POSTGRES_USER}`,
+      "-v",
+      `${resourceNames.postgresVolume}:/var/lib/postgresql/data`,
+      "postgres:16-alpine",
+    ])
+  );
+}
+
+interface RecreateNodeServiceContainerOptions {
+  readonly containerName: string;
+  readonly network: string;
+  readonly publishedPort: number;
+  readonly image: string;
+  readonly worktreePath: string;
+  readonly nodeModulesVolume: string;
+  readonly pnpmStoreVolume: string;
+  readonly filter: "app" | "api";
+  readonly sandboxId: string;
+  readonly databaseUrl: string;
+}
+
+async function recreateNodeServiceContainer(
+  options: RecreateNodeServiceContainerOptions
+): Promise<void> {
+  await removeContainer(options.containerName);
+  await exec(
+    runCommand("docker", [
+      "run",
+      "-d",
+      "--name",
+      options.containerName,
+      "--network",
+      options.network,
+      "-p",
+      `127.0.0.1:${options.publishedPort}:${options.publishedPort}`,
+      "-e",
+      "HOST=0.0.0.0",
+      "-e",
+      `PORT=${options.publishedPort}`,
+      "-e",
+      `SANDBOX_ID=${options.sandboxId}`,
+      "-e",
+      "TASK_TRACKER_SANDBOX=1",
+      "-e",
+      `DATABASE_URL=${options.databaseUrl}`,
+      "-e",
+      "PNPM_STORE_DIR=/pnpm/store",
+      "-v",
+      `${options.worktreePath}:/workspace`,
+      "-v",
+      `${options.nodeModulesVolume}:/workspace/node_modules`,
+      "-v",
+      `${options.pnpmStoreVolume}:/pnpm/store`,
+      "-w",
+      "/workspace",
+      options.image,
+      options.filter,
+    ])
+  );
+}
+
+async function removeContainer(name: string): Promise<void> {
+  await exec(runCommand("docker", ["rm", "-f", name], { allowNonZero: true }));
+}
+
+async function stopSandboxResources(sandboxId: string): Promise<void> {
+  const resourceNames = makeSandboxResourceNames(sandboxId);
+  await removeContainer(resourceNames.appContainer);
+  await removeContainer(resourceNames.apiContainer);
+  await removeContainer(resourceNames.postgresContainer);
+  await exec(
+    runCommand("docker", ["network", "rm", resourceNames.network], {
+      allowNonZero: true,
+    })
+  );
+}
+
+async function collectContainerLogs(
+  label: string,
+  containerName: string
+): Promise<string> {
+  const result = await exec(
+    runCommand("docker", ["logs", "--tail", "200", containerName], {
+      allowNonZero: true,
+    })
+  );
+  const content = [result.stdout.trim(), result.stderr.trim()]
+    .filter(Boolean)
+    .join("\n");
+  return `## ${label}\n${content || "(no logs available)"}`;
+}
+
+async function checkHttpHealth(
+  port: number,
+  service: "app" | "api",
+  sandboxId: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!response.ok) {
+      return false;
+    }
+
+    const body = (await response.json()) as {
+      service?: string;
+      sandboxId?: string;
+      ok?: boolean;
+    };
+    return (
+      body.ok === true &&
+      body.service === service &&
+      body.sandboxId === sandboxId
+    );
+  } catch {
+    return false;
+  }
+}
+
+function toPreflightError(
+  error: unknown,
+  fallback: string
+): SandboxPreflightError {
+  return new SandboxPreflightError({
+    message: error instanceof Error ? error.message : fallback,
+  });
+}
+
+function makeEphemeralSandboxRecord(input: {
+  readonly sandboxId: string;
+  readonly repoRoot: string;
+  readonly worktreePath: string;
+  readonly hostnameSlug: string;
+  readonly status: SandboxRecord["status"];
+}): SandboxRecord {
+  const resourceNames = makeSandboxResourceNames(input.sandboxId);
+  const now = new Date().toISOString();
+
+  return {
+    sandboxId: input.sandboxId,
+    repoRoot: input.repoRoot,
+    worktreePath: input.worktreePath,
+    hostnameSlug: input.hostnameSlug,
+    status: input.status,
+    containers: {
+      app: resourceNames.appContainer,
+      api: resourceNames.apiContainer,
+      postgres: resourceNames.postgresContainer,
+    },
+    ports: DEFAULT_PORTS,
+    hostnames: {
+      app: `${input.hostnameSlug}.app.task-tracker.localhost`,
+      api: `${input.hostnameSlug}.api.task-tracker.localhost`,
+    },
+    timestamps: {
+      createdAt: now,
+      updatedAt: now,
+    },
+    missingResources: ["app", "api", "postgres"],
+  };
+}

@@ -6,11 +6,13 @@
     "build": "tsc -p tsconfig.json",
     "check-types": "tsc --noEmit -p tsconfig.json",
     "dev": "portless run --name api.task-tracker tsx watch src/index.ts",
-    "dev:raw": "tsx watch src/index.ts"
+    "dev:raw": "tsx watch src/index.ts",
+    "sandbox:dev": "tsx watch src/index.ts"
   },
   "dependencies": {
     "@effect/platform": "^0.96.0",
     "@effect/platform-node": "^0.106.0",
+    "@task-tracker/sandbox-core": "workspace:*",
     "effect": "^3.21.0"
   },
   "devDependencies": {

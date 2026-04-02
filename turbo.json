@@ -19,6 +19,36 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "sandbox:dev": {
+      "cache": false,
+      "persistent": true,
+      "env": [
+        "DATABASE_URL",
+        "HOST",
+        "PNPM_STORE_DIR",
+        "PORT",
+        "SANDBOX_ID",
+        "TASK_TRACKER_SANDBOX"
+      ]
+    },
+    "sandbox:up": {
+      "cache": false
+    },
+    "sandbox:down": {
+      "cache": false
+    },
+    "sandbox:status": {
+      "cache": false
+    },
+    "sandbox:list": {
+      "cache": false
+    },
+    "sandbox:logs": {
+      "cache": false
+    },
+    "sandbox:url": {
+      "cache": false
     }
   }
 }
