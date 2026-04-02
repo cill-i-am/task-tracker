@@ -28,7 +28,10 @@ for (const packagePath of workspacePackages) {
 
   const packageJson = JSON.parse(readFileSync(fullPath, "utf8"));
   for (const dependency of Object.keys(packageJson.dependencies ?? {})) {
-    if (skippedPackages.has(dependency) || dependency.startsWith("@task-tracker/")) {
+    if (
+      skippedPackages.has(dependency) ||
+      dependency.startsWith("@task-tracker/")
+    ) {
       continue;
     }
     packages.add(dependency);
