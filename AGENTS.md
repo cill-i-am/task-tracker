@@ -19,3 +19,14 @@ This repo keeps fetched dependency source code in `opensrc/` for local agent con
 - Check `opensrc/sources.json` for the current fetched package list.
 - Use those local sources when behavior is unclear from types alone.
 - Do not commit files from `opensrc/`; the directory is intentionally gitignored.
+
+## Worktrees And Sandboxes
+
+When working from a linked git worktree, prefer the sandbox workflow over the host-level dev scripts.
+
+- Use `pnpm sandbox:up` to boot app, api, and Postgres for the current worktree.
+- Use `pnpm sandbox:status` or `pnpm sandbox:url` to discover the current worktree's endpoints.
+- Use `pnpm sandbox:logs` when debugging sandboxed services.
+- Use `pnpm sandbox:down` when you are finished with that worktree's sandbox.
+- Prefer the sandbox URLs and `portless` aliases for worktree development. Fall back to the loopback URLs printed by the CLI when aliases are unavailable.
+- Do not default to `pnpm dev` inside linked worktrees unless the user explicitly asks for the non-sandbox flow.
