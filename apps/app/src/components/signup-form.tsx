@@ -1,5 +1,3 @@
-import { Link } from "@tanstack/react-router";
-
 import { Button } from "#/components/ui/button";
 import {
   Card,
@@ -65,10 +63,6 @@ export function SignupForm({
               </Field>
               <Field>
                 <Button type="submit">Create Account</Button>
-                <FieldDescription className="text-center">
-                  Already have an account?{" "}
-                  <Link to={"/login" as never}>Sign in</Link>
-                </FieldDescription>
               </Field>
             </FieldGroup>
           </form>

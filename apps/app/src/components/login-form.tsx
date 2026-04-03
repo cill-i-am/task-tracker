@@ -1,5 +1,3 @@
-import { Link } from "@tanstack/react-router";
-
 import { Button } from "#/components/ui/button";
 import {
   Card,
@@ -8,12 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "#/components/ui/card";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "#/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
 import { cn } from "#/lib/utils";
 
@@ -50,10 +43,6 @@ export function LoginForm({
               </Field>
               <Field>
                 <Button type="submit">Login</Button>
-                <FieldDescription className="text-center">
-                  Don&apos;t have an account?{" "}
-                  <Link to={"/signup" as never}>Sign up</Link>
-                </FieldDescription>
               </Field>
             </FieldGroup>
           </form>
