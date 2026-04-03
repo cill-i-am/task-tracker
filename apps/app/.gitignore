@@ -9,5 +9,7 @@ dist-ssr
 .wrangler
 .output
 .vinxi
+playwright-report/
+test-results/
 __unconfig*
 todos.json

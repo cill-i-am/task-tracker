@@ -76,6 +76,11 @@
       "sourceType": "github",
       "computedHash": "246e65cd72a7e360987d94e6c61564ce6d71c6361d1784d529d70e4cbbe8522d"
     },
+    "shadcn": {
+      "source": "shadcn/ui",
+      "sourceType": "github",
+      "computedHash": "507f011a70e8b3ae242bdc0bb5b39fd91a1d4049a0f3c281991ccf84973d591c"
+    },
     "subagent-driven-development": {
       "source": "obra/superpowers",
       "sourceType": "github",
