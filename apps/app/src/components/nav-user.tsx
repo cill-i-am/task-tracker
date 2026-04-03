@@ -20,6 +20,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "#/components/ui/sidebar";
+import { hardRedirectToLogin } from "#/features/auth/hard-redirect-to-login";
 import { signOut } from "#/features/auth/sign-out";
 
 export interface NavUserAccount {
@@ -65,7 +66,11 @@ export function NavUser({
       try {
         await navigate({ to: "/login" });
       } catch {
-        setErrorMessage("Couldn't redirect after sign out. Please try again.");
+        if (!hardRedirectToLogin()) {
+          setErrorMessage(
+            "Couldn't redirect after sign out. Please try again."
+          );
+        }
       }
     } catch {
       setErrorMessage("Couldn't sign out. Please try again.");

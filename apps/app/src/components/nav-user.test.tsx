@@ -31,6 +31,10 @@ const { mockedNavigate, mockedSignOut } = vi.hoisted(() => ({
   mockedSignOut: vi.fn<() => Promise<SignOutResult>>(),
 }));
 
+const { mockedHardRedirectToLogin } = vi.hoisted(() => ({
+  mockedHardRedirectToLogin: vi.fn<() => boolean>(),
+}));
+
 vi.mock(import("#/features/auth/sign-out"), async (importActual) => {
   const actual = await importActual();
 
@@ -39,6 +43,19 @@ vi.mock(import("#/features/auth/sign-out"), async (importActual) => {
     signOut: mockedSignOut as unknown as typeof actual.signOut,
   };
 });
+
+vi.mock(
+  import("#/features/auth/hard-redirect-to-login"),
+  async (importActual) => {
+    const actual = await importActual();
+
+    return {
+      ...actual,
+      hardRedirectToLogin:
+        mockedHardRedirectToLogin as unknown as typeof actual.hardRedirectToLogin,
+    };
+  }
+);
 
 vi.mock(import("#/components/ui/sidebar"), async (importActual) => {
   const actual = await importActual();
@@ -176,6 +193,8 @@ describe("nav user", () => {
   beforeEach(() => {
     mockedNavigate.mockResolvedValue();
     mockedSignOut.mockReset();
+    mockedHardRedirectToLogin.mockReset();
+    mockedHardRedirectToLogin.mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -295,7 +314,7 @@ describe("nav user", () => {
   );
 
   it(
-    "shows a redirect failure message when navigation rejects after sign-out succeeds",
+    "falls back to a hard redirect when client navigation rejects after sign-out succeeds",
     {
       timeout: 10_000,
     },
@@ -317,21 +336,29 @@ describe("nav user", () => {
         })
       );
 
-      await expect(screen.findByRole("status")).resolves.toHaveTextContent(
-        "Couldn't redirect after sign out. Please try again."
-      );
+      await waitFor(() => {
+        expect(mockedHardRedirectToLogin).toHaveBeenCalledOnce();
+      });
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
       expect(mockedSignOut).toHaveBeenCalledOnce();
       expect(mockedNavigate).toHaveBeenCalledOnce();
     }
   );
 
   it(
-    "shows the fallback error message when sign-out throws",
+    "shows the fallback error message when hard redirect also fails",
     {
       timeout: 10_000,
     },
     async () => {
-      mockedSignOut.mockRejectedValueOnce(new Error("sign out failed"));
+      mockedSignOut.mockResolvedValue({
+        data: {
+          success: true,
+        },
+        error: null,
+      });
+      mockedNavigate.mockRejectedValueOnce(new Error("navigation failed"));
+      mockedHardRedirectToLogin.mockReturnValueOnce(false);
 
       const userInteraction = userEvent.setup();
       renderNavUser();
@@ -343,9 +370,9 @@ describe("nav user", () => {
       );
 
       await expect(screen.findByRole("status")).resolves.toHaveTextContent(
-        "Couldn't sign out. Please try again."
+        "Couldn't redirect after sign out. Please try again."
       );
-      expect(mockedNavigate).not.toHaveBeenCalled();
+      expect(mockedHardRedirectToLogin).toHaveBeenCalledOnce();
     }
   );
 });
