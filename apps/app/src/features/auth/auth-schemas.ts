@@ -1,14 +1,13 @@
 import { ParseResult, Schema } from "effect";
 
-const Email = Schema.String.pipe(
-  Schema.trimmed(),
+const Email = Schema.Trim.pipe(
   Schema.nonEmptyString(),
   Schema.pattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
 );
 
-const Password = Schema.String.pipe(Schema.minLength(8));
+const Password = Schema.Trim.pipe(Schema.minLength(8));
 
-const Name = Schema.String.pipe(Schema.trimmed(), Schema.minLength(2));
+const Name = Schema.Trim.pipe(Schema.minLength(2));
 
 const LoginInput = Schema.Struct({
   email: Email,
