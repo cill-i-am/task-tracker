@@ -2,8 +2,10 @@ import { TanStackDevtools } from "@tanstack/react-devtools";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
-import Footer from "../components/Footer";
-import Header from "../components/Header";
+import { AppSidebar } from "../components/app-sidebar";
+import { SiteHeader } from "../components/site-header";
+import { SidebarInset, SidebarProvider } from "../components/ui/sidebar";
+import { TooltipProvider } from "../components/ui/tooltip";
 
 import appCss from "../styles.css?url";
 
@@ -40,22 +42,30 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HeadContent />
       </head>
-      <body className="font-sans [overflow-wrap:anywhere] antialiased selection:bg-[rgba(79,184,178,0.24)]">
-        <Header />
-        {children}
-        <Footer />
-        <TanStackDevtools
-          config={{
-            position: "bottom-right",
-          }}
-          plugins={[
-            {
-              name: "Tanstack Router",
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-          ]}
-        />
-        <Scripts />
+      <body className="font-sans [overflow-wrap:anywhere] antialiased selection:bg-primary/20">
+        <TooltipProvider>
+          <SidebarProvider className="flex flex-col [--header-height:calc(--spacing(14))]">
+            <SiteHeader />
+            <div className="flex flex-1">
+              <AppSidebar />
+              <SidebarInset>
+                <div className="flex flex-1 flex-col">{children}</div>
+              </SidebarInset>
+            </div>
+            <TanStackDevtools
+              config={{
+                position: "bottom-right",
+              }}
+              plugins={[
+                {
+                  name: "Tanstack Router",
+                  render: <TanStackRouterDevtoolsPanel />,
+                },
+              ]}
+            />
+            <Scripts />
+          </SidebarProvider>
+        </TooltipProvider>
       </body>
     </html>
   );
