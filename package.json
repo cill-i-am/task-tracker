@@ -31,6 +31,9 @@
     "typescript": "5.9.2",
     "ultracite": "^7.4.2"
   },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.60.1"
+  },
   "engines": {
     "node": ">=18"
   },
