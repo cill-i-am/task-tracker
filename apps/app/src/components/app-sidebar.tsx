@@ -9,6 +9,7 @@ import {
   SentIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Link } from "@tanstack/react-router";
 import * as React from "react";
 
 import { NavMain } from "#/components/nav-main";
@@ -115,9 +116,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuButton
               size="lg"
               render={
-                <a href="/">
+                <Link to="/">
                   <span className="sr-only">Task Tracker</span>
-                </a>
+                </Link>
               }
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">

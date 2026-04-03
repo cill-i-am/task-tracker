@@ -2,7 +2,7 @@
 
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useLocation } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 
 import { SearchForm } from "#/components/search-form";
 import ThemeToggle from "#/components/ThemeToggle";
@@ -49,7 +49,9 @@ export function SiteHeader() {
         <Breadcrumb className="hidden sm:block">
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink href="/">Task Tracker</BreadcrumbLink>
+              <BreadcrumbLink render={<Link to="/" />}>
+                Task Tracker
+              </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>

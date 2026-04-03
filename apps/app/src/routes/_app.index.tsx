@@ -12,7 +12,7 @@ import {
 } from "#/components/ui/card";
 import { cn } from "#/lib/utils";
 
-export const Route = createFileRoute("/")({ component: App });
+export const Route = createFileRoute("/_app/")({ component: App });
 
 const features = [
   {
@@ -84,8 +84,8 @@ function App() {
           <CardContent>
             <ul className="m-0 flex list-disc flex-col gap-3 pl-5 text-sm text-muted-foreground">
               <li>
-                Edit <code>src/routes/index.tsx</code> to customize the home
-                page.
+                Edit <code>src/routes/_app.index.tsx</code> to customize the
+                home page.
               </li>
               <li>
                 Update <code>src/components/site-header.tsx</code> and{" "}
