@@ -38,14 +38,12 @@ describe(redirectIfAuthenticated, () => {
       error: null,
     });
 
-    const thrown = await redirectIfAuthenticated().catch(
-      (error: unknown) => error
-    );
+    const result = redirectIfAuthenticated();
 
-    expect(isRedirect(thrown)).toBeTruthy();
-    expect(thrown).toMatchObject({
+    await expect(result).rejects.toMatchObject({
       options: { to: "/" },
     });
+    await expect(result).rejects.toSatisfy(isRedirect);
   }, 1000);
 
   it("resolves without throwing when no session exists", async () => {
