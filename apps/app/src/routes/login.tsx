@@ -1,5 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute } from "@tanstack/react-router";
+import { Schema } from "effect";
 
 import { Button } from "#/components/ui/button";
 import {
@@ -13,7 +14,7 @@ import {
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
 import { AuthFormField } from "#/features/auth/auth-form-field";
-import { decodeLoginInput } from "#/features/auth/auth-schemas";
+import { decodeLoginInput, loginSchema } from "#/features/auth/auth-schemas";
 import { authClient } from "#/lib/auth-client";
 
 export const Route = createFileRoute("/login")({
@@ -27,7 +28,7 @@ export function LoginPage() {
       password: "",
     },
     validators: {
-      onSubmit: ({ value }) => validateLoginValues(value),
+      onSubmit: Schema.standardSchemaV1(loginSchema),
     },
     onSubmit: async ({ formApi, value }) => {
       formApi.setErrorMap({
@@ -39,7 +40,10 @@ export function LoginPage() {
 
       if (result.error) {
         formApi.setErrorMap({
-          onSubmit: result.error.message ?? "Unable to sign in",
+          onSubmit: {
+            form: result.error.message ?? "Unable to sign in",
+            fields: {},
+          },
         });
       }
     },
@@ -125,8 +129,8 @@ export function LoginPage() {
             <CardFooter className="flex-col items-stretch gap-4 px-0">
               <form.Subscribe selector={(state) => state.errorMap.onSubmit}>
                 {(error) =>
-                  typeof error === "string" ? (
-                    <FieldError>{error}</FieldError>
+                  getFormErrorText(error) ? (
+                    <FieldError>{getFormErrorText(error)}</FieldError>
                   ) : null
                 }
               </form.Subscribe>
@@ -144,26 +148,6 @@ export function LoginPage() {
       </Card>
     </div>
   );
-}
-
-function validateLoginValues(value: { email: string; password: string }) {
-  const fields: Record<string, string> = {};
-  const email = value.email.trim();
-  const password = value.password.trim();
-
-  if (email.length === 0) {
-    fields.email = "Email is required";
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    fields.email = "Enter a valid email address";
-  }
-
-  if (password.length === 0) {
-    fields.password = "Password is required";
-  } else if (password.length < 8) {
-    fields.password = "Password must be at least 8 characters";
-  }
-
-  return Object.keys(fields).length > 0 ? { fields } : undefined;
 }
 
 function getErrorText(
@@ -187,6 +171,24 @@ function getErrorText(
     ) {
       return error.message;
     }
+  }
+
+  return undefined;
+}
+
+function getFormErrorText(error: unknown): string | undefined {
+  if (typeof error === "string" && error.length > 0) {
+    return error;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "form" in error &&
+    typeof error.form === "string" &&
+    error.form.length > 0
+  ) {
+    return error.form;
   }
 
   return undefined;

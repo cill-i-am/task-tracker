@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Schema } from "effect";
 
+import { loginSchema } from "#/features/auth/auth-schemas";
 import type { authClient as AuthClient } from "#/lib/auth-client";
 
 import { LoginPage } from "./login";
@@ -92,5 +94,35 @@ describe("login route", () => {
     await expect(
       screen.findByText("Invalid email or password")
     ).resolves.toBeInTheDocument();
+  }, 10_000);
+
+  it("uses the shared login schema for submit validation", async () => {
+    const user = userEvent.setup();
+    const standardSchema = Schema.standardSchemaV1(loginSchema);
+    const result = standardSchema["~standard"].validate({
+      email: "person@example.com",
+      password: "short",
+    });
+
+    if ("issues" in result === false || result.issues === undefined) {
+      throw new Error("Expected login schema validation issues");
+    }
+
+    const expectedMessage = result.issues[0]?.message;
+
+    if (!expectedMessage) {
+      throw new Error("Expected login schema issue message");
+    }
+
+    render(<LoginPage />);
+
+    await user.type(screen.getByLabelText("Email"), "person@example.com");
+    await user.type(screen.getByLabelText("Password"), "short");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await expect(
+      screen.findByText(expectedMessage)
+    ).resolves.toBeInTheDocument();
+    expect(mockedSignInEmail).not.toHaveBeenCalled();
   }, 10_000);
 });
