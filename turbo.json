@@ -24,6 +24,7 @@
       "cache": false,
       "persistent": true,
       "env": [
+        "AUTH_ORIGIN",
         "BETTER_AUTH_BASE_URL",
         "BETTER_AUTH_SECRET",
         "DATABASE_URL",
@@ -31,7 +32,8 @@
         "PNPM_STORE_DIR",
         "PORT",
         "SANDBOX_ID",
-        "TASK_TRACKER_SANDBOX"
+        "TASK_TRACKER_SANDBOX",
+        "VITE_AUTH_ORIGIN"
       ]
     },
     "sandbox:up": {
