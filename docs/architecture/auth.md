@@ -41,7 +41,7 @@ The system is intentionally split into two layers:
    limiting, trusted-origin policy, and the `/api/auth/*` HTTP surface.
 2. `apps/app` uses Better Auth's native client against that server contract and
    adds only the minimum app-specific behavior needed for:
-   - login and signup forms
+   - guest auth forms
    - session-aware route guards
    - authenticated shell rendering
    - sign-out UX
@@ -92,7 +92,11 @@ Current rate-limit rules:
 
 - `POST /sign-in/email`: 5 attempts per 60 seconds
 - `POST /sign-up/email`: 3 attempts per 60 seconds
-- `POST /request-password-reset`: 3 attempts per 60 seconds
+
+Current note:
+
+- auth config currently defines custom rate-limit rules only for sign-in and
+  sign-up
 
 ### Auth Email Delivery Boundary
 
@@ -303,8 +307,8 @@ This is implemented by
 Design rule:
 
 - guest-only pages fail open on lookup failure
-- we prefer preserving access to login/signup over blocking the user due to a
-  transient session-read problem
+- we prefer preserving access to guest auth routes over blocking the user due
+  to a transient session-read problem
 - password recovery remains outside `/_app` because it is an account recovery
   flow, not an authenticated product flow
 
@@ -417,10 +421,10 @@ Current behavior:
 - uses TanStack Form for form state
 - validates password and token inputs before submit
 - calls Better Auth's native password reset completion flow
-- treats invalid or expired reset links as user-visible, task-specific failures
-  when Better Auth reports them
-- keeps other server failures on the same safe, non-internal error style used
-  elsewhere in auth UI
+- shows specific invalid-or-expired-link copy for the search-param-driven
+  invalid-link state
+- keeps failed `resetPassword` submissions on the same generic, safe form-error
+  path used elsewhere in auth UI
 
 ### Shared Validation Rules
 
@@ -461,8 +465,9 @@ Rules:
 - other sign-in failures map to a generic credentials-oriented message
 - other sign-up failures map to a generic account-creation message
 - password reset request responses remain generic and non-enumerating
-- password reset completion failures may specifically call out invalid or
-  expired links
+- the search-param-driven invalid-link state may specifically call out invalid
+  or expired links
+- submitted reset failures still use the generic reset failure message
 
 This is a deliberate anti-enumeration and UX decision.
 
@@ -587,8 +592,7 @@ The current behavior is reinforced by:
   limiting in the API auth slice
 - integration tests for password reset delivery and completion behavior in the
   API auth slice
-- Playwright tests for end-to-end login, signup, password reset, and
-  route-protection behavior
+- Playwright tests for end-to-end login, signup, and route-protection behavior
 
 If a future change conflicts with this document, the tests should be updated in
 the same change so the intended architecture stays explicit.

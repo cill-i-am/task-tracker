@@ -157,9 +157,11 @@ It fits like this today:
   boundary
 - `ResendAuthEmailTransport` is the first provider adapter behind that boundary
 - public reset-request and reset-complete routes in `apps/app`
-- the same form architecture already used by login and signup
+- the same form architecture already used across the guest auth surface
 - generic reset-request responses that do not enumerate accounts
-- reset-complete errors that may specifically call out invalid or expired links
+- the search-param-driven invalid-link state may specifically call out invalid
+  or expired links
+- submitted reset failures stay on the generic reset failure path
 
 Rules:
 
