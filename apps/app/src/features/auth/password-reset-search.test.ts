@@ -20,4 +20,15 @@ describe("password reset search", () => {
       error: "INVALID_TOKEN",
     });
   }, 1000);
+
+  it("prefers the INVALID_TOKEN state when token and error are both present", () => {
+    expect(
+      decodePasswordResetSearch({
+        token: "reset-token",
+        error: "INVALID_TOKEN",
+      })
+    ).toStrictEqual({
+      error: "INVALID_TOKEN",
+    });
+  }, 1000);
 });

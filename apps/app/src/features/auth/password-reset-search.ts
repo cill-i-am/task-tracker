@@ -15,10 +15,13 @@ const PasswordResetSearch = Schema.transform(
   }),
   {
     strict: true,
-    decode: ({ error, token }) => ({
-      ...(typeof token === "string" && token.length > 0 ? { token } : {}),
-      ...(error === INVALID_TOKEN ? { error: INVALID_TOKEN } : {}),
-    }),
+    decode: ({ error, token }) => {
+      if (error === INVALID_TOKEN) {
+        return { error: INVALID_TOKEN };
+      }
+
+      return (typeof token === "string" && token.length > 0 ? { token } : {});
+    },
     encode: (search) => search,
   }
 );
