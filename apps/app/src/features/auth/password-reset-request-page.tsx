@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { Link } from "@tanstack/react-router";
 import { Schema } from "effect";
 import { useState } from "react";
 
@@ -79,12 +80,12 @@ export function PasswordResetRequestPage() {
           {isSubmitted ? (
             <div className="space-y-4 text-center">
               <p className="text-sm text-muted-foreground">{successCopy}</p>
-              <a
-                href="/login"
+              <Link
+                to="/login"
                 className="text-sm font-medium text-primary underline-offset-4 hover:underline"
               >
                 Back to login
-              </a>
+              </Link>
             </div>
           ) : (
             <form
@@ -146,12 +147,12 @@ export function PasswordResetRequestPage() {
                   )}
                 </form.Subscribe>
 
-                <a
-                  href="/login"
+                <Link
+                  to="/login"
                   className="text-center text-sm font-medium text-primary underline-offset-4 hover:underline"
                 >
                   Back to login
-                </a>
+                </Link>
               </CardFooter>
             </form>
           )}

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Schema } from "effect";
+import type { ComponentProps } from "react";
 
 import type { authClient as AuthClient } from "#/lib/auth-client";
 import type * as AuthClientModule from "#/lib/auth-client";
@@ -31,6 +32,27 @@ vi.mock(import("#/lib/auth-client"), async () => {
     authClient: {
       requestPasswordReset: mockedRequestPasswordReset,
     } as unknown as typeof AuthClient,
+  };
+});
+
+vi.mock(import("@tanstack/react-router"), async (importActual) => {
+  const actual = await importActual();
+
+  return {
+    ...actual,
+    Link: (({
+      children,
+      to,
+      ...props
+    }: ComponentProps<"a"> & { to?: string }) => (
+      <a
+        data-router-link="true"
+        href={typeof to === "string" ? to : props.href}
+        {...props}
+      >
+        {children}
+      </a>
+    )) as typeof actual.Link,
   };
 });
 
@@ -75,6 +97,25 @@ describe("password reset request page", () => {
         "If an account exists for that email, a reset link will be sent."
       )
     ).resolves.toBeInTheDocument();
+  }, 10_000);
+
+  it("uses router links for back-to-login navigation before and after submit", async () => {
+    const user = userEvent.setup();
+
+    render(<PasswordResetRequestPage />);
+
+    const initialBackLink = screen.getByRole("link", { name: "Back to login" });
+    expect(initialBackLink).toHaveAttribute("href", "/login");
+    expect(initialBackLink).toHaveAttribute("data-router-link", "true");
+
+    await user.type(screen.getByLabelText("Email"), "person@example.com");
+    await user.click(screen.getByRole("button", { name: /send reset link/i }));
+
+    const successBackLink = await screen.findByRole("link", {
+      name: "Back to login",
+    });
+    expect(successBackLink).toHaveAttribute("href", "/login");
+    expect(successBackLink).toHaveAttribute("data-router-link", "true");
   }, 10_000);
 
   it("uses the shared password reset request schema for submit validation", async () => {

@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { Link } from "@tanstack/react-router";
 import { Schema } from "effect";
 
 import { Button } from "#/components/ui/button";
@@ -133,12 +134,12 @@ export function LoginPage() {
               </form.Field>
 
               <div className="text-right">
-                <a
-                  href="/forgot-password"
+                <Link
+                  to="/forgot-password"
                   className="text-sm font-medium text-primary underline-offset-4 hover:underline"
                 >
                   Forgot password?
-                </a>
+                </Link>
               </div>
             </FieldGroup>
 
