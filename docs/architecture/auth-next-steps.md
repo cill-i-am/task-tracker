@@ -104,7 +104,8 @@ up.
 
 The current route split should remain the default:
 
-- guest-only auth routes stay public
+- login and signup stay guest-only
+- recovery routes may stay public outside the authenticated shell
 - product routes stay inside the authenticated app boundary
 
 Until there is a compelling reason otherwise:
@@ -118,7 +119,8 @@ Until there is a compelling reason otherwise:
 Current auth routing has a deliberate asymmetry:
 
 - protected routes fail closed
-- guest-only routes fail open
+- guest-only entry routes fail open
+- public recovery routes stay reachable regardless of session state
 
 Future auth screens and guards should preserve that intent:
 
@@ -126,6 +128,8 @@ Future auth screens and guards should preserve that intent:
   or block safely
 - if a guest-only page cannot determine session state, prefer letting the user
   reach the auth UI
+- if a signed-in user opens a public recovery route, prefer leaving that route
+  reachable unless product policy changes explicitly
 
 ### Keep Redirect Logic Predictable
 
@@ -167,6 +171,8 @@ Rules:
 
 - treat reset as a public auth flow, not an authenticated in-app flow
 - keep reset pages outside `/_app`
+- keep reset pages public even for already authenticated users unless product
+  policy changes explicitly
 - keep Better Auth native instead of replacing reset endpoints with app-owned
   HTTP wrappers
 - prefer generic success messaging where enumeration risk exists
@@ -202,6 +208,16 @@ Auth email is shared infrastructure, not a screen-level detail.
 
 Password reset already established the first version of this boundary in
 `apps/api` with `AuthEmailSender` plus `ResendAuthEmailTransport`.
+
+That boundary now contributes runtime config at auth startup:
+
+- `AUTH_EMAIL_FROM`
+- `RESEND_API_KEY`
+- `AUTH_EMAIL_FROM_NAME`, which defaults to `"Task Tracker"`
+
+Because `AuthenticationLive` composes the auth email layer at boot, auth
+startup now depends on valid email-boundary config as well as the core Better
+Auth config.
 
 Future auth mail such as email verification should extend that same boundary,
 not create parallel delivery paths.

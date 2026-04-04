@@ -98,6 +98,20 @@ Current note:
 - auth config currently defines custom rate-limit rules only for sign-in and
   sign-up
 
+### Auth Email Runtime Configuration
+
+The auth email boundary adds runtime config in
+`apps/api/src/domains/identity/authentication/auth-email-config.ts`.
+
+Required values:
+
+- `AUTH_EMAIL_FROM`
+- `RESEND_API_KEY`
+
+Current defaulted value:
+
+- `AUTH_EMAIL_FROM_NAME`, which defaults to `"Task Tracker"`
+
 ### Auth Email Delivery Boundary
 
 Password reset delivery now crosses one narrow app-owned boundary in `apps/api`:
@@ -115,6 +129,9 @@ Rule:
 
 - Better Auth still owns the reset HTTP endpoints and token semantics
 - the app-owned boundary starts at delivery policy, not at route ownership
+- auth startup now depends on valid auth email config as well as core Better
+  Auth config, because `AuthenticationLive` composes `AuthEmailSender` with
+  `ResendAuthEmailTransportLive` at boot
 
 ### Base URL Strategy
 
@@ -286,29 +303,40 @@ This keeps auth decisions consistent across:
 
 The route split is intentionally simple:
 
-### Public Guest-Only Routes
+### Public Auth Routes
 
 - `/login`
 - `/signup`
 - `/forgot-password`
 - `/reset-password`
 
-These routes are guest-only, not merely public.
+These routes all live outside `/_app`, but they do not all share the same
+access policy.
+
+- `/login` and `/signup` are guest-only routes
+- `/forgot-password` and `/reset-password` are public auth-recovery routes and
+  remain reachable even when a user is already signed in
 
 Behavior:
 
-- if a session exists, redirect to `/`
-- if session lookup fails unexpectedly, treat the user as unauthenticated and
-  allow the page to render
+- `/login` and `/signup`: if a session exists, redirect to `/`
+- `/login` and `/signup`: if session lookup fails unexpectedly, treat the user
+  as unauthenticated and allow the page to render
+- `/forgot-password` and `/reset-password`: render as public recovery routes
+  without `redirectIfAuthenticated`
 
-This is implemented by
+`/login` and `/signup` use
 `apps/app/src/features/auth/redirect-if-authenticated.ts`.
+
+`/forgot-password` and `/reset-password` are mounted as public routes without
+that guard.
 
 Design rule:
 
-- guest-only pages fail open on lookup failure
-- we prefer preserving access to guest auth routes over blocking the user due
-  to a transient session-read problem
+- guest-only entry routes fail open on lookup failure
+- public recovery routes stay reachable regardless of session state
+- we prefer preserving access to public auth and recovery routes over blocking
+  the user due to a transient session-read problem
 - password recovery remains outside `/_app` because it is an account recovery
   flow, not an authenticated product flow
 
@@ -532,6 +560,8 @@ These are the important current rules we are following.
   prefixing, and delegates password reset delivery through `AuthEmailSender`.
 - `apps/api/src/domains/identity/authentication/config.ts`
   Defines auth scope, base URL behavior, trusted origins, and rate limits.
+- `apps/api/src/domains/identity/authentication/auth-email-config.ts`
+  Defines required auth email runtime config and defaults.
 - `apps/api/src/domains/identity/authentication/auth-email.ts`
   Defines the auth email boundary for password reset delivery.
 - `apps/api/src/domains/identity/authentication/resend-auth-email-transport.ts`
@@ -569,8 +599,8 @@ These decisions are currently encoded in the implementation and tests.
 - Stay close to Better Auth's native server and client contracts.
 - Keep auth scope limited to email/password, password reset, and session
   handling.
-- Make `/login`, `/signup`, `/forgot-password`, and `/reset-password`
-  guest-only routes.
+- Keep `/login` and `/signup` guest-only, and keep `/forgot-password` and
+  `/reset-password` as public recovery routes outside `/_app`.
 - Make the app shell under `/_app` the authenticated boundary.
 - Keep redirect destinations simple and fixed.
 - Prefer server-first session checks when rendering protected content.
