@@ -36,6 +36,11 @@ describe("formatSandboxStartupTimeoutLines()", () => {
           api: false,
           app: false,
         },
+        containers: {
+          app: "sandbox-app",
+          api: "sandbox-api",
+          postgres: "sandbox-postgres",
+        },
         urls: {
           app: "https://feature-branch.app.task-tracker.localhost:1355",
           api: "https://feature-branch.api.task-tracker.localhost:1355",
@@ -53,7 +58,7 @@ describe("formatSandboxStartupTimeoutLines()", () => {
       "  postgres url: postgresql://127.0.0.1:5439/task_tracker",
       "  app fallback url: http://127.0.0.1:4300",
       "  api fallback url: http://127.0.0.1:4301",
-      "  next step: pnpm sandbox:logs",
+      "  next step: docker logs sandbox-api",
     ]);
   }, 10_000);
 });

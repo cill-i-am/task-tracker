@@ -431,6 +431,7 @@ export function makeSandboxRuntime(): SandboxRuntime {
           hostnameSlug: record.hostnameSlug,
           timeoutMs: SANDBOX_READY_TIMEOUT_MS,
           readiness,
+          containers: record.containers,
           urls: buildSandboxUrls(
             {
               hostnameSlug: record.hostnameSlug,

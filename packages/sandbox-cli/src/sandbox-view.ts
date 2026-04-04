@@ -12,6 +12,12 @@ export interface SandboxStartupReadiness {
   readonly app: boolean;
 }
 
+export interface SandboxContainerNames {
+  readonly app: string;
+  readonly api: string;
+  readonly postgres: string;
+}
+
 export function formatSandboxViewLines(
   label: string,
   hostnameSlug: string,
@@ -32,8 +38,16 @@ export function formatSandboxStartupTimeoutLines(input: {
   readonly hostnameSlug: string;
   readonly timeoutMs: number;
   readonly readiness: SandboxStartupReadiness;
+  readonly containers: SandboxContainerNames;
   readonly urls: SandboxViewUrls;
 }): readonly string[] {
+  let nextContainer = input.containers.app;
+  if (input.readiness.postgres === false) {
+    nextContainer = input.containers.postgres;
+  } else if (input.readiness.api === false) {
+    nextContainer = input.containers.api;
+  }
+
   return [
     `Sandbox startup timed out after ${Math.round(input.timeoutMs / 1000)} seconds.`,
     `  slug: ${input.hostnameSlug}`,
@@ -43,6 +57,6 @@ export function formatSandboxStartupTimeoutLines(input: {
     `  postgres url: ${input.urls.postgres}`,
     `  app fallback url: ${input.urls.fallbackApp}`,
     `  api fallback url: ${input.urls.fallbackApi}`,
-    "  next step: pnpm sandbox:logs",
+    `  next step: docker logs ${nextContainer}`,
   ];
 }
