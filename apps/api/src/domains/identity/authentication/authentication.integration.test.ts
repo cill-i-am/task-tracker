@@ -162,7 +162,7 @@ describe("authentication integration", () => {
     expect(resetUrl).toContain("http://127.0.0.1:3000/reset-password");
 
     const resetToken = resetUrl.split("?", 1)[0]?.split("/").pop();
-    expect(resetToken).toBe(true);
+    expect(resetToken).toBeTruthy();
 
     const resetPasswordResponse = await auth.handler(
       makeJsonRequest("/reset-password", {
