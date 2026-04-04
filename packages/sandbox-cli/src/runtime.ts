@@ -32,6 +32,8 @@ import { formatSandboxStartupTimeoutLines } from "./sandbox-view.js";
 const SANDBOX_PROXY_PORT = 1355;
 const SANDBOX_READY_TIMEOUT_MS = 60_000;
 const SANDBOX_DEV_IMAGE = "task-tracker-sandbox-dev:latest";
+const SANDBOX_READY_POLL_INTERVAL_MS = 1000;
+const SANDBOX_READY_TIMEOUT_MS = 180_000;
 const SANDBOX_DOCKERFILE = path.join(
   "packages",
   "sandbox-cli",
@@ -96,7 +98,10 @@ export interface SandboxRegistry {
 export interface DockerEngine {
   readonly ensureAvailable: () => Promise<void>;
   readonly ensureDevImage: () => Promise<string>;
-  readonly startStack: (record: SandboxRecord) => Promise<void>;
+  readonly startStack: (
+    record: SandboxRecord,
+    aliasesHealthy: boolean
+  ) => Promise<void>;
   readonly stopStack: (record: SandboxRecord) => Promise<void>;
   readonly runningContainerNames: () => Promise<Set<string>>;
   readonly collectLogs: (record: SandboxRecord) => Promise<string>;
@@ -267,9 +272,14 @@ export function makeSandboxRuntime(): SandboxRuntime {
 
       return SANDBOX_DEV_IMAGE;
     },
-    startStack: async (record) => {
+    startStack: async (record, aliasesHealthy) => {
       const resourceNames = makeSandboxResourceNames(record.sandboxId);
       const image = await dockerEngine.ensureDevImage();
+      const authOrigin = makeSandboxAuthOrigin({
+        hostnameSlug: record.hostnameSlug,
+        publishedPort: record.ports.api,
+        aliasesHealthy,
+      });
 
       await ensureDockerNetwork(resourceNames.network);
       await ensureDockerVolume(resourceNames.postgresVolume);
@@ -290,6 +300,7 @@ export function makeSandboxRuntime(): SandboxRuntime {
         worktreePath: record.worktreePath,
         nodeModulesVolume: resourceNames.apiNodeModulesVolume,
         pnpmStoreVolume: resourceNames.pnpmStoreVolume,
+        authOrigin,
         filter: "api",
         sandboxId: record.sandboxId,
         databaseUrl: internalDatabaseUrl,
@@ -303,6 +314,7 @@ export function makeSandboxRuntime(): SandboxRuntime {
         worktreePath: record.worktreePath,
         nodeModulesVolume: resourceNames.appNodeModulesVolume,
         pnpmStoreVolume: resourceNames.pnpmStoreVolume,
+        authOrigin,
         filter: "app",
         sandboxId: record.sandboxId,
         databaseUrl: internalDatabaseUrl,
@@ -380,69 +392,52 @@ export function makeSandboxRuntime(): SandboxRuntime {
 
   const healthChecker: HealthChecker = {
     waitForReady: async (record) => {
-      const startedAt = Date.now();
-      let readiness = {
-        postgres: false,
-        api: false,
-        app: false,
-      };
-
-      while (Date.now() - startedAt < SANDBOX_READY_TIMEOUT_MS) {
-        const postgresReady = await exec(
-          runCommand(
-            "docker",
-            [
-              "exec",
-              record.containers.postgres,
-              "pg_isready",
-              "-U",
-              SANDBOX_POSTGRES_USER,
-              "-d",
-              SANDBOX_DEFAULT_DB,
-            ],
-            { allowNonZero: true }
-          )
-        );
-        const apiReady = await checkHttpHealth(
-          record.ports.api,
-          "api",
-          record.sandboxId
-        );
-        const appReady = await checkHttpHealth(
-          record.ports.app,
-          "app",
-          record.sandboxId
-        );
-        readiness = {
-          postgres: postgresReady.exitCode === 0,
-          api: apiReady,
-          app: appReady,
-        };
-
-        if (readiness.postgres && readiness.api && readiness.app) {
-          return;
-        }
-
-        await delay(1000);
-      }
-
-      throw new SandboxPreflightError({
-        message: formatSandboxStartupTimeoutLines({
-          hostnameSlug: record.hostnameSlug,
-          timeoutMs: SANDBOX_READY_TIMEOUT_MS,
-          readiness,
-          containers: record.containers,
-          urls: buildSandboxUrls(
-            {
+      await waitForSandboxServicesReady({
+        timeoutMs: SANDBOX_READY_TIMEOUT_MS,
+        intervalMs: SANDBOX_READY_POLL_INTERVAL_MS,
+        wait: (durationMs) => delay(durationMs),
+        createTimeoutError: (readiness) =>
+          new SandboxPreflightError({
+            message: formatSandboxStartupTimeoutLines({
               hostnameSlug: record.hostnameSlug,
-              ports: record.ports,
-            },
-            {
-              aliasesHealthy: false,
-              proxyPort: SANDBOX_PROXY_PORT,
-            }
-          ),
-        }).join("\n"),
+              timeoutMs: SANDBOX_READY_TIMEOUT_MS,
+              readiness,
+              containers: record.containers,
+              urls: buildSandboxUrls(
+                {
+                  hostnameSlug: record.hostnameSlug,
+                  ports: record.ports,
+                },
+                {
+                  aliasesHealthy: false,
+                  proxyPort: SANDBOX_PROXY_PORT,
+                }
+              ),
+            }).join("\n"),
+          }),
+        checkPostgres: async () => {
+          const postgresReady = await exec(
+            runCommand(
+              "docker",
+              [
+                "exec",
+                record.containers.postgres,
+                "pg_isready",
+                "-U",
+                SANDBOX_POSTGRES_USER,
+                "-d",
+                SANDBOX_DEFAULT_DB,
+              ],
+              { allowNonZero: true }
+            )
+          );
+
+          return postgresReady.exitCode === 0;
+        },
+        checkApi: () =>
+          checkHttpHealth(record.ports.api, "api", record.sandboxId),
+        checkApp: () =>
+          checkHttpHealth(record.ports.app, "app", record.sandboxId),
       });
     },
   };
@@ -481,9 +476,18 @@ export function makeSandboxRuntime(): SandboxRuntime {
         },
         allocatePorts: () =>
           portAllocator.allocate(existingRecord?.ports, reservedPorts),
-        startStack: (record) => dockerEngine.startStack(record),
+        determineAliasesHealthy: async (record) => {
+          try {
+            await portlessService.registerAliases(record);
+            return true;
+          } catch {
+            await portlessService.removeAliases(record);
+            return false;
+          }
+        },
+        startStack: (record, aliasesHealthy) =>
+          dockerEngine.startStack(record, aliasesHealthy),
         waitForHealth: (record) => healthChecker.waitForReady(record),
-        registerAliases: (record) => portlessService.registerAliases(record),
         persist: (record) => sandboxRegistry.upsert(record),
         generateBetterAuthSecret: makeSandboxBetterAuthSecret,
       });
@@ -768,6 +772,7 @@ interface RecreateNodeServiceContainerOptions {
   readonly worktreePath: string;
   readonly nodeModulesVolume: string;
   readonly pnpmStoreVolume: string;
+  readonly authOrigin: string;
   readonly filter: "app" | "api";
   readonly sandboxId: string;
   readonly databaseUrl: string;
@@ -775,6 +780,7 @@ interface RecreateNodeServiceContainerOptions {
 }
 
 export function makeNodeServiceEnvironmentEntries(options: {
+  readonly authOrigin: string;
   readonly databaseUrl: string;
   readonly filter: "app" | "api";
   readonly publishedPort: number;
@@ -787,8 +793,16 @@ export function makeNodeServiceEnvironmentEntries(options: {
     `SANDBOX_ID=${options.sandboxId}`,
     "TASK_TRACKER_SANDBOX=1",
     `DATABASE_URL=${options.databaseUrl}`,
-    ...(options.filter === "api" && options.betterAuthSecret
-      ? [`BETTER_AUTH_SECRET=${options.betterAuthSecret}`]
+    ...(options.filter === "app"
+      ? [`VITE_AUTH_ORIGIN=${options.authOrigin}`]
+      : []),
+    ...(options.filter === "api"
+      ? [
+          ...(options.betterAuthSecret
+            ? [`BETTER_AUTH_SECRET=${options.betterAuthSecret}`]
+            : []),
+          `BETTER_AUTH_BASE_URL=${options.authOrigin}`,
+        ]
       : []),
     "PNPM_STORE_DIR=/pnpm/store",
   ];
@@ -798,6 +812,7 @@ async function recreateNodeServiceContainer(
   options: RecreateNodeServiceContainerOptions
 ): Promise<void> {
   const environmentEntries = makeNodeServiceEnvironmentEntries({
+    authOrigin: options.authOrigin,
     databaseUrl: options.databaseUrl,
     filter: options.filter,
     publishedPort: options.publishedPort,
@@ -835,6 +850,16 @@ function makeSandboxBetterAuthSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
+function makeSandboxAuthOrigin(options: {
+  readonly hostnameSlug: string;
+  readonly publishedPort: number;
+  readonly aliasesHealthy: boolean;
+}): string {
+  return options.aliasesHealthy
+    ? `https://${options.hostnameSlug}.api.task-tracker.localhost:${SANDBOX_PROXY_PORT}`
+    : `http://127.0.0.1:${options.publishedPort}`;
+}
+
 async function removeContainer(name: string): Promise<void> {
   await exec(runCommand("docker", ["rm", "-f", name], { allowNonZero: true }));
 }
@@ -864,6 +889,58 @@ async function collectContainerLogs(
     .filter(Boolean)
     .join("\n");
   return `## ${label}\n${content || "(no logs available)"}`;
+}
+
+export async function waitForSandboxServicesReady(options: {
+  readonly timeoutMs: number;
+  readonly intervalMs: number;
+  readonly wait: (durationMs: number) => Promise<void>;
+  readonly createTimeoutError?: (
+    readiness: SandboxServiceReadiness
+  ) => SandboxPreflightError;
+  readonly checkPostgres: () => Promise<boolean>;
+  readonly checkApi: () => Promise<boolean>;
+  readonly checkApp: () => Promise<boolean>;
+}): Promise<void> {
+  let remainingMs = options.timeoutMs;
+  let readiness: SandboxServiceReadiness = {
+    postgres: false,
+    api: false,
+    app: false,
+  };
+
+  while (remainingMs > 0) {
+    const [postgresReady, apiReady, appReady] = await Promise.all([
+      options.checkPostgres(),
+      options.checkApi(),
+      options.checkApp(),
+    ]);
+
+    readiness = {
+      postgres: postgresReady,
+      api: apiReady,
+      app: appReady,
+    };
+
+    if (postgresReady && apiReady && appReady) {
+      return;
+    }
+
+    remainingMs -= options.intervalMs;
+    if (remainingMs <= 0) {
+      break;
+    }
+
+    await options.wait(options.intervalMs);
+  }
+
+  throw (
+    options.createTimeoutError?.(readiness) ??
+    new SandboxPreflightError({
+      message:
+        "Sandbox containers started but did not become healthy within 180 seconds",
+    })
+  );
 }
 
 async function checkHttpHealth(
@@ -902,6 +979,12 @@ function toPreflightError(
   return new SandboxPreflightError({
     message: error instanceof Error ? error.message : fallback,
   });
+}
+
+interface SandboxServiceReadiness {
+  readonly postgres: boolean;
+  readonly api: boolean;
+  readonly app: boolean;
 }
 
 function makeEphemeralSandboxRecord(input: {

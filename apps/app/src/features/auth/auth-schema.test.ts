@@ -52,6 +52,12 @@ describe("auth schemas", () => {
 });
 
 describe("auth base URL resolution", () => {
+  it("prefers an injected auth origin when one is provided", () => {
+    expect(
+      resolveAuthBaseURL("http://127.0.0.1:4300", "http://127.0.0.1:4301")
+    ).toBe("http://127.0.0.1:4301/api/auth");
+  }, 1000);
+
   it("maps the app portless origin to the API origin", () => {
     expect(
       resolveAuthBaseURL("https://agent-one.app.task-tracker.localhost:1355")
@@ -70,5 +76,14 @@ describe("auth base URL resolution", () => {
 
   it("returns undefined for an invalid origin", () => {
     expect(resolveAuthBaseURL("not-a-url")).toBeUndefined();
+  }, 1000);
+
+  it("falls back to host-based mapping when the injected auth origin is invalid", () => {
+    expect(
+      resolveAuthBaseURL(
+        "https://agent-one.app.task-tracker.localhost:1355",
+        "not-a-url"
+      )
+    ).toBe("https://agent-one.api.task-tracker.localhost:1355/api/auth");
   }, 1000);
 });

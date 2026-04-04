@@ -14,12 +14,6 @@ By default the workspace now runs through Portless with stable subdomains:
 - App: `https://app.task-tracker.localhost:1355`
 - API: `https://api.task-tracker.localhost:1355`
 
-If you want to bypass Portless and run plain Vite on port 3000:
-
-```bash
-pnpm run dev:raw
-```
-
 # Building For Production
 
 To build this application for production:

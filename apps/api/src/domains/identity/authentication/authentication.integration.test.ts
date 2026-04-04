@@ -57,9 +57,7 @@ describe("authentication integration", () => {
 
     const auth = createAuthentication({
       config: makeAuthenticationConfig({
-        host: "127.0.0.1",
-        port: 3000,
-        explicitBaseUrl: "http://127.0.0.1:3000",
+        baseUrl: "http://127.0.0.1:3000",
         secret: "0123456789abcdef0123456789abcdef",
         databaseUrl,
       }),

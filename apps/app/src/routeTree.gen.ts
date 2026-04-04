@@ -1,4 +1,4 @@
-/* eslint-disable import/first, no-unused-vars, typescript-eslint/ban-ts-comment, typescript-eslint/no-explicit-any */
+/* eslint-disable */
 
 // @ts-nocheck
 

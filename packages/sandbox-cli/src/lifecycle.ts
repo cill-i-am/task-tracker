@@ -18,9 +18,12 @@ export interface BringSandboxUpOptions {
   readonly generateBetterAuthSecret: () => string;
   readonly ensurePrerequisites: () => Promise<void>;
   readonly allocatePorts: () => Promise<SandboxPorts>;
-  readonly startStack: (record: SandboxRecord) => Promise<void>;
+  readonly determineAliasesHealthy: (record: SandboxRecord) => Promise<boolean>;
+  readonly startStack: (
+    record: SandboxRecord,
+    aliasesHealthy: boolean
+  ) => Promise<void>;
   readonly waitForHealth: (record: SandboxRecord) => Promise<void>;
-  readonly registerAliases: (record: SandboxRecord) => Promise<void>;
   readonly persist: (record: SandboxRecord) => Promise<void>;
 }
 
@@ -68,15 +71,9 @@ export async function bringSandboxUp(
   };
 
   await options.ensurePrerequisites();
-  await options.startStack(record);
+  const aliasesHealthy = await options.determineAliasesHealthy(record);
+  await options.startStack(record, aliasesHealthy);
   await options.waitForHealth(record);
-
-  let aliasesHealthy = true;
-  try {
-    await options.registerAliases(record);
-  } catch {
-    aliasesHealthy = false;
-  }
 
   await options.persist(record);
 

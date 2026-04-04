@@ -9,7 +9,6 @@
     "build": "vite build",
     "check-types": "tsc --noEmit -p tsconfig.json",
     "dev": "portless run --name app.task-tracker node ../../scripts/vite-portless-dev.mjs",
-    "dev:raw": "vite dev --port 3000",
     "preview": "vite preview",
     "sandbox:dev": "node ../../scripts/vite-sandbox-dev.mjs",
     "test": "vitest run"

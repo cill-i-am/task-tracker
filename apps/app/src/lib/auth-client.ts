@@ -3,6 +3,7 @@ import { createAuthClient } from "better-auth/react";
 export const AUTH_BASE_PATH = "/api/auth";
 const LOCAL_APP_PORTS = new Set(["3000", "4173"]);
 const LOCAL_API_PORT = "3001";
+const configuredAuthOrigin = readConfiguredAuthOrigin();
 
 function toURL(input: string): URL | undefined {
   try {
@@ -40,8 +41,16 @@ function mapAppOriginToApiOrigin(url: URL): URL {
 }
 
 export function resolveAuthBaseURL(
-  origin?: string | undefined
+  origin?: string | undefined,
+  explicitAuthOrigin?: string | undefined
 ): string | undefined {
+  const configuredOrigin = explicitAuthOrigin ?? configuredAuthOrigin;
+  const configuredUrl =
+    typeof configuredOrigin === "string" ? toURL(configuredOrigin) : undefined;
+  if (configuredUrl) {
+    return new URL(AUTH_BASE_PATH, configuredUrl).toString();
+  }
+
   const url = typeof origin === "string" ? toURL(origin) : undefined;
 
   if (!url) {
@@ -58,9 +67,14 @@ export function createTaskTrackerAuthClient(baseURL?: string | undefined) {
   });
 }
 
+function readConfiguredAuthOrigin(): string | undefined {
+  const envOrigin = import.meta.env.VITE_AUTH_ORIGIN;
+  return typeof envOrigin === "string" ? envOrigin : undefined;
+}
+
 const authBaseURL =
   typeof window === "undefined"
     ? undefined
-    : resolveAuthBaseURL(window.location.origin);
+    : resolveAuthBaseURL(window.location.origin, configuredAuthOrigin);
 
 export const authClient = createTaskTrackerAuthClient(authBaseURL);

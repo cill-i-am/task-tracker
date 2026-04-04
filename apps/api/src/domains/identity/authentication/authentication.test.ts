@@ -10,9 +10,9 @@ import { getTableName } from "drizzle-orm";
 import { Effect } from "effect";
 
 import {
+  loadAuthenticationConfig,
   makeAuthenticationConfig,
   makeAuthenticationTrustedOrigins,
-  makeDynamicAuthenticationBaseUrl,
 } from "./config.js";
 import {
   authSchema,
@@ -26,9 +26,7 @@ import {
 describe("makeAuthenticationConfig()", () => {
   it("builds the minimal Better Auth configuration for email/password auth", () => {
     const config = makeAuthenticationConfig({
-      host: "127.0.0.1",
-      port: 3001,
-      explicitBaseUrl: "http://127.0.0.1:3001",
+      baseUrl: "http://127.0.0.1:3001",
       secret: "super-secret-value",
       databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
     });
@@ -68,30 +66,48 @@ describe("makeAuthenticationConfig()", () => {
     expect(config).not.toHaveProperty("socialProviders");
   }, 10_000);
 
-  it("supports a dynamic host configuration for sandbox aliases and local fallbacks", () => {
-    const baseUrl = makeDynamicAuthenticationBaseUrl({
-      host: "0.0.0.0",
-      port: 4301,
-      portlessUrl: "https://task-tracker.api.task-tracker.localhost:1355",
-    });
-
-    expect(baseUrl.fallback).toBe("http://127.0.0.1:4301");
-    expect(baseUrl.allowedHosts).toStrictEqual(
-      expect.arrayContaining([
-        "127.0.0.1:4301",
-        "localhost:4301",
-        "*.localhost:1355",
-        "task-tracker.api.task-tracker.localhost:1355",
-      ])
-    );
-  }, 10_000);
-
   it("adds the matching app origin for a portless sandbox URL", () => {
     expect(
       makeAuthenticationTrustedOrigins({
         portlessUrl: "https://task-tracker.api.task-tracker.localhost:1355",
       })
     ).toContain("https://task-tracker.app.task-tracker.localhost:1355");
+  }, 10_000);
+
+  it("requires BETTER_AUTH_BASE_URL when loading auth config", async () => {
+    await withEnvironment(
+      {
+        BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
+        DATABASE_URL:
+          "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
+        PORTLESS_URL: "https://task-tracker.api.task-tracker.localhost:1355",
+      },
+      async () => {
+        const result = Effect.runPromise(loadAuthenticationConfig);
+
+        await expect(result).rejects.toThrow(/BETTER_AUTH_BASE_URL/);
+      }
+    );
+  }, 10_000);
+
+  it("loads the explicit Better Auth base URL from config", async () => {
+    await withEnvironment(
+      {
+        BETTER_AUTH_BASE_URL: "https://api.task-tracker.localhost:1355",
+        BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
+        DATABASE_URL:
+          "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
+        PORTLESS_URL: "https://api.task-tracker.localhost:1355",
+      },
+      async () => {
+        const config = await Effect.runPromise(loadAuthenticationConfig);
+
+        expect(config.baseURL).toBe("https://api.task-tracker.localhost:1355");
+        expect(config.trustedOrigins).toContain(
+          "https://app.task-tracker.localhost:1355"
+        );
+      }
+    );
   }, 10_000);
 });
 
@@ -151,3 +167,23 @@ describe("auth schema", () => {
     );
   }, 10_000);
 });
+
+async function withEnvironment(
+  nextEnvironment: Record<string, string>,
+  run: () => Promise<void>
+) {
+  const previousEnvironment = { ...process.env };
+
+  delete process.env.BETTER_AUTH_BASE_URL;
+  delete process.env.BETTER_AUTH_SECRET;
+  delete process.env.DATABASE_URL;
+  delete process.env.PORTLESS_URL;
+
+  Object.assign(process.env, nextEnvironment);
+
+  try {
+    await run();
+  } finally {
+    process.env = previousEnvironment;
+  }
+}

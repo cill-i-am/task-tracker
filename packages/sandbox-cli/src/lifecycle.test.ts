@@ -15,9 +15,9 @@ describe("bringSandboxUp()", () => {
           api: 4301,
           postgres: 5439,
         }),
+      determineAliasesHealthy: () => Promise.resolve(true),
       startStack: () => Promise.resolve(),
       waitForHealth: () => Promise.resolve(),
-      registerAliases: () => Promise.resolve(),
       persist: () => Promise.resolve(),
       generateBetterAuthSecret: () => "generated-secret",
     });
@@ -37,9 +37,9 @@ describe("bringSandboxUp()", () => {
           api: 4301,
           postgres: 5439,
         }),
+      determineAliasesHealthy: () => Promise.resolve(true),
       startStack: () => Promise.resolve(),
       waitForHealth: () => Promise.resolve(),
-      registerAliases: () => Promise.resolve(),
       persist: () => Promise.resolve(),
       generateBetterAuthSecret: () => "new-secret",
     });
@@ -67,17 +67,18 @@ describe("bringSandboxUp()", () => {
           api: 4301,
           postgres: 5439,
         }),
-      startStack: () => {
+      determineAliasesHealthy: () => {
+        events.push("aliases");
+        return Promise.resolve(false);
+      },
+      startStack: (_record, aliasesHealthy) => {
+        events.push(`start:${aliasesHealthy ? "aliases" : "fallback"}`);
         events.push("start");
         return Promise.resolve();
       },
       waitForHealth: () => {
         events.push("health");
         return Promise.resolve();
-      },
-      registerAliases: () => {
-        events.push("aliases");
-        return Promise.reject(new Error("portless unavailable"));
       },
       persist: (record) => {
         persistedStatus = record.status;
@@ -96,9 +97,10 @@ describe("bringSandboxUp()", () => {
     expect(persistedStatus).toBe("ready");
     expect(events).toStrictEqual([
       "preflight",
+      "aliases",
+      "start:fallback",
       "start",
       "health",
-      "aliases",
       "persist:ready",
     ]);
   }, 10_000);
