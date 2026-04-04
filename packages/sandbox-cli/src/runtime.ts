@@ -27,8 +27,10 @@ import {
 import { isPortAvailable, isPortOpen, runCommand } from "./process.js";
 import { SandboxNotFoundError } from "./sandbox-not-found-error.js";
 import { SandboxPreflightError } from "./sandbox-preflight-error.js";
+import { formatSandboxStartupTimeoutLines } from "./sandbox-view.js";
 
 const SANDBOX_PROXY_PORT = 1355;
+const SANDBOX_READY_TIMEOUT_MS = 60_000;
 const SANDBOX_DEV_IMAGE = "task-tracker-sandbox-dev:latest";
 const SANDBOX_DOCKERFILE = path.join(
   "packages",
@@ -379,8 +381,13 @@ export function makeSandboxRuntime(): SandboxRuntime {
   const healthChecker: HealthChecker = {
     waitForReady: async (record) => {
       const startedAt = Date.now();
+      let readiness = {
+        postgres: false,
+        api: false,
+        app: false,
+      };
 
-      while (Date.now() - startedAt < 60_000) {
+      while (Date.now() - startedAt < SANDBOX_READY_TIMEOUT_MS) {
         const postgresReady = await exec(
           runCommand(
             "docker",
@@ -406,8 +413,13 @@ export function makeSandboxRuntime(): SandboxRuntime {
           "app",
           record.sandboxId
         );
+        readiness = {
+          postgres: postgresReady.exitCode === 0,
+          api: apiReady,
+          app: appReady,
+        };
 
-        if (postgresReady.exitCode === 0 && apiReady && appReady) {
+        if (readiness.postgres && readiness.api && readiness.app) {
           return;
         }
 
@@ -415,8 +427,22 @@ export function makeSandboxRuntime(): SandboxRuntime {
       }
 
       throw new SandboxPreflightError({
-        message:
-          "Sandbox containers started but did not become healthy within 60 seconds",
+        message: formatSandboxStartupTimeoutLines({
+          hostnameSlug: record.hostnameSlug,
+          timeoutMs: SANDBOX_READY_TIMEOUT_MS,
+          readiness,
+          containers: record.containers,
+          urls: buildSandboxUrls(
+            {
+              hostnameSlug: record.hostnameSlug,
+              ports: record.ports,
+            },
+            {
+              aliasesHealthy: false,
+              proxyPort: SANDBOX_PROXY_PORT,
+            }
+          ),
+        }).join("\n"),
       });
     },
   };

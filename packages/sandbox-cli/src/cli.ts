@@ -1,6 +1,8 @@
+import { fileURLToPath } from "node:url";
+
 import * as Command from "@effect/cli/Command";
 import { NodeContext } from "@effect/platform-node";
-import { Console, Effect } from "effect";
+import { Cause, Console, Effect, Exit, Option } from "effect";
 
 import { makeSandboxRuntime } from "./runtime.js";
 import { SandboxNotFoundError } from "./sandbox-not-found-error.js";
@@ -139,7 +141,9 @@ const cli = Command.run(sandboxCommand, {
   version: "0.1.0",
 });
 
-void runCli();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  void runCli();
+}
 
 function printSandboxView(
   label: string,
@@ -174,18 +178,33 @@ function toCliError(
   });
 }
 
-async function runCli(): Promise<void> {
-  try {
-    await Effect.runPromise(
-      cli(process.argv).pipe(Effect.provide(NodeContext.layer))
-    );
-  } catch (error) {
-    if (error instanceof SandboxPreflightError) {
-      console.error(error.message);
-      process.exitCode = 1;
-      return;
-    }
+export function getSandboxPreflightMessage(
+  exit: Exit.Exit<unknown, unknown>
+): string | undefined {
+  if (Exit.isSuccess(exit)) {
+    return undefined;
+  }
 
-    throw error;
+  const failure = Cause.failureOption(exit.cause);
+  return Option.isSome(failure) &&
+    failure.value instanceof SandboxPreflightError
+    ? failure.value.message
+    : undefined;
+}
+
+async function runCli(): Promise<void> {
+  const exit = await Effect.runPromiseExit(
+    cli(process.argv).pipe(Effect.provide(NodeContext.layer))
+  );
+  const preflightMessage = getSandboxPreflightMessage(exit);
+
+  if (preflightMessage) {
+    console.error(preflightMessage);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (Exit.isFailure(exit)) {
+    throw Cause.squash(exit.cause);
   }
 }

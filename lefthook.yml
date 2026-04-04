@@ -12,3 +12,5 @@ pre-commit:
       stage_fixed: true
     - name: check-types
       run: pnpm check-types
+    - name: test
+      run: pnpm -r --if-present --workspace-concurrency=1 test
