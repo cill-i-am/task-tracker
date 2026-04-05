@@ -9,7 +9,10 @@ test("adds a default Better Auth base URL for local portless dev", () => {
     PORTLESS_PORT: "1355",
   });
 
-  assert.equal(env.BETTER_AUTH_BASE_URL, "https://api.task-tracker.localhost:1355");
+  assert.equal(
+    env.BETTER_AUTH_BASE_URL,
+    "https://api.task-tracker.localhost:1355"
+  );
   assert.equal(env.AUTH_EMAIL_FROM, "auth@task-tracker.localhost");
   assert.equal(env.AUTH_EMAIL_FROM_NAME, "Task Tracker");
   assert.equal(env.RESEND_API_KEY, "re_test_placeholder");

@@ -20,7 +20,7 @@ const PasswordResetSearch = Schema.transform(
         return { error: INVALID_TOKEN };
       }
 
-      return (typeof token === "string" && token.length > 0 ? { token } : {});
+      return typeof token === "string" && token.length > 0 ? { token } : {};
     },
     encode: (search) => search,
   }

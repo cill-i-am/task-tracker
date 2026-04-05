@@ -13,8 +13,7 @@ export function createDevEnvironment(baseEnvironment = process.env) {
 
   return {
     ...baseEnvironment,
-    AUTH_EMAIL_FROM:
-      baseEnvironment.AUTH_EMAIL_FROM ?? DEFAULT_AUTH_EMAIL_FROM,
+    AUTH_EMAIL_FROM: baseEnvironment.AUTH_EMAIL_FROM ?? DEFAULT_AUTH_EMAIL_FROM,
     AUTH_EMAIL_FROM_NAME:
       baseEnvironment.AUTH_EMAIL_FROM_NAME ?? DEFAULT_AUTH_EMAIL_FROM_NAME,
     BETTER_AUTH_BASE_URL:
