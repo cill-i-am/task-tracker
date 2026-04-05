@@ -61,6 +61,44 @@ describe("makeResendAuthEmailTransport()", () => {
     ]);
   }, 10_000);
 
+  it("passes through the transport idempotency key to Resend", async () => {
+    const sentOptions: unknown[] = [];
+
+    await Effect.runPromise(
+      Effect.flatMap(
+        makeResendAuthEmailTransport({
+          resend: {
+            emails: {
+              send: (
+                _payload,
+                options?: { readonly idempotencyKey?: string }
+              ): Promise<CreateEmailResponse> => {
+                sentOptions.push(options);
+
+                return Promise.resolve({
+                  data: { id: "email_123" },
+                  error: null,
+                  headers: null,
+                });
+              },
+            },
+          },
+        }),
+        (transport) =>
+          transport.send({
+            ...makeMessage(),
+            idempotencyKey: "password-reset/user-123/token-abc123",
+          })
+      ).pipe(Effect.withConfigProvider(makeConfigProvider()))
+    );
+
+    expect(sentOptions).toStrictEqual([
+      {
+        idempotencyKey: "password-reset/user-123/token-abc123",
+      },
+    ]);
+  }, 10_000);
+
   it("maps resend failures into AuthEmailDeliveryError", async () => {
     const result = await Effect.runPromise(
       Effect.flatMap(

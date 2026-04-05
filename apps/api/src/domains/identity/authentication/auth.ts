@@ -27,64 +27,64 @@ export function createAuthentication(options: {
 
   return betterAuth({
     ...authConfig,
+    advanced: {
+      backgroundTasks: {
+        handler: scheduleAuthenticationBackgroundTask,
+      },
+    },
     database: drizzleAdapter(database, {
       provider: "pg",
       schema: authSchema,
     }),
     emailAndPassword: {
       ...authConfig.emailAndPassword,
-      sendResetPassword: ({ user, url }) => {
-        const input = {
+      sendResetPassword: ({ token, user, url }) =>
+        sendPasswordResetEmail({
+          idempotencyKey: `password-reset/${user.id}/${token}`,
           recipientEmail: user.email,
           recipientName: user.name ?? user.email,
           resetUrl: url,
-        } as const satisfies PasswordResetEmailInput;
-
-        queueMicrotask(async () => {
-          try {
-            await sendPasswordResetEmail(input);
-          } catch (error) {
-            reportPasswordResetEmailDeliveryFailure(error, input);
-          }
-        });
-
-        return Promise.resolve();
-      },
+        } as const satisfies PasswordResetEmailInput),
     },
   });
 }
 
 export type AuthenticationService = ReturnType<typeof createAuthentication>;
 
-function reportPasswordResetEmailDeliveryFailure(
-  error: unknown,
-  input: PasswordResetEmailInput
-) {
+function scheduleAuthenticationBackgroundTask(task: Promise<unknown>) {
+  // Follow-up tracked in TSK-37: replace this temporary in-process
+  // queueMicrotask scheduler with a durable background queue so auth email
+  // delivery survives process restarts and can be retried independently of
+  // the request lifecycle.
+  queueMicrotask(async () => {
+    try {
+      await task;
+    } catch (error) {
+      console.error("Authentication background task failed", {
+        error: serializeBackgroundTaskError(error),
+      });
+    }
+  });
+}
+
+function serializeBackgroundTaskError(error: unknown) {
   if (typeof error === "object" && error !== null) {
-    console.error("Password reset email delivery failed", {
-      error: {
-        cause:
-          "cause" in error && typeof error.cause === "string"
-            ? error.cause
-            : undefined,
-        message:
-          "message" in error && typeof error.message === "string"
-            ? error.message
-            : String(error),
-        tag:
-          "_tag" in error && typeof error._tag === "string" ? error._tag : "",
-      },
-      recipientEmail: input.recipientEmail,
-    });
-    return;
+    return {
+      cause:
+        "cause" in error && typeof error.cause === "string"
+          ? error.cause
+          : undefined,
+      message:
+        "message" in error && typeof error.message === "string"
+          ? error.message
+          : String(error),
+      tag: "_tag" in error && typeof error._tag === "string" ? error._tag : "",
+    };
   }
 
-  console.error("Password reset email delivery failed", {
-    error: {
-      message: String(error),
-    },
-    recipientEmail: input.recipientEmail,
-  });
+  return {
+    message: String(error),
+  };
 }
 
 function matchesTrustedOrigin(

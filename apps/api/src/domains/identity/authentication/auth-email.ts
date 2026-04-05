@@ -6,6 +6,7 @@ import type { AuthEmailDeliveryError } from "./auth-email-errors.js";
 import { PasswordResetDeliveryError } from "./auth-email-errors.js";
 
 const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RESEND_IDEMPOTENCY_KEY_MAX_LENGTH = 256;
 
 function isValidEmailAddress(value: string) {
   return EMAIL_ADDRESS_PATTERN.test(value);
@@ -35,23 +36,21 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function extractRecipientEmail(input: unknown) {
-  if (
-    typeof input === "object" &&
-    input !== null &&
-    "recipientEmail" in input &&
-    typeof input.recipientEmail === "string"
-  ) {
-    return input.recipientEmail;
-  }
-
-  return "unknown";
-}
-
 const EmailAddress = Schema.String.pipe(
   Schema.filter((value) => isValidEmailAddress(value), {
     message: () => "Expected a valid email address",
   })
+);
+
+const EmailIdempotencyKey = Schema.String.pipe(
+  Schema.filter(
+    (value) =>
+      value.length > 0 && value.length <= RESEND_IDEMPOTENCY_KEY_MAX_LENGTH,
+    {
+      message: () =>
+        `Expected a non-empty idempotency key up to ${RESEND_IDEMPOTENCY_KEY_MAX_LENGTH} characters`,
+    }
+  )
 );
 
 const ResetUrl = Schema.String.pipe(
@@ -61,6 +60,7 @@ const ResetUrl = Schema.String.pipe(
 );
 
 export const PasswordResetEmailInput = Schema.Struct({
+  idempotencyKey: EmailIdempotencyKey,
   recipientEmail: EmailAddress,
   recipientName: Schema.String,
   resetUrl: ResetUrl,
@@ -76,6 +76,7 @@ const decodePasswordResetEmailInput = Schema.decodeUnknown(
 
 export interface TransportMessage {
   readonly html: string;
+  readonly idempotencyKey?: string;
   readonly subject: string;
   readonly text: string;
   readonly to: string;
@@ -107,7 +108,6 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
             (parseError) =>
               new PasswordResetDeliveryError({
                 message: "Invalid password reset email input",
-                recipientEmail: extractRecipientEmail(rawInput),
                 cause: ParseResult.TreeFormatter.formatErrorSync(parseError),
               })
           )
@@ -127,6 +127,7 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
 
         yield* transport
           .send({
+            idempotencyKey: input.idempotencyKey,
             to: input.recipientEmail,
             subject,
             text,
@@ -137,7 +138,6 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
               (error) =>
                 new PasswordResetDeliveryError({
                   message: "Failed to deliver password reset email",
-                  recipientEmail: input.recipientEmail,
                   cause: error.message,
                 })
             )

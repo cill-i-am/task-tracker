@@ -28,6 +28,7 @@ describe("auth email sender password reset delivery", () => {
 
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
+        idempotencyKey: "password-reset/user-123/token-abc123",
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl: "https://app.task-tracker.localhost/reset?token=abc123",
@@ -45,6 +46,7 @@ describe("auth email sender password reset delivery", () => {
     expect(result).toBeUndefined();
     expect(sentMessages).toStrictEqual([
       {
+        idempotencyKey: "password-reset/user-123/token-abc123",
         to: "alice@example.com",
         subject: "Reset your password",
         text: [
@@ -64,6 +66,7 @@ describe("auth email sender password reset delivery", () => {
   it("maps provider failures into PasswordResetDeliveryError", async () => {
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
+        idempotencyKey: "password-reset/user-123/token-abc123",
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl: "https://app.task-tracker.localhost/reset?token=abc123",
@@ -90,7 +93,6 @@ describe("auth email sender password reset delivery", () => {
     expect(result.left).toMatchObject({
       _tag: "PasswordResetDeliveryError",
       message: "Failed to deliver password reset email",
-      recipientEmail: "alice@example.com",
       cause: "Provider request failed",
     });
   }, 10_000);
@@ -100,6 +102,7 @@ describe("auth email sender password reset delivery", () => {
 
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
+        idempotencyKey: "password-reset/user-123/token-abc123",
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl:
@@ -125,7 +128,6 @@ describe("auth email sender password reset delivery", () => {
     expect(result.left).toMatchObject({
       _tag: "PasswordResetDeliveryError",
       message: "Invalid password reset email input",
-      recipientEmail: "alice@example.com",
     });
   }, 10_000);
 
@@ -134,6 +136,7 @@ describe("auth email sender password reset delivery", () => {
 
     await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
+        idempotencyKey: "password-reset/user-123/token-abc123",
         recipientEmail: "alice@example.com",
         recipientName: 'Alice & <Admin> "Boss"',
         resetUrl:

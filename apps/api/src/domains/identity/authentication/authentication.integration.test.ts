@@ -21,7 +21,7 @@ describe("authentication integration", () => {
     await Promise.all([...cleanup].toReversed().map((step) => step()));
   });
 
-  it("migrates a non-empty rate_limit table and serves sign-up, sign-in, sign-out, session, password reset, and rate limiting", async (context: {
+  it("migrates a non-empty rate_limit table and serves sign-up, sign-in, sign-out, session, password reset, reset callback handoff, session revocation, and rate limiting", async (context: {
     skip: (note?: string) => never;
   }) => {
     const testDatabase = await createTestDatabase();
@@ -162,7 +162,18 @@ describe("authentication integration", () => {
     expect(resetUrl).toContain("http://127.0.0.1:3000/reset-password");
 
     const resetToken = resetUrl.split("?", 1)[0]?.split("/").pop();
-    expect(resetToken).toBeTruthy();
+    expect(resetToken).toBeDefined();
+    expect(resetToken).not.toBe("");
+
+    const resetCallbackResponse = await auth.handler(
+      makeRequest(
+        `/reset-password/${resetToken}?callbackURL=${encodeURIComponent("http://127.0.0.1:3000/reset-password")}`
+      )
+    );
+    expect(resetCallbackResponse.status).toBe(302);
+    expect(resetCallbackResponse.headers.get("location")).toBe(
+      `http://127.0.0.1:3000/reset-password?token=${resetToken}`
+    );
 
     const resetPasswordResponse = await auth.handler(
       makeJsonRequest("/reset-password", {
@@ -171,6 +182,14 @@ describe("authentication integration", () => {
       })
     );
     expect(resetPasswordResponse.status).toBe(200);
+
+    const sessionAfterResetResponse = await auth.handler(
+      makeRequest("/get-session", {
+        cookieJar,
+      })
+    );
+    expect(sessionAfterResetResponse.status).toBe(200);
+    await expect(sessionAfterResetResponse.json()).resolves.toBeNull();
 
     const oldPasswordResponse = await auth.handler(
       makeJsonRequest(
@@ -193,6 +212,16 @@ describe("authentication integration", () => {
       })
     );
     expect(newPasswordResponse.status).toBe(200);
+
+    const invalidResetCallbackResponse = await auth.handler(
+      makeRequest(
+        `/reset-password/${resetToken}?callbackURL=${encodeURIComponent("http://127.0.0.1:3000/reset-password")}`
+      )
+    );
+    expect(invalidResetCallbackResponse.status).toBe(302);
+    expect(invalidResetCallbackResponse.headers.get("location")).toBe(
+      "http://127.0.0.1:3000/reset-password?error=INVALID_TOKEN"
+    );
 
     for (let attempt = 1; attempt <= 5; attempt += 1) {
       const response = await auth.handler(

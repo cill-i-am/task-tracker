@@ -97,6 +97,7 @@ Current note:
 
 - auth config currently defines custom rate-limit rules only for sign-in and
   sign-up
+- password reset revokes existing sessions once the new password is accepted
 
 ### Auth Email Runtime Configuration
 
@@ -132,6 +133,12 @@ Rule:
 - auth startup now depends on valid auth email config as well as core Better
   Auth config, because `AuthenticationLive` composes `AuthEmailSender` with
   `ResendAuthEmailTransportLive` at boot
+- password reset emails carry a provider idempotency key so retries do not
+  duplicate delivery
+- Better Auth currently defers reset delivery through an in-process
+  `advanced.backgroundTasks.handler` that schedules work with `queueMicrotask`
+- this in-process scheduling is explicitly temporary and should be replaced by a
+  durable queue in `TSK-37`
 
 ### Base URL Strategy
 
@@ -155,6 +162,11 @@ Current defaults by entry point:
   `https://<slug>.api.task-tracker.localhost:1355`
 - when sandbox aliases are unavailable, that injected origin falls back to the
   loopback API URL such as `http://127.0.0.1:4301`
+- supported non-production launchers also inject `AUTH_EMAIL_FROM`,
+  `AUTH_EMAIL_FROM_NAME`, and `RESEND_API_KEY`
+- those launchers may fall back to placeholder auth-email values when the
+  caller has not provided real delivery credentials, but the API itself still
+  requires the variables at runtime
 
 ### Trusted Origins and CORS
 
@@ -535,6 +547,7 @@ These are the important current rules we are following.
 - keep auth mounted at `/api/auth`
 - restrict trusted origins to known app origins
 - use database-backed rate limiting
+- revoke existing sessions on successful password reset
 - use server-first session lookup for SSR-protected routes
 - fail closed for protected routes
 - fail open for guest-only routes

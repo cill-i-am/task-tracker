@@ -8,7 +8,12 @@ import { AuthEmailTransport } from "./auth-email.js";
 import type { TransportMessage } from "./auth-email.js";
 
 interface ResendEmailsClient {
-  readonly send: (payload: CreateEmailOptions) => Promise<CreateEmailResponse>;
+  readonly send: (
+    payload: CreateEmailOptions,
+    options?: {
+      readonly idempotencyKey?: string;
+    }
+  ) => Promise<CreateEmailResponse>;
 }
 
 function formatFromAddress(from: string, fromName: string) {
@@ -66,7 +71,12 @@ export function makeResendAuthEmailTransport(options?: {
         Effect.tryPromise({
           try: async () => {
             const response = await resend.emails.send(
-              buildPayload(message, configuredSender)
+              buildPayload(message, configuredSender),
+              message.idempotencyKey
+                ? {
+                    idempotencyKey: message.idempotencyKey,
+                  }
+                : undefined
             );
 
             if (response.error) {

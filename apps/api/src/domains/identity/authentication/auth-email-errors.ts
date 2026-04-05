@@ -23,6 +23,5 @@ export class PasswordResetDeliveryError extends Schema.TaggedError<PasswordReset
   {
     cause: Schema.optional(Schema.String),
     message: Schema.String,
-    recipientEmail: Schema.String,
   }
 ) {}
