@@ -69,6 +69,12 @@ export function getPasswordResetFailureMessage(error: unknown): string {
   return "We couldn't reset your password. Please try again.";
 }
 
+export function isInvalidPasswordResetTokenError(error: unknown): boolean {
+  const authFailureError = isAuthFailureError(error) ? error : undefined;
+
+  return authFailureError?.status === 400 || authFailureError?.status === 401;
+}
+
 export function getFormErrorText(error: unknown): string | undefined {
   if (typeof error === "string" && error.length > 0) {
     return error;

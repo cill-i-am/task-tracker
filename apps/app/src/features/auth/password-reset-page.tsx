@@ -19,6 +19,7 @@ import {
   getErrorText,
   getFormErrorText,
   getPasswordResetFailureMessage,
+  isInvalidPasswordResetTokenError,
 } from "./auth-form-errors";
 import { AuthFormField } from "./auth-form-field";
 import { decodePasswordResetInput, passwordResetSchema } from "./auth-schemas";
@@ -63,6 +64,17 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
       });
 
       if (result.error) {
+        if (isInvalidPasswordResetTokenError(result.error)) {
+          await navigate({
+            to: "/reset-password",
+            search: {
+              error: "INVALID_TOKEN",
+              token: undefined,
+            },
+          });
+          return;
+        }
+
         formApi.setErrorMap({
           onSubmit: {
             form: getPasswordResetFailureMessage(result.error),

@@ -116,13 +116,42 @@ describe("password reset page", () => {
     });
   }, 10_000);
 
-  it("shows a safe form error and does not navigate when reset fails", async () => {
+  it("navigates to the invalid-link state when reset fails with an invalid token", async () => {
     mockedResetPassword.mockResolvedValue({
       data: null,
       error: {
         message: "invalid token",
         status: 400,
         statusText: "Bad Request",
+      },
+    });
+
+    const user = userEvent.setup();
+
+    render(<PasswordResetPage search={{ token: "reset-token" }} />);
+
+    await user.type(screen.getByLabelText("New password"), "password123");
+    await user.type(screen.getByLabelText("Confirm password"), "password123");
+    await user.click(screen.getByRole("button", { name: /reset password/i }));
+
+    await waitFor(() => {
+      expect(mockedNavigate).toHaveBeenCalledWith({
+        search: {
+          error: "INVALID_TOKEN",
+          token: undefined,
+        },
+        to: "/reset-password",
+      });
+    });
+  }, 10_000);
+
+  it("shows a safe form error and does not navigate when reset fails for other reasons", async () => {
+    mockedResetPassword.mockResolvedValue({
+      data: null,
+      error: {
+        message: "service unavailable",
+        status: 500,
+        statusText: "Internal Server Error",
       },
     });
 

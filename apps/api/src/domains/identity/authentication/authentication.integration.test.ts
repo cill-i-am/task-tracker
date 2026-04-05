@@ -73,6 +73,7 @@ describe("authentication integration", () => {
         databaseUrl,
       }),
       database: drizzle(authPool, { schema: authSchema }),
+      reportPasswordResetEmailFailure: () => {},
       sendPasswordResetEmail: async ({ resetUrl }) => {
         capturedResetUrls.push(resetUrl);
         await Effect.runPromise(Deferred.await(passwordResetDelivery));
@@ -262,6 +263,71 @@ describe("authentication integration", () => {
     ]);
     expect(rateLimitRows.rows).toHaveLength(1);
     expect(rateLimitRows.rows[0]?.count).toBe(5);
+  }, 30_000);
+
+  it("reports password reset delivery failures even when Better Auth runs them in background mode", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase();
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const adminPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => adminPool.end());
+
+    if (!(await canConnect(adminPool))) {
+      context.skip(
+        "Auth integration database unavailable; skipping background delivery failure reporting coverage"
+      );
+    }
+
+    await applyMigration(databaseUrl, "0000_careless_anita_blake.sql");
+    await applyMigration(databaseUrl, "0001_giant_speedball.sql");
+    await applyMigration(databaseUrl, "0002_slippery_hulk.sql");
+
+    const authPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => authPool.end());
+
+    const reportedFailures: unknown[] = [];
+
+    const auth = createAuthentication({
+      backgroundTaskHandler: () => {},
+      config: makeAuthenticationConfig({
+        baseUrl: "http://127.0.0.1:3000",
+        secret: "0123456789abcdef0123456789abcdef",
+        databaseUrl,
+      }),
+      database: drizzle(authPool, { schema: authSchema }),
+      reportPasswordResetEmailFailure: (error) => {
+        reportedFailures.push(error);
+      },
+      sendPasswordResetEmail: () => {
+        throw new Error("upstream timeout");
+      },
+    });
+
+    const signUpResponse = await auth.handler(
+      makeJsonRequest("/sign-up/email", {
+        email: "delivery-failure@example.com",
+        name: "Delivery Failure User",
+        password: "correct horse battery staple",
+      })
+    );
+    expect(signUpResponse.status).toBe(200);
+
+    const resetRequestResponse = await auth.handler(
+      makeJsonRequest("/request-password-reset", {
+        email: "delivery-failure@example.com",
+        redirectTo: "http://127.0.0.1:3000/reset-password",
+      })
+    );
+
+    expect(resetRequestResponse.status).toBe(200);
+    expect(reportedFailures).toHaveLength(1);
+    expect(reportedFailures[0]).toBeInstanceOf(Error);
+    expect(reportedFailures[0]).toMatchObject({
+      message: "upstream timeout",
+    });
   }, 30_000);
 });
 

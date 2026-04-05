@@ -19,6 +19,7 @@ export function createAuthentication(options: {
   readonly backgroundTaskHandler: (task: Promise<unknown>) => void;
   readonly config: AuthenticationConfig;
   readonly database: NodePgDatabase<typeof authSchema>;
+  readonly reportPasswordResetEmailFailure: (error: unknown) => void;
   readonly sendPasswordResetEmail: (
     input: PasswordResetEmailInput
   ) => Promise<void>;
@@ -39,45 +40,46 @@ export function createAuthentication(options: {
     }),
     emailAndPassword: {
       ...authConfig.emailAndPassword,
-      sendResetPassword: ({ token, user, url }) =>
-        sendPasswordResetEmail({
-          idempotencyKey: `password-reset/${user.id}/${token}`,
-          recipientEmail: user.email,
-          recipientName: user.name ?? user.email,
-          resetUrl: url,
-        } as const satisfies PasswordResetEmailInput),
+      sendResetPassword: async ({ token, user, url }) => {
+        try {
+          await sendPasswordResetEmail({
+            idempotencyKey: `password-reset/${user.id}/${token}`,
+            recipientEmail: user.email,
+            recipientName: user.name ?? user.email,
+            resetUrl: url,
+          } as const satisfies PasswordResetEmailInput);
+        } catch (error) {
+          options.reportPasswordResetEmailFailure(error);
+          throw error;
+        }
+      },
     },
   });
 }
 
-function makeAuthenticationBackgroundTaskHandler(
-  runtime: Runtime.Runtime<never>
-) {
-  const runFork = Runtime.runFork(runtime);
-
+function makeAuthenticationBackgroundTaskHandler() {
   return (task: Promise<unknown>) => {
     // Follow-up tracked in TSK-37: replace this temporary in-process
     // queueMicrotask scheduler with a durable background queue so auth email
     // delivery survives process restarts and can be retried independently of
     // the request lifecycle.
     queueMicrotask(() => {
-      runFork(
-        Effect.gen(function* logBackgroundTaskFailure() {
-          const result = yield* Effect.either(
-            Effect.tryPromise({
-              try: () => task,
-              catch: (error) => error,
-            })
-          );
-
-          if (result._tag === "Left") {
-            yield* Effect.logError("Authentication background task failed", {
-              error: serializeBackgroundTaskError(result.left),
-            });
-          }
-        })
-      );
+      void task;
     });
+  };
+}
+
+function makePasswordResetEmailFailureReporter(
+  runtime: Runtime.Runtime<never>
+) {
+  const runFork = Runtime.runFork(runtime);
+
+  return (error: unknown) => {
+    runFork(
+      Effect.logError("Password reset email delivery failed", {
+        error: serializeBackgroundTaskError(error),
+      })
+    );
   };
 }
 
@@ -202,13 +204,15 @@ export class Authentication extends Effect.Service<Authentication>()(
       const authEmailSender = yield* AuthEmailSender;
       const runtime = yield* Effect.runtime<never>();
       const runPromise = Runtime.runPromise(runtime);
-      const backgroundTaskHandler =
-        makeAuthenticationBackgroundTaskHandler(runtime);
+      const backgroundTaskHandler = makeAuthenticationBackgroundTaskHandler();
+      const reportPasswordResetEmailFailure =
+        makePasswordResetEmailFailureReporter(runtime);
 
       return createAuthentication({
         backgroundTaskHandler,
         config,
         database: db,
+        reportPasswordResetEmailFailure,
         sendPasswordResetEmail: (input) =>
           runPromise(authEmailSender.sendPasswordResetEmail(input)),
       });
