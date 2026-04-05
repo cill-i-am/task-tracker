@@ -161,7 +161,12 @@ describe("authentication integration", () => {
     expect(capturedResetUrls).toHaveLength(1);
 
     const [resetUrl] = capturedResetUrls;
-    expect(resetUrl).toContain("http://127.0.0.1:3000/reset-password");
+    const parsedResetUrl = new URL(resetUrl);
+    expect(parsedResetUrl.origin).toBe("http://127.0.0.1:3000");
+    expect(parsedResetUrl.pathname).toMatch(/^\/api\/auth\/reset-password\/.+/);
+    expect(parsedResetUrl.searchParams.get("callbackURL")).toBe(
+      "http://127.0.0.1:3000/reset-password"
+    );
 
     const resetToken = resetUrl.split("?", 1)[0]?.split("/").pop();
     expect(resetToken).toBeDefined();

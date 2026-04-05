@@ -7,25 +7,24 @@ import {
   HttpApiGroup,
 } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
-import { makeHealthPayload } from "@task-tracker/sandbox-core";
+import {
+  HealthPayload,
+  makeHealthPayloadFromSandboxIdInput,
+} from "@task-tracker/sandbox-core";
 import { Config, Effect, Layer, Schema } from "effect";
 
 import { AuthenticationHttpLive } from "./domains/identity/authentication/auth.js";
 
-const StatusResponse = Schema.Struct({
-  ok: Schema.Boolean,
-  service: Schema.String,
-  sandboxId: Schema.String,
-});
-
 const Api = HttpApi.make("TaskTrackerApi").add(
   HttpApiGroup.make("system")
     .add(HttpApiEndpoint.get("root", "/").addSuccess(Schema.String))
-    .add(HttpApiEndpoint.get("health", "/health").addSuccess(StatusResponse))
+    .add(HttpApiEndpoint.get("health", "/health").addSuccess(HealthPayload))
 );
 
 const RuntimeConfig = Config.all({
-  sandboxId: Config.string("SANDBOX_ID").pipe(Config.withDefault("local")),
+  sandboxId: Config.string("SANDBOX_ID").pipe(
+    Config.withDefault("000000000000")
+  ),
 }).pipe(Effect.orDie);
 
 const SystemLive = HttpApiBuilder.group(Api, "system", (handlers) =>
@@ -33,7 +32,9 @@ const SystemLive = HttpApiBuilder.group(Api, "system", (handlers) =>
     .handle("root", () => Effect.succeed("task-tracker api"))
     .handle("health", () =>
       RuntimeConfig.pipe(
-        Effect.map(({ sandboxId }) => makeHealthPayload("api", sandboxId))
+        Effect.map(({ sandboxId }) =>
+          makeHealthPayloadFromSandboxIdInput("api", sandboxId)
+        )
       )
     )
 );

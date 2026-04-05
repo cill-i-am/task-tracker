@@ -1,6 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
-import { getSandboxPreflightMessage } from "./cli.js";
+import { getSandboxPreflightMessage, parseServiceOption } from "./cli.js";
 import { SandboxPreflightError } from "./sandbox-preflight-error.js";
 
 describe("getSandboxPreflightMessage()", () => {
@@ -22,5 +22,26 @@ describe("getSandboxPreflightMessage()", () => {
     const exit = await Effect.runPromiseExit(Effect.succeed("ok"));
 
     expect(getSandboxPreflightMessage(exit)).toBeUndefined();
+  }, 10_000);
+
+  it("surfaces the strict env validation failure", async () => {
+    const exit = await Effect.runPromiseExit(
+      Effect.fail(
+        new SandboxPreflightError({
+          message:
+            "Missing AUTH_EMAIL_FROM in repo .env or process env. Sandbox startup stopped before compose launch.",
+        })
+      )
+    );
+
+    expect(getSandboxPreflightMessage(exit)).toMatch(/AUTH_EMAIL_FROM/);
+  }, 10_000);
+});
+
+describe("parseServiceOption()", () => {
+  it("fails fast when --service is invalid", async () => {
+    await expect(
+      Effect.runPromise(parseServiceOption(Option.some("invalid")))
+    ).rejects.toThrow(/service/i);
   }, 10_000);
 });

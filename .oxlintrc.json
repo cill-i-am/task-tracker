@@ -12,8 +12,10 @@
     "apps/app/src/routeTree.gen.ts"
   ],
   "rules": {
+    "func-names": "off",
     "func-style": "off",
     "no-use-before-define": "off",
+    "promise/prefer-await-to-callbacks": "off",
     "react/no-danger": "off",
     "react-perf/jsx-no-new-function-as-prop": "off",
     "sort-keys": "off",

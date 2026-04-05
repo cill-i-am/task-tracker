@@ -1,126 +1,144 @@
 import { fileURLToPath } from "node:url";
 
 import * as Command from "@effect/cli/Command";
+import * as Options from "@effect/cli/Options";
 import { NodeContext } from "@effect/platform-node";
+import type {
+  ComposeProjectNameType as ComposeProjectName,
+  MissingSandboxResource,
+  SandboxNameType as SandboxName,
+  SandboxStatus,
+  SandboxUrls,
+} from "@task-tracker/sandbox-core";
+import { validateSandboxName } from "@task-tracker/sandbox-core";
 import { Cause, Console, Effect, Exit, Option } from "effect";
 
 import { makeSandboxRuntime } from "./runtime.js";
-import { SandboxNotFoundError } from "./sandbox-not-found-error.js";
-import { SandboxPreflightError } from "./sandbox-preflight-error.js";
-import { formatSandboxViewLines } from "./sandbox-view.js";
+import {
+  SANDBOX_NOT_FOUND_ERROR_TAG,
+  SandboxNotFoundError,
+} from "./sandbox-not-found-error.js";
+import {
+  SandboxPreflightError,
+  toSandboxPreflightError,
+} from "./sandbox-preflight-error.js";
+import {
+  formatSandboxStartupProgressLine,
+  formatSandboxViewLines,
+} from "./sandbox-view.js";
+import type { SandboxStartupProgressEvent } from "./startup-progress.js";
+import { detectSandboxTerminalStyle } from "./terminal-style.js";
 
 const runtime = makeSandboxRuntime();
+const terminalStyle = detectSandboxTerminalStyle();
+const nameOption = Options.text("name").pipe(
+  Options.withAlias("n"),
+  Options.optional
+);
+const serviceOption = Options.text("service").pipe(Options.optional);
 
-const upCommand = Command.make("up", {}, () =>
-  Effect.tryPromise({
-    try: () => runtime.lifecycle.up(),
-    catch: (error) => toCliError(error),
-  }).pipe(
+const upCommand = Command.make("up", { name: nameOption }, ({ name }) =>
+  parseSandboxNameOption(name).pipe(
+    Effect.tap(() => Console.log("Starting sandbox...")),
+    Effect.flatMap((explicitSandboxName) =>
+      runtime.lifecycle.up({
+        explicitSandboxName,
+        reportProgress: printSandboxStartupProgress,
+      })
+    ),
     Effect.flatMap((result) =>
-      printSandboxView(
-        "Sandbox ready",
-        result.record.hostnameSlug,
-        result.urls
-      ).pipe(
-        Effect.zipRight(
-          result.aliasesHealthy
-            ? Effect.void
-            : Console.log(
-                "Portless aliases were unavailable, so loopback URLs are active."
-              )
-        )
-      )
+      printSandboxView("Sandbox ready", result.record, result.urls)
     )
   )
 );
 
-const downCommand = Command.make("down", {}, () =>
-  Effect.tryPromise({
-    try: () => runtime.lifecycle.down(),
-    catch: (error) => toCliError(error),
-  }).pipe(
-    Effect.flatMap((result) =>
-      Console.log(`Stopped sandbox ${result.hostnameSlug}.`)
+const downCommand = Command.make("down", { name: nameOption }, ({ name }) =>
+  parseSandboxNameOption(name).pipe(
+    Effect.flatMap((explicitSandboxName) =>
+      runtime.lifecycle.down({
+        explicitSandboxName,
+      })
     ),
-    Effect.catchTag("SandboxNotFoundError", () =>
-      Console.log("No sandbox is registered for this worktree.")
+    Effect.flatMap((result) =>
+      Console.log(`Stopped sandbox ${result.sandboxName}.`)
+    ),
+    Effect.catchTag(SANDBOX_NOT_FOUND_ERROR_TAG, () =>
+      Console.log("No sandbox is registered for this worktree or name.")
     )
   )
 );
 
-const statusCommand = Command.make("status", {}, () =>
-  Effect.tryPromise({
-    try: () => runtime.lifecycle.status(),
-    catch: (error) => toCliError(error),
-  }).pipe(
-    Effect.flatMap((result) =>
-      Console.log(`Sandbox status: ${result.record.status}`).pipe(
-        Effect.zipRight(
-          printSandboxView(
-            "Current sandbox",
-            result.record.hostnameSlug,
-            result.urls
-          )
-        )
-      )
+const statusCommand = Command.make("status", { name: nameOption }, ({ name }) =>
+  parseSandboxNameOption(name).pipe(
+    Effect.flatMap((explicitSandboxName) =>
+      runtime.lifecycle.status({
+        explicitSandboxName,
+      })
     ),
-    Effect.catchTag("SandboxNotFoundError", () =>
-      Console.log("No sandbox is registered for this worktree.")
+    Effect.flatMap((result) =>
+      printSandboxView("Current sandbox", result.record, result.urls)
+    ),
+    Effect.catchTag(SANDBOX_NOT_FOUND_ERROR_TAG, () =>
+      Console.log("No sandbox is registered for this worktree or name.")
     )
   )
 );
 
 const listCommand = Command.make("list", {}, () =>
-  Effect.tryPromise({
-    try: () => runtime.lifecycle.list(),
-    catch: (error) => toCliError(error),
-  }).pipe(
-    Effect.flatMap((result) =>
-      result.entries.length === 0
-        ? Console.log("No sandboxes are currently registered.")
-        : Effect.all(
-            result.entries.map((entry) =>
-              Console.log(
-                `${entry.record.hostnameSlug} (${entry.record.status})`
-              ).pipe(
-                Effect.zipRight(
-                  Console.log(`  worktree: ${entry.record.worktreePath}`)
+  runtime.lifecycle
+    .list()
+    .pipe(
+      Effect.flatMap((result) =>
+        result.entries.length === 0
+          ? Console.log("No sandboxes are currently registered.")
+          : Effect.forEach(
+              result.entries,
+              (entry) =>
+                printSandboxView(
+                  `${entry.record.sandboxName} (${entry.record.status})`,
+                  entry.record,
+                  entry.urls
                 ),
-                Effect.zipRight(Console.log(`  app url: ${entry.urls.app}`)),
-                Effect.zipRight(Console.log(`  api url: ${entry.urls.api}`)),
-                Effect.zipRight(
-                  Console.log(`  postgres url: ${entry.urls.postgres}`)
-                )
-              )
-            ),
-            { discard: true }
+              { discard: true }
+            )
+      )
+    )
+);
+
+const logsCommand = Command.make(
+  "logs",
+  { name: nameOption, service: serviceOption },
+  ({ name, service }) =>
+    parseSandboxNameOption(name).pipe(
+      Effect.flatMap((explicitSandboxName) =>
+        parseServiceOption(service).pipe(
+          Effect.flatMap((parsedService) =>
+            runtime.lifecycle.logs({
+              explicitSandboxName,
+              service: parsedService,
+            })
           )
+        )
+      ),
+      Effect.flatMap((result) => Console.log(result.content)),
+      Effect.catchTag(SANDBOX_NOT_FOUND_ERROR_TAG, () =>
+        Console.log("No sandbox is registered for this worktree or name.")
+      )
     )
-  )
 );
 
-const logsCommand = Command.make("logs", {}, () =>
-  Effect.tryPromise({
-    try: () => runtime.lifecycle.logs(),
-    catch: (error) => toCliError(error),
-  }).pipe(
-    Effect.flatMap((result) => Console.log(result.content)),
-    Effect.catchTag("SandboxNotFoundError", () =>
-      Console.log("No sandbox is registered for this worktree.")
-    )
-  )
-);
-
-const urlCommand = Command.make("url", {}, () =>
-  Effect.tryPromise({
-    try: () => runtime.lifecycle.url(),
-    catch: (error) => toCliError(error),
-  }).pipe(
-    Effect.flatMap((result) =>
-      printSandboxView("Sandbox URLs", result.record.hostnameSlug, result.urls)
+const urlCommand = Command.make("url", { name: nameOption }, ({ name }) =>
+  parseSandboxNameOption(name).pipe(
+    Effect.flatMap((explicitSandboxName) =>
+      runtime.lifecycle.url({
+        explicitSandboxName,
+      })
     ),
-    Effect.catchTag("SandboxNotFoundError", () =>
-      Console.log("No sandbox is registered for this worktree.")
+    Effect.flatMap((result) =>
+      printSandboxView("Sandbox URLs", result.record, result.urls)
+    ),
+    Effect.catchTag(SANDBOX_NOT_FOUND_ERROR_TAG, () =>
+      Console.log("No sandbox is registered for this worktree or name.")
     )
   )
 );
@@ -138,43 +156,69 @@ const sandboxCommand = Command.make("sandbox").pipe(
 
 const cli = Command.run(sandboxCommand, {
   name: "Task Tracker Sandbox CLI",
-  version: "0.1.0",
+  version: "0.2.0",
 });
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  void runCli();
-}
 
 function printSandboxView(
   label: string,
-  hostnameSlug: string,
-  urls: {
-    app: string;
-    api: string;
-    postgres: string;
-    fallbackApp: string;
-    fallbackApi: string;
-  }
+  record: {
+    readonly sandboxName: SandboxName;
+    readonly composeProjectName: ComposeProjectName;
+    readonly status: SandboxStatus;
+  },
+  urls: SandboxUrls
 ) {
-  return Effect.gen(function* printSandboxViewEffect() {
-    for (const line of formatSandboxViewLines(label, hostnameSlug, urls)) {
-      yield* Console.log(line);
-    }
-  });
+  return Effect.forEach(
+    formatSandboxViewLines(label, record, urls),
+    (line) => Console.log(line),
+    { discard: true }
+  );
 }
 
-function toCliError(
-  error: unknown
-): SandboxNotFoundError | SandboxPreflightError {
-  if (
-    error instanceof SandboxNotFoundError ||
-    error instanceof SandboxPreflightError
-  ) {
-    return error;
+function printSandboxStartupProgress(
+  event: SandboxStartupProgressEvent
+): Effect.Effect<void, never, never> {
+  return Console.log(formatSandboxStartupProgressLine(event, terminalStyle));
+}
+
+export function parseServiceOption(
+  service: Option.Option<string>
+): Effect.Effect<
+  MissingSandboxResource | undefined,
+  SandboxPreflightError,
+  never
+> {
+  if (Option.isNone(service)) {
+    return Effect.void.pipe(
+      Effect.as(undefined as MissingSandboxResource | undefined)
+    );
   }
 
-  return new SandboxPreflightError({
-    message: error instanceof Error ? error.message : "Sandbox command failed",
+  return service.value === "app" ||
+    service.value === "api" ||
+    service.value === "postgres"
+    ? Effect.succeed(service.value)
+    : Effect.fail(
+        new SandboxPreflightError({
+          message: `Invalid service '${service.value}'. Expected one of: app, api, postgres.`,
+        })
+      );
+}
+
+function parseSandboxNameOption(
+  name: Option.Option<string>
+): Effect.Effect<SandboxName | undefined, SandboxPreflightError, never> {
+  if (Option.isNone(name)) {
+    return Effect.void.pipe(Effect.as(undefined as SandboxName | undefined));
+  }
+
+  return Effect.try({
+    try: () => validateSandboxName(name.value),
+    catch: (error) =>
+      toSandboxPreflightError(error, {
+        message: "Sandbox name is invalid.",
+        preserveMessage: true,
+      }),
   });
 }
 
@@ -192,19 +236,41 @@ export function getSandboxPreflightMessage(
     : undefined;
 }
 
-async function runCli(): Promise<void> {
-  const exit = await Effect.runPromiseExit(
-    cli(process.argv).pipe(Effect.provide(NodeContext.layer))
+function runCli(): Effect.Effect<void, never, never> {
+  const argv = process.argv.filter(
+    (argument, index) => !(index > 1 && argument === "--")
   );
-  const preflightMessage = getSandboxPreflightMessage(exit);
+  return Effect.gen(function* () {
+    const exit = yield* cli(argv).pipe(
+      Effect.provide(NodeContext.layer),
+      Effect.exit
+    );
+    const preflightMessage = getSandboxPreflightMessage(exit);
 
-  if (preflightMessage) {
-    console.error(preflightMessage);
-    process.exitCode = 1;
-    return;
-  }
+    if (preflightMessage) {
+      yield* Console.error(preflightMessage);
+      yield* Effect.sync(() => {
+        process.exitCode = 1;
+      });
+      return;
+    }
 
-  if (Exit.isFailure(exit)) {
-    throw Cause.squash(exit.cause);
-  }
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      const message =
+        Option.isSome(failure) && failure.value instanceof SandboxNotFoundError
+          ? failure.value.message
+          : Cause.squash(exit.cause);
+      yield* Console.error(
+        message instanceof Error ? message.message : String(message)
+      );
+      yield* Effect.sync(() => {
+        process.exitCode = 1;
+      });
+    }
+  });
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  void Effect.runPromise(runCli());
 }

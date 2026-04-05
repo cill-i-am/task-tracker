@@ -1,11 +1,24 @@
+import { Schema } from "effect";
+
 import {
   allocateSandboxPorts,
   buildSandboxUrls,
   deriveSandboxIdentity,
+  makeHealthPayloadFromSandboxIdInput,
+  makeComposeProjectName,
   makeHealthPayload,
-  makeSandboxResourceNames,
   reconcileSandboxRecord,
+  validateHostnameSlug,
+  validateSandboxId,
+  validateSandboxName,
 } from "./index.js";
+import { SandboxRuntimeAssets } from "./runtime-spec.js";
+
+const runtimeAssets = Schema.decodeUnknownSync(SandboxRuntimeAssets)({
+  devImage: "tt-sbx-task-tracker-dev:123456789abc",
+  nodeModulesVolume: "tt-sbx-node-modules-123456789abc-def456789abc",
+  pnpmStoreVolume: "tt-sbx-pnpm-store",
+});
 
 describe("deriveSandboxIdentity()", () => {
   it("derives a stable sandbox id and slug from the repo and worktree path", () => {
@@ -25,50 +38,41 @@ describe("deriveSandboxIdentity()", () => {
     const identity = deriveSandboxIdentity({
       repoRoot: "/Users/me/task-tracker",
       worktreePath: "/Users/me/task-tracker/.worktrees/Agent One",
-      takenSlugs: new Set(["agent-one"]),
+      takenSlugs: new Set([validateHostnameSlug("agent-one")]),
     });
 
     expect(identity.hostnameSlug).toMatch(/^agent-one-[a-f0-9]{6}$/);
   }, 10_000);
-});
 
-describe("makeSandboxResourceNames()", () => {
-  it("builds deterministic Docker resource names from the sandbox id", () => {
-    expect(makeSandboxResourceNames("abc123def456")).toStrictEqual({
-      containerPrefix: "tt-sbx-abc123def456",
-      network: "tt-sbx-abc123def456",
-      postgresVolume: "tt-sbx-abc123def456-pg",
-      appContainer: "tt-sbx-abc123def456-app",
-      apiContainer: "tt-sbx-abc123def456-api",
-      postgresContainer: "tt-sbx-abc123def456-postgres",
-      appNodeModulesVolume: "tt-sbx-abc123def456-app-node-modules",
-      apiNodeModulesVolume: "tt-sbx-abc123def456-api-node-modules",
-      pnpmStoreVolume: "tt-sbx-pnpm-store",
+  it("falls back to a sandbox-prefixed slug when the worktree name sanitizes to empty", () => {
+    const identity = deriveSandboxIdentity({
+      repoRoot: "/Users/me/task-tracker",
+      worktreePath: "/Users/me/task-tracker/.worktrees/!!!",
     });
+
+    expect(identity.hostnameSlug).toMatch(/^sandbox-[a-f0-9]{6}$/);
   }, 10_000);
 });
 
 describe("reconcileSandboxRecord()", () => {
-  it("marks a previously ready sandbox as degraded when containers are missing", () => {
+  it("marks a previously ready sandbox as degraded when services are missing", () => {
     const record = {
-      sandboxId: "abc123def456",
+      sandboxId: validateSandboxId("abc123def456"),
+      sandboxName: validateSandboxName("agent-one"),
+      composeProjectName: makeComposeProjectName(
+        validateSandboxName("agent-one")
+      ),
       worktreePath: "/Users/me/task-tracker/.worktrees/agent-one",
       repoRoot: "/Users/me/task-tracker",
-      hostnameSlug: "agent-one",
+      hostnameSlug: validateHostnameSlug("agent-one"),
+      betterAuthSecret: "0123456789abcdef0123456789abcdef",
+      runtimeAssets,
+      aliasesHealthy: true,
       status: "ready" as const,
-      containers: {
-        app: "tt-sbx-abc123def456-app",
-        api: "tt-sbx-abc123def456-api",
-        postgres: "tt-sbx-abc123def456-postgres",
-      },
       ports: {
         app: 4300,
         api: 4301,
         postgres: 5439,
-      },
-      hostnames: {
-        app: "agent-one.app.task-tracker.localhost",
-        api: "agent-one.api.task-tracker.localhost",
       },
       timestamps: {
         createdAt: "2026-04-01T10:00:00.000Z",
@@ -77,7 +81,7 @@ describe("reconcileSandboxRecord()", () => {
     };
 
     const reconciled = reconcileSandboxRecord(record, {
-      containersPresent: new Set(["tt-sbx-abc123def456-postgres"]),
+      servicesPresent: new Set(["postgres"]),
       portsInUse: new Set([5439]),
       now: "2026-04-01T10:10:00.000Z",
     });
@@ -86,14 +90,61 @@ describe("reconcileSandboxRecord()", () => {
     expect(reconciled.missingResources).toStrictEqual(["app", "api"]);
     expect(reconciled.timestamps.updatedAt).toBe("2026-04-01T10:10:00.000Z");
   }, 10_000);
+
+  it("stays degraded when aliases are unhealthy even if every service is present", () => {
+    const record = {
+      sandboxId: validateSandboxId("abc123def456"),
+      sandboxName: validateSandboxName("agent-one"),
+      composeProjectName: makeComposeProjectName(
+        validateSandboxName("agent-one")
+      ),
+      worktreePath: "/Users/me/task-tracker/.worktrees/agent-one",
+      repoRoot: "/Users/me/task-tracker",
+      hostnameSlug: validateHostnameSlug("agent-one"),
+      betterAuthSecret: "0123456789abcdef0123456789abcdef",
+      runtimeAssets,
+      aliasesHealthy: false,
+      status: "ready" as const,
+      ports: {
+        app: 4300,
+        api: 4301,
+        postgres: 5439,
+      },
+      timestamps: {
+        createdAt: "2026-04-01T10:00:00.000Z",
+        updatedAt: "2026-04-01T10:05:00.000Z",
+      },
+    };
+
+    const reconciled = reconcileSandboxRecord(record, {
+      servicesPresent: new Set(["app", "api", "postgres"]),
+      portsInUse: new Set([4300, 4301, 5439]),
+      now: "2026-04-01T10:10:00.000Z",
+    });
+
+    expect(reconciled.status).toBe("degraded");
+    expect(reconciled.missingResources).toStrictEqual([]);
+  }, 10_000);
 });
 
 describe("makeHealthPayload()", () => {
   it("creates the shared app/api health payload", () => {
-    expect(makeHealthPayload("app", "abc123def456")).toStrictEqual({
+    expect(
+      makeHealthPayload("app", validateSandboxId("abc123def456"))
+    ).toStrictEqual({
       ok: true,
       service: "app",
       sandboxId: "abc123def456",
+    });
+  }, 10_000);
+
+  it("falls back to the default sandbox id when the input id is invalid", () => {
+    expect(
+      makeHealthPayloadFromSandboxIdInput("api", "not-a-sandbox-id")
+    ).toStrictEqual({
+      ok: true,
+      service: "api",
+      sandboxId: "000000000000",
     });
   }, 10_000);
 });
@@ -139,7 +190,7 @@ describe("buildSandboxUrls()", () => {
     expect(
       buildSandboxUrls(
         {
-          hostnameSlug: "agent-one",
+          hostnameSlug: validateHostnameSlug("agent-one"),
           ports: {
             app: 4300,
             api: 4301,
@@ -164,7 +215,7 @@ describe("buildSandboxUrls()", () => {
     expect(
       buildSandboxUrls(
         {
-          hostnameSlug: "agent-one",
+          hostnameSlug: validateHostnameSlug("agent-one"),
           ports: {
             app: 4300,
             api: 4301,

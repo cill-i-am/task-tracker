@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: task_tracker
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d task_tracker"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  api:
+    image: ${SANDBOX_DEV_IMAGE}
+    working_dir: /workspace
+    command: ["api"]
+    environment:
+      AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM}
+      AUTH_EMAIL_FROM_NAME: ${AUTH_EMAIL_FROM_NAME}
+      BETTER_AUTH_BASE_URL: ${BETTER_AUTH_BASE_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      DATABASE_URL: ${DATABASE_URL}
+      HOST: 0.0.0.0
+      PNPM_STORE_DIR: /pnpm/store
+      PORT: ${API_HOST_PORT}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      SANDBOX_ID: ${SANDBOX_ID}
+      TASK_TRACKER_SANDBOX: ${TASK_TRACKER_SANDBOX}
+    volumes:
+      - ${SANDBOX_WORKTREE_PATH}:/workspace
+      - pnpm-store:/pnpm/store
+      - root-node-modules:/workspace/node_modules
+    ports:
+      - "127.0.0.1:${API_HOST_PORT}:${API_HOST_PORT}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${API_HOST_PORT}/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  app:
+    image: ${SANDBOX_DEV_IMAGE}
+    working_dir: /workspace
+    command: ["app"]
+    environment:
+      AUTH_ORIGIN: ${AUTH_ORIGIN}
+      HOST: 0.0.0.0
+      PNPM_STORE_DIR: /pnpm/store
+      PORT: ${APP_HOST_PORT}
+      SANDBOX_ID: ${SANDBOX_ID}
+      TASK_TRACKER_SANDBOX: ${TASK_TRACKER_SANDBOX}
+      VITE_AUTH_ORIGIN: ${VITE_AUTH_ORIGIN}
+    volumes:
+      - ${SANDBOX_WORKTREE_PATH}:/workspace
+      - pnpm-store:/pnpm/store
+      - root-node-modules:/workspace/node_modules
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT}:${APP_HOST_PORT}"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${APP_HOST_PORT}/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+volumes:
+  pnpm-store:
+    external: true
+    name: ${SANDBOX_PNPM_STORE_VOLUME}
+  root-node-modules:
+    external: true
+    name: ${SANDBOX_NODE_MODULES_VOLUME}

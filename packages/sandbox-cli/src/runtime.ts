@@ -1,62 +1,86 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import {
+  HealthPayload,
   buildSandboxUrls,
-  deriveSandboxIdentity,
-  makeSandboxResourceNames,
   reconcileSandboxRecord,
 } from "@task-tracker/sandbox-core";
 import type {
+  SandboxDockerVolumeNameType as SandboxDockerVolumeName,
+  MissingSandboxResource,
+  SandboxNameType as SandboxName,
   SandboxPorts,
   SandboxRecord,
+  SandboxRuntimeAssetsShape as SandboxRuntimeAssets,
+  SandboxRuntimeSpec,
   SandboxUrls,
 } from "@task-tracker/sandbox-core";
-import { Effect } from "effect";
+import {
+  loadSandboxSharedEnvironment,
+  SANDBOX_REGISTRY_ERROR_TAG,
+  SandboxEnvironmentError,
+} from "@task-tracker/sandbox-core/node";
+import type {
+  SandboxRegistryError,
+  SandboxRegistryRecord,
+  SharedSandboxEnvironmentInput,
+} from "@task-tracker/sandbox-core/node";
+import { Effect, Schema } from "effect";
 
+import {
+  buildComposeCommandArgs,
+  renderComposeEnvironmentFile,
+} from "./compose.js";
 import { bringSandboxUp } from "./lifecycle.js";
 import type { SandboxUpResult } from "./lifecycle.js";
-import {
-  buildPortlessAliasAddCommands,
-  buildPortlessAliasRemoveCommands,
-} from "./portless.js";
+import { makePortlessAliasCommands } from "./portless.js";
 import { isPortAvailable, isPortOpen, runCommand } from "./process.js";
-import { SandboxNotFoundError } from "./sandbox-not-found-error.js";
-import { SandboxPreflightError } from "./sandbox-preflight-error.js";
+import {
+  ensureSandboxStateDir,
+  getComposeEnvFilePath,
+  getSandboxStateRoot,
+  readRegistry,
+  writeSandboxStateFile,
+  writeRegistry,
+} from "./registry.js";
+import { resolveSandboxRuntimeAssets } from "./runtime-assets.js";
+import {
+  SANDBOX_NOT_FOUND_ERROR_TAG,
+  SandboxNotFoundError,
+} from "./sandbox-not-found-error.js";
+import {
+  SANDBOX_PREFLIGHT_ERROR_TAG,
+  SandboxPreflightError,
+  toSandboxPreflightError,
+} from "./sandbox-preflight-error.js";
 import { formatSandboxStartupTimeoutLines } from "./sandbox-view.js";
+import {
+  noopSandboxStartupProgressReporter,
+  sandboxStartupReadinessEquals,
+} from "./startup-progress.js";
+import type {
+  SandboxHealthProgressListener,
+  SandboxStartupProgressReporter,
+  SandboxStartupReadiness,
+} from "./startup-progress.js";
 
 const SANDBOX_PROXY_PORT = 1355;
-const SANDBOX_DEV_IMAGE = "task-tracker-sandbox-dev:latest";
 const SANDBOX_READY_POLL_INTERVAL_MS = 1000;
 const SANDBOX_READY_TIMEOUT_MS = 180_000;
-const SANDBOX_DOCKERFILE = path.join(
-  "packages",
-  "sandbox-cli",
-  "docker",
-  "sandbox-dev.Dockerfile"
+const SANDBOX_STOP_TIMEOUT_SECONDS = 2;
+const SANDBOX_COMPOSE_FILE = path.join(
+  fileURLToPath(new URL("../docker", import.meta.url)),
+  "sandbox.compose.yaml"
 );
-const SANDBOX_WORKSPACE_ROOT = path.resolve(
-  fileURLToPath(new URL("../../../", import.meta.url))
-);
-const SANDBOX_DEFAULT_DB = "task_tracker";
-const SANDBOX_POSTGRES_PASSWORD = "postgres";
-const SANDBOX_POSTGRES_USER = "postgres";
-const DEFAULT_AUTH_EMAIL_FROM = "auth@task-tracker.localhost";
-const DEFAULT_AUTH_EMAIL_FROM_NAME = "Task Tracker";
-const DEFAULT_RESEND_API_KEY = "re_test_placeholder";
 const DEFAULT_PORTS: SandboxPorts = {
   app: 4300,
   api: 4301,
   postgres: 5439,
 };
-
-interface RegistryPayload {
-  readonly sandboxes: readonly SandboxRecord[];
-}
 
 export interface WorktreeContext {
   readonly repoRoot: string;
@@ -76,395 +100,433 @@ export interface SandboxLogResult {
   readonly content: string;
 }
 
-export interface WorktreeResolver {
-  readonly resolveCurrent: () => Promise<WorktreeContext>;
+export interface SandboxCommandOptions {
+  readonly explicitSandboxName?: SandboxName;
 }
 
-export interface SandboxIdResolver {
-  readonly resolve: (
-    repoRoot: string,
-    worktreePath: string,
-    takenSlugs: ReadonlySet<string>
-  ) => ReturnType<typeof deriveSandboxIdentity>;
+export interface SandboxUpCommandOptions extends SandboxCommandOptions {
+  readonly reportProgress?: SandboxStartupProgressReporter;
+}
+
+export interface SandboxLogsOptions extends SandboxCommandOptions {
+  readonly service?: MissingSandboxResource;
+}
+
+type SandboxPreflightEffect<A> = Effect.Effect<A, SandboxPreflightError, never>;
+type SandboxRegistryEffect<A> = Effect.Effect<A, SandboxRegistryError, never>;
+type SandboxRuntimeError =
+  | SandboxNotFoundError
+  | SandboxPreflightError
+  | SandboxRegistryError;
+type SandboxRuntimeEffect<A> = Effect.Effect<A, SandboxRuntimeError, never>;
+
+export interface WorktreeResolver {
+  readonly resolveCurrent: () => SandboxPreflightEffect<WorktreeContext>;
 }
 
 export interface SandboxRegistry {
-  readonly list: () => Promise<SandboxRecord[]>;
+  readonly list: () => SandboxRegistryEffect<SandboxRegistryRecord[]>;
   readonly findByWorktree: (
     worktreePath: string
-  ) => Promise<SandboxRecord | undefined>;
-  readonly upsert: (record: SandboxRecord) => Promise<void>;
-  readonly removeByWorktree: (worktreePath: string) => Promise<void>;
+  ) => SandboxRegistryEffect<SandboxRegistryRecord | undefined>;
+  readonly findByName: (
+    sandboxName: SandboxName
+  ) => SandboxRegistryEffect<SandboxRegistryRecord | undefined>;
+  readonly upsert: (
+    record: SandboxRegistryRecord
+  ) => SandboxRegistryEffect<void>;
+  readonly remove: (sandboxName: SandboxName) => SandboxRegistryEffect<void>;
 }
 
-export interface DockerEngine {
-  readonly ensureAvailable: () => Promise<void>;
-  readonly ensureDevImage: () => Promise<string>;
-  readonly startStack: (
+export interface ComposeEngine {
+  readonly ensureAvailable: () => SandboxPreflightEffect<void>;
+  readonly startStack: (record: SandboxRecord) => SandboxPreflightEffect<void>;
+  readonly stopStack: (record: SandboxRecord) => SandboxPreflightEffect<void>;
+  readonly runningServices: (
+    record: SandboxRecord
+  ) => SandboxPreflightEffect<Set<MissingSandboxResource>>;
+  readonly collectLogs: (
     record: SandboxRecord,
-    aliasesHealthy: boolean
-  ) => Promise<void>;
-  readonly stopStack: (record: SandboxRecord) => Promise<void>;
-  readonly runningContainerNames: () => Promise<Set<string>>;
-  readonly collectLogs: (record: SandboxRecord) => Promise<string>;
+    service?: MissingSandboxResource
+  ) => SandboxPreflightEffect<string>;
 }
 
 export interface PortAllocator {
   readonly allocate: (
     existing: SandboxPorts | undefined,
     reservedPorts: ReadonlySet<number>
-  ) => Promise<SandboxPorts>;
+  ) => SandboxPreflightEffect<SandboxPorts>;
 }
 
 export interface PortlessService {
-  readonly ensureProxyRunning: () => Promise<void>;
-  readonly registerAliases: (record: SandboxRecord) => Promise<void>;
-  readonly removeAliases: (record: SandboxRecord) => Promise<void>;
-  readonly removeAliasesBySlug: (hostnameSlug: string) => Promise<void>;
+  readonly ensureProxyRunning: () => SandboxPreflightEffect<void>;
+  readonly registerAliases: (
+    sandboxName: SandboxName,
+    ports: SandboxPorts
+  ) => SandboxPreflightEffect<void>;
+  readonly removeAliases: (
+    sandboxName: SandboxName,
+    ports: SandboxPorts
+  ) => SandboxPreflightEffect<void>;
 }
 
 export interface HealthChecker {
-  readonly waitForReady: (record: SandboxRecord) => Promise<void>;
+  readonly waitForReady: (
+    record: SandboxRecord,
+    listener: SandboxHealthProgressListener
+  ) => SandboxPreflightEffect<void>;
 }
 
 export interface SandboxLifecycle {
-  readonly up: () => Promise<SandboxUpResult>;
-  readonly down: () => Promise<SandboxRecord>;
-  readonly status: () => Promise<SandboxStatusResult>;
-  readonly list: () => Promise<SandboxListResult>;
-  readonly logs: () => Promise<SandboxLogResult>;
-  readonly url: () => Promise<SandboxStatusResult>;
+  readonly up: (
+    options?: SandboxUpCommandOptions
+  ) => SandboxRuntimeEffect<SandboxUpResult>;
+  readonly down: (
+    options?: SandboxCommandOptions
+  ) => SandboxRuntimeEffect<SandboxRecord>;
+  readonly status: (
+    options?: SandboxCommandOptions
+  ) => SandboxRuntimeEffect<SandboxStatusResult>;
+  readonly list: () => SandboxRuntimeEffect<SandboxListResult>;
+  readonly logs: (
+    options?: SandboxLogsOptions
+  ) => SandboxRuntimeEffect<SandboxLogResult>;
+  readonly url: (
+    options?: SandboxCommandOptions
+  ) => SandboxRuntimeEffect<SandboxStatusResult>;
 }
 
 export interface SandboxRuntime {
   readonly worktreeResolver: WorktreeResolver;
-  readonly sandboxIdResolver: SandboxIdResolver;
   readonly sandboxRegistry: SandboxRegistry;
-  readonly dockerEngine: DockerEngine;
+  readonly composeEngine: ComposeEngine;
   readonly portAllocator: PortAllocator;
   readonly portlessService: PortlessService;
   readonly healthChecker: HealthChecker;
   readonly lifecycle: SandboxLifecycle;
 }
 
+interface RegisteredAliases {
+  readonly sandboxName: SandboxName;
+  readonly ports: SandboxPorts;
+}
+
 export function makeSandboxRuntime(): SandboxRuntime {
   const worktreeResolver: WorktreeResolver = {
-    resolveCurrent: async () => {
-      const worktreeResult = await exec(
+    resolveCurrent: Effect.fn("SandboxRuntime.resolveCurrent")(function* () {
+      const worktreeResult = yield* exec(
         runCommand("git", ["rev-parse", "--show-toplevel"], {
           cwd: process.cwd(),
         })
       );
-      const commonDirResult = await exec(
+      const commonDirResult = yield* exec(
         runCommand("git", ["rev-parse", "--git-common-dir"], {
           cwd: process.cwd(),
         })
       );
       const worktreePath = worktreeResult.stdout.trim();
       const gitCommonDir = commonDirResult.stdout.trim();
-      const resolvedCommonDir = path.resolve(worktreePath, gitCommonDir);
-      const repoRoot =
-        path.basename(resolvedCommonDir) === ".git"
-          ? path.dirname(resolvedCommonDir)
-          : resolvedCommonDir;
+      const absoluteGitCommonDir = path.isAbsolute(gitCommonDir)
+        ? gitCommonDir
+        : path.resolve(process.cwd(), gitCommonDir);
+      const repoRoot = resolveRepoRootFromGitPaths(
+        worktreePath,
+        absoluteGitCommonDir
+      );
 
       return {
         repoRoot,
         worktreePath,
       };
-    },
-  };
-
-  const sandboxIdResolver: SandboxIdResolver = {
-    resolve: (repoRoot, worktreePath, takenSlugs) =>
-      deriveSandboxIdentity({
-        repoRoot,
-        worktreePath,
-        takenSlugs,
-      }),
+    }),
   };
 
   const sandboxRegistry: SandboxRegistry = {
-    list: async () => {
-      const registryPath = getRegistryPath();
-      await fs.mkdir(path.dirname(registryPath), { recursive: true });
-
-      try {
-        const raw = await fs.readFile(registryPath, "utf8");
-        if (raw.trim().length === 0) {
-          return [];
-        }
-
-        const payload = JSON.parse(raw) as RegistryPayload;
-        return [...(payload.sandboxes ?? [])];
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return [];
-        }
-        throw toPreflightError(error, "Failed to read sandbox registry");
-      }
-    },
-    findByWorktree: async (worktreePath) => {
-      const records = await sandboxRegistry.list();
-      return records.find((record) => record.worktreePath === worktreePath);
-    },
-    upsert: async (record) => {
-      const records = await sandboxRegistry.list();
-      const next = [
-        ...records.filter(
-          (entry) => entry.worktreePath !== record.worktreePath
-        ),
-        record,
-      ];
-      await writeRegistryFile(next);
-    },
-    removeByWorktree: async (worktreePath) => {
-      const records = await sandboxRegistry.list();
-      await writeRegistryFile(
-        records.filter((entry) => entry.worktreePath !== worktreePath)
-      );
-    },
+    list: () => readRegistry().pipe(Effect.map((records) => [...records])),
+    findByWorktree: (worktreePath) =>
+      Effect.gen(function* () {
+        const records = yield* readRegistry();
+        return records.find((record) => record.worktreePath === worktreePath);
+      }),
+    findByName: (sandboxName) =>
+      Effect.gen(function* () {
+        const records = yield* readRegistry();
+        return records.find((record) => record.sandboxName === sandboxName);
+      }),
+    upsert: (record) =>
+      Effect.gen(function* () {
+        const records = yield* readRegistry();
+        yield* writeRegistry([
+          ...records.filter(
+            (entry) => entry.sandboxName !== record.sandboxName
+          ),
+          record,
+        ]);
+      }),
+    remove: (sandboxName) =>
+      Effect.gen(function* () {
+        const records = yield* readRegistry();
+        yield* writeRegistry(
+          records.filter((entry) => entry.sandboxName !== sandboxName)
+        );
+      }),
   };
 
   const portAllocator: PortAllocator = {
-    allocate: async (existing, reservedPorts) => {
-      const allocated = new Set<number>();
+    allocate: Effect.fn("SandboxRuntime.allocatePorts")(
+      function* (existing, reservedPorts) {
+        const allocated = new Set<number>();
+        const app = yield* allocateRuntimePort(
+          "app",
+          existing,
+          reservedPorts,
+          allocated
+        );
+        const api = yield* allocateRuntimePort(
+          "api",
+          existing,
+          reservedPorts,
+          allocated
+        );
+        const postgres = yield* allocateRuntimePort(
+          "postgres",
+          existing,
+          reservedPorts,
+          allocated
+        );
 
-      const app = await allocateRuntimePort(
-        "app",
-        existing,
-        reservedPorts,
-        allocated
-      );
-      const api = await allocateRuntimePort(
-        "api",
-        existing,
-        reservedPorts,
-        allocated
-      );
-      const postgres = await allocateRuntimePort(
-        "postgres",
-        existing,
-        reservedPorts,
-        allocated
-      );
-
-      return {
-        app,
-        api,
-        postgres,
-      };
-    },
+        return { app, api, postgres };
+      }
+    ),
   };
 
-  const dockerEngine: DockerEngine = {
-    ensureAvailable: async () => {
-      await exec(runCommand("docker", ["info"]));
-    },
-    ensureDevImage: async () => {
-      await exec(
+  const composeEngine: ComposeEngine = {
+    ensureAvailable: Effect.fn("SandboxRuntime.ensureComposeAvailable")(
+      function* () {
+        yield* exec(runCommand("docker", ["info"]));
+        yield* exec(runCommand("docker", ["compose", "version"]));
+      }
+    ),
+    startStack: Effect.fn("SandboxRuntime.startComposeStack")(
+      function* (record) {
+        const imageReady = yield* ensureSandboxDevImage(record);
+        yield* Effect.all(
+          [
+            ensureSandboxSharedVolumes(record.runtimeAssets),
+            ensureComposeEnvironmentFile(record),
+          ],
+          { concurrency: "unbounded" }
+        );
+        const startCompose = () =>
+          exec(runCommand("docker", composeArgs(record, ["up", "-d"])));
+
+        yield* startCompose().pipe(
+          Effect.catchIf(
+            (error) => imageReady === "marker" && isMissingImageError(error),
+            () =>
+              ensureSandboxDevImage(record, { forceInspect: true }).pipe(
+                Effect.zipRight(startCompose())
+              )
+          )
+        );
+      }
+    ),
+    stopStack: Effect.fn("SandboxRuntime.stopComposeStack")(function* (record) {
+      yield* ensureComposeEnvironmentFile(record);
+      yield* exec(
         runCommand(
           "docker",
-          ["build", "-f", SANDBOX_DOCKERFILE, "-t", SANDBOX_DEV_IMAGE, "."],
-          {
-            cwd: SANDBOX_WORKSPACE_ROOT,
-          }
+          composeArgs(record, [
+            "down",
+            "--timeout",
+            String(SANDBOX_STOP_TIMEOUT_SECONDS),
+          ]),
+          { allowNonZero: true }
         )
       );
-
-      return SANDBOX_DEV_IMAGE;
-    },
-    startStack: async (record, aliasesHealthy) => {
-      const resourceNames = makeSandboxResourceNames(record.sandboxId);
-      const image = await dockerEngine.ensureDevImage();
-      const authOrigin = makeSandboxAuthOrigin({
-        hostnameSlug: record.hostnameSlug,
-        publishedPort: record.ports.api,
-        aliasesHealthy,
-      });
-      const serverAuthOrigin = makeSandboxServerAuthOrigin({
-        apiContainerName: resourceNames.apiContainer,
-        publishedPort: record.ports.api,
-      });
-
-      await ensureDockerNetwork(resourceNames.network);
-      await ensureDockerVolume(resourceNames.postgresVolume);
-      await ensureDockerVolume(resourceNames.appNodeModulesVolume);
-      await ensureDockerVolume(resourceNames.apiNodeModulesVolume);
-      await ensureDockerVolume(resourceNames.pnpmStoreVolume);
-
-      const internalDatabaseUrl =
-        `postgresql://${SANDBOX_POSTGRES_USER}:${SANDBOX_POSTGRES_PASSWORD}` +
-        `@${resourceNames.postgresContainer}:5432/${SANDBOX_DEFAULT_DB}`;
-
-      await ensurePostgresContainer(record, resourceNames);
-      await recreateNodeServiceContainer({
-        containerName: resourceNames.apiContainer,
-        network: resourceNames.network,
-        publishedPort: record.ports.api,
-        image,
-        worktreePath: record.worktreePath,
-        nodeModulesVolume: resourceNames.apiNodeModulesVolume,
-        pnpmStoreVolume: resourceNames.pnpmStoreVolume,
-        authOrigin,
-        serverAuthOrigin,
-        filter: "api",
-        sandboxId: record.sandboxId,
-        databaseUrl: internalDatabaseUrl,
-        betterAuthSecret: record.betterAuthSecret,
-      });
-      await recreateNodeServiceContainer({
-        containerName: resourceNames.appContainer,
-        network: resourceNames.network,
-        publishedPort: record.ports.app,
-        image,
-        worktreePath: record.worktreePath,
-        nodeModulesVolume: resourceNames.appNodeModulesVolume,
-        pnpmStoreVolume: resourceNames.pnpmStoreVolume,
-        authOrigin,
-        serverAuthOrigin,
-        filter: "app",
-        sandboxId: record.sandboxId,
-        databaseUrl: internalDatabaseUrl,
-      });
-    },
-    stopStack: async (record) => {
-      const resourceNames = makeSandboxResourceNames(record.sandboxId);
-      await removeContainer(resourceNames.appContainer);
-      await removeContainer(resourceNames.apiContainer);
-      await removeContainer(resourceNames.postgresContainer);
-      await exec(
-        runCommand("docker", ["network", "rm", resourceNames.network], {
-          allowNonZero: true,
-        })
+      yield* tryPromisePreflight(
+        `Failed to remove sandbox state for ${record.sandboxName}`,
+        () =>
+          fs.rm(path.dirname(getComposeEnvFilePath(record.sandboxName)), {
+            recursive: true,
+            force: true,
+          })
       );
-    },
-    runningContainerNames: async () => {
-      const result = await exec(
-        runCommand("docker", ["ps", "--format", "{{.Names}}"])
-      );
-      return new Set(
-        result.stdout
-          .split("\n")
-          .map((line) => line.trim())
+    }),
+    runningServices: Effect.fn("SandboxRuntime.runningComposeServices")(
+      function* (record) {
+        yield* ensureComposeEnvironmentFile(record);
+        const result = yield* exec(
+          runCommand(
+            "docker",
+            composeArgs(record, ["ps", "--services", "--status", "running"]),
+            { allowNonZero: true }
+          )
+        );
+
+        return new Set(
+          result.stdout
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(
+              (line): line is MissingSandboxResource =>
+                line === "app" || line === "api" || line === "postgres"
+            )
+        );
+      }
+    ),
+    collectLogs: Effect.fn("SandboxRuntime.collectComposeLogs")(
+      function* (record, service) {
+        yield* ensureComposeEnvironmentFile(record);
+        const result = yield* exec(
+          runCommand(
+            "docker",
+            composeArgs(record, [
+              "logs",
+              "--tail",
+              "200",
+              ...(service ? [service] : []),
+            ]),
+            { allowNonZero: true }
+          )
+        );
+
+        return [result.stdout.trim(), result.stderr.trim()]
           .filter(Boolean)
-      );
-    },
-    collectLogs: async (record) => {
-      const sections = await Promise.all([
-        collectContainerLogs("app", record.containers.app),
-        collectContainerLogs("api", record.containers.api),
-        collectContainerLogs("postgres", record.containers.postgres),
-      ]);
-
-      return sections.join("\n\n");
-    },
+          .join("\n");
+      }
+    ),
   };
 
   const portlessService: PortlessService = {
-    ensureProxyRunning: async () => {
-      await exec(
-        runCommand("portless", [
-          "proxy",
-          "start",
-          "-p",
-          String(SANDBOX_PROXY_PORT),
-        ])
-      );
-    },
-    registerAliases: async (record) => {
-      const commands = buildPortlessAliasAddCommands({
-        hostnameSlug: record.hostnameSlug,
-        ports: record.ports,
-      });
-
-      for (const [command, ...args] of commands) {
-        await exec(runCommand(command, args));
+    ensureProxyRunning: Effect.fn("SandboxRuntime.ensurePortlessProxy")(
+      function* () {
+        yield* exec(
+          runCommand("pnpm", [
+            "exec",
+            "portless",
+            "proxy",
+            "start",
+            "-p",
+            String(SANDBOX_PROXY_PORT),
+          ])
+        );
       }
-    },
-    removeAliases: async (record) => {
-      for (const [command, ...args] of buildPortlessAliasRemoveCommands(
-        record.hostnameSlug
-      )) {
-        await exec(runCommand(command, args, { allowNonZero: true }));
+    ),
+    registerAliases: Effect.fn("SandboxRuntime.registerPortlessAliases")(
+      function* (sandboxName, ports) {
+        const commands = makePortlessAliasCommands({ sandboxName, ports });
+        yield* Effect.forEach(
+          commands.add,
+          ([command, ...args]) => exec(runCommand(command, args)),
+          {
+            concurrency: "unbounded",
+            discard: true,
+          }
+        );
       }
-    },
-    removeAliasesBySlug: async (hostnameSlug) => {
-      for (const [command, ...args] of buildPortlessAliasRemoveCommands(
-        hostnameSlug
-      )) {
-        await exec(runCommand(command, args, { allowNonZero: true }));
+    ),
+    removeAliases: Effect.fn("SandboxRuntime.removePortlessAliases")(
+      function* (sandboxName, ports) {
+        const commands = makePortlessAliasCommands({ sandboxName, ports });
+        yield* Effect.forEach(
+          commands.remove,
+          ([command, ...args]) =>
+            exec(runCommand(command, args, { allowNonZero: true })),
+          {
+            concurrency: "unbounded",
+            discard: true,
+          }
+        );
       }
-    },
+    ),
   };
 
   const healthChecker: HealthChecker = {
-    waitForReady: async (record) => {
-      await waitForSandboxServicesReady({
-        timeoutMs: SANDBOX_READY_TIMEOUT_MS,
-        intervalMs: SANDBOX_READY_POLL_INTERVAL_MS,
-        wait: (durationMs) => delay(durationMs),
-        createTimeoutError: (readiness) =>
-          new SandboxPreflightError({
-            message: formatSandboxStartupTimeoutLines({
-              hostnameSlug: record.hostnameSlug,
-              timeoutMs: SANDBOX_READY_TIMEOUT_MS,
-              readiness,
-              containers: record.containers,
-              urls: buildSandboxUrls(
-                {
-                  hostnameSlug: record.hostnameSlug,
-                  ports: record.ports,
-                },
-                {
-                  aliasesHealthy: false,
-                  proxyPort: SANDBOX_PROXY_PORT,
-                }
-              ),
-            }).join("\n"),
-          }),
-        checkPostgres: async () => {
-          const postgresReady = await exec(
-            runCommand(
-              "docker",
-              [
-                "exec",
-                record.containers.postgres,
-                "pg_isready",
-                "-U",
-                SANDBOX_POSTGRES_USER,
-                "-d",
-                SANDBOX_DEFAULT_DB,
-              ],
-              { allowNonZero: true }
-            )
-          );
-
-          return postgresReady.exitCode === 0;
-        },
-        checkApi: () =>
-          checkHttpHealth(record.ports.api, "api", record.sandboxId),
-        checkApp: () =>
-          checkHttpHealth(record.ports.app, "app", record.sandboxId),
-      });
-    },
+    waitForReady: Effect.fn("SandboxRuntime.waitForReady")(
+      function* (record, listener) {
+        yield* Effect.annotateCurrentSpan("sandboxName", record.sandboxName);
+        yield* Effect.annotateCurrentSpan(
+          "composeProjectName",
+          record.composeProjectName
+        );
+        yield* waitForSandboxServicesReady({
+          timeoutMs: SANDBOX_READY_TIMEOUT_MS,
+          intervalMs: SANDBOX_READY_POLL_INTERVAL_MS,
+          wait: (durationMs) =>
+            tryPromisePreflight("Sandbox readiness polling failed", () =>
+              delay(durationMs)
+            ),
+          onReadinessChanged: listener.onReadinessChanged,
+          createTimeoutError: (readiness) =>
+            new SandboxPreflightError({
+              message: formatSandboxStartupTimeoutLines({
+                sandboxName: record.sandboxName,
+                composeProjectName: record.composeProjectName,
+                timeoutMs: SANDBOX_READY_TIMEOUT_MS,
+                readiness,
+                urls: buildRecordUrls(record),
+              }).join("\n"),
+            }),
+          checkPostgres: () => checkLocalPortOpen(record.ports.postgres),
+          checkApi: () =>
+            checkHttpHealth(record.ports.api, "api", record.sandboxId),
+          checkApp: () =>
+            checkHttpHealth(record.ports.app, "app", record.sandboxId),
+        });
+      }
+    ),
   };
 
   const lifecycle: SandboxLifecycle = {
-    up: async () => {
-      const context = await worktreeResolver.resolveCurrent();
-      const records = await sandboxRegistry.list();
+    up: Effect.fn("SandboxRuntime.up")(function* (
+      options: SandboxUpCommandOptions = {}
+    ) {
+      const context = yield* worktreeResolver.resolveCurrent();
+      yield* Effect.annotateCurrentSpan("worktreePath", context.worktreePath);
+      yield* Effect.annotateCurrentSpan("repoRoot", context.repoRoot);
+      if (options.explicitSandboxName) {
+        yield* Effect.annotateCurrentSpan(
+          "sandboxName",
+          options.explicitSandboxName
+        );
+      }
+      const records = yield* sandboxRegistry.list();
+      const conflictingNameRecord = options.explicitSandboxName
+        ? records.find(
+            (record) =>
+              record.sandboxName === options.explicitSandboxName &&
+              record.worktreePath !== context.worktreePath
+          )
+        : undefined;
       const existingRecord = records.find(
         (record) => record.worktreePath === context.worktreePath
       );
-      const takenSlugs = new Set(
+      const isRenamingSandbox =
+        existingRecord !== undefined &&
+        options.explicitSandboxName !== undefined &&
+        existingRecord.sandboxName !== options.explicitSandboxName;
+
+      if (conflictingNameRecord) {
+        yield* Effect.fail(
+          new SandboxPreflightError({
+            message: `Sandbox name ${options.explicitSandboxName} is already in use by another worktree.`,
+            sandboxName: options.explicitSandboxName,
+          })
+        );
+      }
+
+      const takenNames = new Set(
         records
           .filter((record) => record.worktreePath !== context.worktreePath)
-          .map((record) => record.hostnameSlug)
+          .map((record) => record.sandboxName)
       );
       const reservedPorts = new Set(
         records
-          .filter((record) => record.worktreePath !== context.worktreePath)
+          .filter(
+            (record) =>
+              record.worktreePath !== context.worktreePath || isRenamingSandbox
+          )
           .flatMap((record) => [
             record.ports.app,
             record.ports.api,
@@ -472,580 +534,935 @@ export function makeSandboxRuntime(): SandboxRuntime {
           ])
       );
 
-      return bringSandboxUp({
+      const sharedEnvironment = yield* loadSandboxEnvironmentOrThrow(
+        context.repoRoot
+      );
+      const runtimeAssets = yield* resolveSandboxRuntimeAssets({
         repoRoot: context.repoRoot,
         worktreePath: context.worktreePath,
+      });
+      yield* composeEngine.ensureAvailable();
+      const proxyHealthy = yield* ensureSandboxProxyHealthy({
+        portlessService,
+      });
+
+      let startedRecord: SandboxRecord | undefined;
+      let registeredAliases: RegisteredAliases | undefined;
+
+      return yield* bringSandboxUp({
+        repoRoot: context.repoRoot,
+        worktreePath: context.worktreePath,
+        explicitSandboxName: options.explicitSandboxName,
         now: new Date().toISOString(),
-        takenSlugs,
+        takenNames,
         existingRecord,
-        ensurePrerequisites: async () => {
-          await dockerEngine.ensureAvailable();
-          await portlessService.ensureProxyRunning();
-        },
+        loadSharedEnvironment: () => Effect.succeed(sharedEnvironment),
+        resolveRuntimeAssets: () => Effect.succeed(runtimeAssets),
+        generateBetterAuthSecret: makeSandboxBetterAuthSecret,
         allocatePorts: () =>
           portAllocator.allocate(existingRecord?.ports, reservedPorts),
-        determineAliasesHealthy: async (record) => {
-          try {
-            await portlessService.registerAliases(record);
-            return true;
-          } catch {
-            await portlessService.removeAliases(record);
-            return false;
-          }
+        determineAliasesHealthy: ({ sandboxName, ports }) =>
+          proxyHealthy === false
+            ? Effect.succeed(false)
+            : portlessService.registerAliases(sandboxName, ports).pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    registeredAliases = { sandboxName, ports };
+                  })
+                ),
+                Effect.as(true),
+                Effect.tap(() =>
+                  Effect.annotateCurrentSpan("aliasesHealthy", "true")
+                ),
+                Effect.tapError(() =>
+                  portlessService
+                    .removeAliases(sandboxName, ports)
+                    .pipe(Effect.ignore)
+                ),
+                Effect.orElseSucceed(() => false)
+              ),
+        startComposeProject: (spec) => {
+          const record = toSandboxRecord(spec, context, existingRecord);
+          startedRecord = record;
+          return Effect.gen(function* () {
+            yield* writeComposeEnvironmentFileFromSpec(spec, context);
+            yield* composeEngine.startStack(record);
+          });
         },
-        startStack: (record, aliasesHealthy) =>
-          dockerEngine.startStack(record, aliasesHealthy),
-        waitForHealth: (record) => healthChecker.waitForReady(record),
+        waitForHealth: (spec, listener) =>
+          healthChecker.waitForReady(
+            toSandboxRecord(spec, context, existingRecord),
+            listener
+          ),
         persist: (record) => sandboxRegistry.upsert(record),
-        generateBetterAuthSecret: makeSandboxBetterAuthSecret,
+        reportProgress:
+          options.reportProgress ?? noopSandboxStartupProgressReporter,
+      }).pipe(
+        Effect.tap(() =>
+          isRenamingSandbox && existingRecord
+            ? finalizeSandboxRename({
+                previousRecord: existingRecord,
+                composeEngine,
+                portlessService,
+                sandboxRegistry,
+              })
+            : Effect.void
+        ),
+        Effect.catchTags({
+          [SANDBOX_NOT_FOUND_ERROR_TAG]: (error) =>
+            cleanupFailedSandboxUp({
+              error,
+              startedRecord,
+              registeredAliases,
+              composeEngine,
+              portlessService,
+              sandboxRegistry,
+            }).pipe(Effect.zipRight(Effect.fail(error))),
+          [SANDBOX_PREFLIGHT_ERROR_TAG]: (error) =>
+            cleanupFailedSandboxUp({
+              error,
+              startedRecord,
+              registeredAliases,
+              composeEngine,
+              portlessService,
+              sandboxRegistry,
+            }).pipe(Effect.zipRight(Effect.fail(error))),
+          [SANDBOX_REGISTRY_ERROR_TAG]: (error) =>
+            cleanupFailedSandboxUp({
+              error,
+              startedRecord,
+              registeredAliases,
+              composeEngine,
+              portlessService,
+              sandboxRegistry,
+            }).pipe(Effect.zipRight(Effect.fail(error))),
+        })
+      );
+    }),
+    down: Effect.fn("SandboxRuntime.down")(function* (
+      options: SandboxCommandOptions = {}
+    ) {
+      const record = yield* resolveSandboxRecord(options);
+
+      yield* composeEngine.stopStack(record);
+      yield* removeAliasesBestEffort({
+        sandboxName: record.sandboxName,
+        ports: record.ports,
+        portlessService,
+        operation: "sandbox shutdown",
       });
-    },
-    down: async () => {
-      const context = await worktreeResolver.resolveCurrent();
-      const record = await sandboxRegistry.findByWorktree(context.worktreePath);
-      if (!record) {
-        const identity = sandboxIdResolver.resolve(
-          context.repoRoot,
-          context.worktreePath,
-          new Set()
-        );
-        await portlessService.removeAliasesBySlug(identity.hostnameSlug);
-        await stopSandboxResources(identity.sandboxId);
+      yield* sandboxRegistry.remove(record.sandboxName);
 
-        return makeEphemeralSandboxRecord({
-          sandboxId: identity.sandboxId,
-          repoRoot: context.repoRoot,
-          worktreePath: context.worktreePath,
-          hostnameSlug: identity.hostnameSlug,
-          status: "stopped",
-        });
-      }
-
-      await portlessService.removeAliases(record);
-      await dockerEngine.stopStack(record);
-      await sandboxRegistry.removeByWorktree(context.worktreePath);
-
-      return record;
-    },
-    status: async () => {
-      const context = await worktreeResolver.resolveCurrent();
-      const record = await sandboxRegistry.findByWorktree(context.worktreePath);
-      if (!record) {
-        throw new SandboxNotFoundError({
-          worktreePath: context.worktreePath,
-          message: "No sandbox is registered for this worktree",
-        });
-      }
-
-      const containerNames = await dockerEngine.runningContainerNames();
+      return {
+        ...record,
+        status: "stopped" as const,
+      };
+    }),
+    status: Effect.fn("SandboxRuntime.status")(function* (
+      options: SandboxCommandOptions = {}
+    ) {
+      const record = yield* resolveSandboxRecord(options);
+      const servicesPresent = yield* composeEngine.runningServices(record);
+      const [appOpen, apiOpen, postgresOpen] = yield* Effect.all(
+        [
+          checkLocalPortOpen(record.ports.app),
+          checkLocalPortOpen(record.ports.api),
+          checkLocalPortOpen(record.ports.postgres),
+        ],
+        { concurrency: "unbounded" }
+      );
       const portsInUse = new Set<number>();
-      if (await isPortOpen(record.ports.app)) {
+
+      if (appOpen) {
         portsInUse.add(record.ports.app);
       }
-      if (await isPortOpen(record.ports.api)) {
+      if (apiOpen) {
         portsInUse.add(record.ports.api);
       }
-      if (await isPortOpen(record.ports.postgres)) {
+      if (postgresOpen) {
         portsInUse.add(record.ports.postgres);
       }
 
       const reconciled = reconcileSandboxRecord(record, {
-        containersPresent: containerNames,
+        servicesPresent,
         portsInUse,
         now: new Date().toISOString(),
       });
-      await sandboxRegistry.upsert(reconciled);
+      yield* sandboxRegistry.upsert(reconciled);
 
       return {
         record: reconciled,
-        urls: buildSandboxUrls(
-          {
-            hostnameSlug: reconciled.hostnameSlug,
-            ports: reconciled.ports,
-          },
-          {
-            aliasesHealthy: true,
-            proxyPort: SANDBOX_PROXY_PORT,
-          }
-        ),
+        urls: buildRecordUrls(reconciled),
       };
-    },
-    list: async () => {
-      const records = await sandboxRegistry.list();
+    }),
+    list: Effect.fn("SandboxRuntime.list")(function* () {
+      const records = yield* sandboxRegistry.list();
       return {
         entries: records.map((record) => ({
           record,
-          urls: buildSandboxUrls(
-            {
-              hostnameSlug: record.hostnameSlug,
-              ports: record.ports,
-            },
-            {
-              aliasesHealthy: true,
-              proxyPort: SANDBOX_PROXY_PORT,
-            }
-          ),
+          urls: buildRecordUrls(record),
         })),
       };
-    },
-    logs: async () => {
-      const context = await worktreeResolver.resolveCurrent();
-      const record = await sandboxRegistry.findByWorktree(context.worktreePath);
-      if (!record) {
-        throw new SandboxNotFoundError({
-          worktreePath: context.worktreePath,
-          message: "No sandbox is registered for this worktree",
-        });
-      }
-
+    }),
+    logs: Effect.fn("SandboxRuntime.logs")(function* (
+      options: SandboxLogsOptions = {}
+    ) {
+      const record = yield* resolveSandboxRecord(options);
       return {
-        content: await dockerEngine.collectLogs(record),
+        content: yield* composeEngine.collectLogs(record, options.service),
       };
-    },
-    url: () => lifecycle.status(),
+    }),
+    url: (options = {}) => lifecycle.status(options),
   };
 
   return {
     worktreeResolver,
-    sandboxIdResolver,
     sandboxRegistry,
-    dockerEngine,
+    composeEngine,
     portAllocator,
     portlessService,
     healthChecker,
     lifecycle,
   };
-}
 
-async function exec<A>(
-  effect: Effect.Effect<A, SandboxPreflightError | Error | unknown, never>
-): Promise<A> {
-  try {
-    return await Effect.runPromise(effect);
-  } catch (error) {
-    throw error instanceof Error
-      ? error
-      : toPreflightError(error, "Sandbox command failed");
+  function resolveSandboxRecord(
+    options: SandboxCommandOptions
+  ): SandboxRuntimeEffect<SandboxRegistryRecord> {
+    if (options.explicitSandboxName) {
+      return sandboxRegistry.list().pipe(
+        Effect.flatMap((records) =>
+          selectSandboxRecord({
+            explicitSandboxName: options.explicitSandboxName,
+            worktreePath: process.cwd(),
+            records,
+          })
+        )
+      );
+    }
+
+    return Effect.gen(function* () {
+      const context = yield* worktreeResolver.resolveCurrent();
+      return yield* selectSandboxRecord({
+        explicitSandboxName: options.explicitSandboxName,
+        worktreePath: context.worktreePath,
+        records: yield* sandboxRegistry.list(),
+      });
+    });
   }
 }
 
-function getRegistryPath(): string {
-  return path.join(os.homedir(), ".task-tracker", "sandboxes", "registry.json");
+export function selectSandboxRecord(input: {
+  readonly explicitSandboxName?: SandboxName;
+  readonly worktreePath: string;
+  readonly records: readonly SandboxRegistryRecord[];
+}): Effect.Effect<SandboxRegistryRecord, SandboxNotFoundError, never> {
+  if (input.explicitSandboxName) {
+    const byName = input.records.find(
+      (record) => record.sandboxName === input.explicitSandboxName
+    );
+
+    return byName
+      ? Effect.succeed(byName)
+      : Effect.fail(
+          new SandboxNotFoundError({
+            worktreePath: input.worktreePath,
+            message: `No sandbox is registered for name ${input.explicitSandboxName}`,
+          })
+        );
+  }
+
+  const byWorktree = input.records
+    .filter((record) => record.worktreePath === input.worktreePath)
+    .toSorted((left, right) =>
+      right.timestamps.updatedAt.localeCompare(left.timestamps.updatedAt)
+    )
+    .at(0);
+
+  return byWorktree
+    ? Effect.succeed(byWorktree)
+    : Effect.fail(
+        new SandboxNotFoundError({
+          worktreePath: input.worktreePath,
+          message: "No sandbox is registered for this worktree",
+        })
+      );
 }
 
-async function writeRegistryFile(
-  records: readonly SandboxRecord[]
-): Promise<void> {
-  const registryPath = getRegistryPath();
-  await fs.mkdir(path.dirname(registryPath), { recursive: true });
-  await fs.writeFile(
-    registryPath,
-    `${JSON.stringify({ sandboxes: records }, null, 2)}\n`,
-    "utf8"
+export function finalizeSandboxRename(input: {
+  readonly previousRecord: SandboxRegistryRecord;
+  readonly composeEngine: Pick<ComposeEngine, "stopStack">;
+  readonly portlessService: Pick<PortlessService, "removeAliases">;
+  readonly sandboxRegistry: Pick<SandboxRegistry, "remove">;
+}): SandboxRuntimeEffect<void> {
+  return Effect.gen(function* () {
+    yield* removeAliasesBestEffort({
+      sandboxName: input.previousRecord.sandboxName,
+      ports: input.previousRecord.ports,
+      portlessService: input.portlessService,
+      operation: "sandbox rename cleanup",
+    });
+    yield* input.composeEngine.stopStack(input.previousRecord);
+    yield* input.sandboxRegistry.remove(input.previousRecord.sandboxName);
+  });
+}
+
+export function cleanupFailedSandboxUp(input: {
+  readonly error:
+    | SandboxNotFoundError
+    | SandboxPreflightError
+    | SandboxRegistryError;
+  readonly startedRecord?: SandboxRecord;
+  readonly registeredAliases?: RegisteredAliases;
+  readonly composeEngine: Pick<ComposeEngine, "stopStack">;
+  readonly portlessService: Pick<PortlessService, "removeAliases">;
+  readonly sandboxRegistry: Pick<SandboxRegistry, "remove">;
+}): SandboxPreflightEffect<void> {
+  const cleanupSteps: SandboxPreflightEffect<void>[] = [];
+
+  if (input.startedRecord) {
+    const { startedRecord } = input;
+    cleanupSteps.push(input.composeEngine.stopStack(startedRecord));
+    cleanupSteps.push(
+      input.sandboxRegistry
+        .remove(startedRecord.sandboxName)
+        .pipe(
+          Effect.mapError((error) =>
+            toSandboxPreflightError(error, { preserveMessage: true })
+          )
+        )
+    );
+  }
+
+  if (input.registeredAliases) {
+    const { registeredAliases } = input;
+    cleanupSteps.unshift(
+      removeAliasesBestEffort({
+        sandboxName: registeredAliases.sandboxName,
+        ports: registeredAliases.ports,
+        portlessService: input.portlessService,
+        operation: "failed sandbox cleanup",
+      })
+    );
+  }
+
+  return Effect.gen(function* () {
+    const cleanupErrors = yield* Effect.forEach(
+      cleanupSteps,
+      (step) =>
+        step.pipe(
+          Effect.match({
+            onFailure: (cleanupError) =>
+              toSandboxPreflightError(cleanupError, {
+                preserveMessage: true,
+              }).message,
+            onSuccess: () => null,
+          })
+        ),
+      { concurrency: "unbounded" }
+    );
+    const failures = cleanupErrors.filter(
+      (message): message is string => message !== undefined
+    );
+
+    if (failures.length > 0) {
+      yield* Effect.fail(
+        new SandboxPreflightError({
+          message: [
+            input.error.message,
+            "Cleanup also failed:",
+            ...failures.map((message) => `- ${message}`),
+          ].join("\n"),
+        })
+      );
+    }
+  });
+}
+
+function exec<A>(
+  effect: Effect.Effect<A, SandboxPreflightError | Error | unknown, never>
+): SandboxPreflightEffect<A> {
+  return effect.pipe(
+    Effect.mapError((error) =>
+      toPreflightError(error, "Sandbox command failed")
+    )
   );
 }
 
-async function allocateRuntimePort(
+function loadSandboxEnvironmentOrThrow(
+  repoRoot: string
+): SandboxPreflightEffect<SharedSandboxEnvironmentInput> {
+  return loadSandboxSharedEnvironment({
+    repoRoot,
+    processEnv: process.env,
+  }).pipe(
+    Effect.mapError((error) =>
+      error instanceof SandboxEnvironmentError
+        ? toSandboxPreflightError(error, { preserveMessage: true })
+        : toPreflightError(error, "Sandbox shared environment is invalid")
+    )
+  );
+}
+
+export function ensureSandboxProxyHealthy(input: {
+  readonly portlessService: Pick<PortlessService, "ensureProxyRunning">;
+}): SandboxPreflightEffect<boolean> {
+  return input.portlessService.ensureProxyRunning().pipe(
+    Effect.as(true),
+    Effect.tapError((error) =>
+      Effect.logWarning("Sandbox portless proxy unavailable").pipe(
+        Effect.annotateLogs({
+          causeTag: error._tag,
+          message: error.message,
+        })
+      )
+    ),
+    Effect.orElseSucceed(() => false)
+  );
+}
+
+export function removeAliasesBestEffort(input: {
+  readonly sandboxName: SandboxName;
+  readonly ports: SandboxPorts;
+  readonly portlessService: Pick<PortlessService, "removeAliases">;
+  readonly operation: string;
+}): Effect.Effect<void, never, never> {
+  return input.portlessService
+    .removeAliases(input.sandboxName, input.ports)
+    .pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning("Sandbox alias cleanup failed").pipe(
+          Effect.annotateLogs({
+            sandboxName: input.sandboxName,
+            operation: input.operation,
+            causeTag: error._tag,
+            message: error.message,
+          })
+        )
+      ),
+      Effect.ignore
+    );
+}
+
+function allocateRuntimePort(
   service: keyof SandboxPorts,
   existing: SandboxPorts | undefined,
   reservedPorts: ReadonlySet<number>,
   allocated: Set<number>
-): Promise<number> {
-  const existingPort = existing?.[service];
-  if (
-    existingPort !== undefined &&
-    !reservedPorts.has(existingPort) &&
-    !allocated.has(existingPort)
-  ) {
-    allocated.add(existingPort);
-    return existingPort;
-  }
-
-  const protectedExistingPorts = new Set<number>();
-  for (const [otherService, port] of Object.entries(existing ?? {})) {
+): SandboxPreflightEffect<number> {
+  return Effect.gen(function* () {
+    const existingPort = existing?.[service];
     if (
-      otherService !== service &&
-      port !== undefined &&
-      !reservedPorts.has(port)
+      existingPort !== undefined &&
+      !reservedPorts.has(existingPort) &&
+      !allocated.has(existingPort)
     ) {
-      protectedExistingPorts.add(port);
+      allocated.add(existingPort);
+      return existingPort;
     }
-  }
 
-  let port = DEFAULT_PORTS[service];
-  while (
-    reservedPorts.has(port) ||
-    protectedExistingPorts.has(port) ||
-    allocated.has(port) ||
-    !(await isPortAvailable(port))
-  ) {
-    port += 1;
-    if (port > DEFAULT_PORTS[service] + 100) {
-      throw new SandboxPreflightError({
-        message: `Could not allocate a free ${service} port in the sandbox range`,
-      });
+    const protectedExistingPorts = new Set<number>();
+    for (const [otherService, port] of Object.entries(existing ?? {})) {
+      if (
+        otherService !== service &&
+        port !== undefined &&
+        !reservedPorts.has(port)
+      ) {
+        protectedExistingPorts.add(port);
+      }
     }
-  }
 
-  allocated.add(port);
-  return port;
+    let port = DEFAULT_PORTS[service];
+    while (
+      reservedPorts.has(port) ||
+      protectedExistingPorts.has(port) ||
+      allocated.has(port) ||
+      !(yield* checkLocalPortAvailable(port))
+    ) {
+      port += 1;
+      if (port > DEFAULT_PORTS[service] + 100) {
+        yield* Effect.fail(
+          new SandboxPreflightError({
+            message: `Could not allocate a free ${service} port in the sandbox range`,
+          })
+        );
+      }
+    }
+
+    allocated.add(port);
+    return port;
+  });
 }
 
-async function ensureDockerNetwork(name: string): Promise<void> {
-  const inspect = await exec(
-    runCommand("docker", ["network", "inspect", name], { allowNonZero: true })
+export function waitForSandboxServicesReady(options: {
+  readonly timeoutMs: number;
+  readonly intervalMs: number;
+  readonly wait: (durationMs: number) => SandboxPreflightEffect<void>;
+  readonly onReadinessChanged?: (
+    readiness: SandboxStartupReadiness
+  ) => Effect.Effect<void, never, never>;
+  readonly createTimeoutError?: (readiness: {
+    postgres: boolean;
+    api: boolean;
+    app: boolean;
+  }) => SandboxPreflightError;
+  readonly checkPostgres: () => Effect.Effect<boolean, never, never>;
+  readonly checkApi: () => Effect.Effect<boolean, never, never>;
+  readonly checkApp: () => Effect.Effect<boolean, never, never>;
+}): SandboxPreflightEffect<void> {
+  const poll = (
+    remainingMs: number,
+    previousReadiness?: SandboxStartupReadiness
+  ): SandboxPreflightEffect<{
+    readonly postgres: boolean;
+    readonly api: boolean;
+    readonly app: boolean;
+  }> =>
+    Effect.gen(function* () {
+      const [postgresReady, apiReady, appReady] = yield* Effect.all(
+        [options.checkPostgres(), options.checkApi(), options.checkApp()],
+        { concurrency: "unbounded" }
+      );
+      const readiness = {
+        postgres: postgresReady,
+        api: apiReady,
+        app: appReady,
+      };
+
+      if (
+        options.onReadinessChanged &&
+        !sandboxStartupReadinessEquals(previousReadiness, readiness)
+      ) {
+        yield* options.onReadinessChanged(readiness);
+      }
+
+      if (postgresReady && apiReady && appReady) {
+        return readiness;
+      }
+
+      const nextRemainingMs = remainingMs - options.intervalMs;
+      if (nextRemainingMs <= 0) {
+        yield* Effect.fail(
+          options.createTimeoutError?.(readiness) ??
+            new SandboxPreflightError({
+              message:
+                "Sandbox compose services did not become healthy within 180 seconds",
+            })
+        );
+      }
+
+      yield* options.wait(options.intervalMs);
+      return yield* poll(nextRemainingMs, readiness);
+    });
+
+  return poll(options.timeoutMs).pipe(Effect.asVoid);
+}
+
+export function resolveRepoRootFromGitPaths(
+  worktreePath: string,
+  gitCommonDir: string
+): string {
+  const resolvedCommonDir = path.resolve(worktreePath, gitCommonDir);
+  return path.basename(resolvedCommonDir) === ".git"
+    ? path.dirname(resolvedCommonDir)
+    : resolvedCommonDir;
+}
+
+function checkLocalPortOpen(
+  port: number
+): Effect.Effect<boolean, never, never> {
+  return Effect.tryPromise({
+    try: () => isPortOpen(port),
+    catch: () => false,
+  }).pipe(Effect.orElseSucceed(() => false));
+}
+
+function checkLocalPortAvailable(
+  port: number
+): SandboxPreflightEffect<boolean> {
+  return tryPromisePreflight(
+    `Failed to check whether port ${port} is available`,
+    () => isPortAvailable(port)
   );
-  if (inspect.exitCode !== 0) {
-    await exec(runCommand("docker", ["network", "create", name]));
-  }
 }
 
-async function ensureDockerVolume(name: string): Promise<void> {
-  await exec(runCommand("docker", ["volume", "create", name]));
+function checkHttpHealth(
+  port: number,
+  service: "app" | "api",
+  sandboxId: SandboxRecord["sandboxId"]
+): Effect.Effect<boolean, never, never> {
+  return Effect.tryPromise({
+    try: () =>
+      fetch(`http://127.0.0.1:${port}/health`, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(2000),
+      }),
+    catch: (error) => error,
+  }).pipe(
+    Effect.catchAll(() => Effect.succeed<Response | false>(false)),
+    Effect.flatMap((responseOrFalse) => {
+      if (responseOrFalse === false || !responseOrFalse.ok) {
+        return Effect.succeed(false);
+      }
+
+      return Effect.tryPromise({
+        try: () => responseOrFalse.json(),
+        catch: () => false,
+      }).pipe(
+        Effect.flatMap((payloadOrFalse) =>
+          payloadOrFalse === false
+            ? Effect.succeed(false)
+            : Schema.decodeUnknown(HealthPayload)(payloadOrFalse).pipe(
+                Effect.map(
+                  (payload) =>
+                    payload.ok === true &&
+                    payload.service === service &&
+                    payload.sandboxId === sandboxId
+                ),
+                Effect.orElseSucceed(() => false)
+              )
+        )
+      );
+    }),
+    Effect.orElseSucceed(() => false)
+  );
 }
 
-async function ensurePostgresContainer(
+function toSandboxRecord(
+  spec: SandboxRuntimeSpec,
+  context: WorktreeContext,
+  existingRecord: SandboxRegistryRecord | undefined
+): SandboxRecord {
+  const aliasesHealthy =
+    spec.overrides.BETTER_AUTH_BASE_URL.startsWith("https://");
+  const now = new Date().toISOString();
+
+  return {
+    sandboxId: spec.sandboxId,
+    sandboxName: spec.sandboxName,
+    composeProjectName: spec.composeProjectName,
+    repoRoot: context.repoRoot,
+    worktreePath: context.worktreePath,
+    hostnameSlug: spec.hostnameSlug,
+    betterAuthSecret: spec.overrides.BETTER_AUTH_SECRET,
+    runtimeAssets: spec.runtimeAssets,
+    aliasesHealthy,
+    status: aliasesHealthy ? "ready" : "degraded",
+    ports: spec.ports,
+    timestamps: {
+      createdAt: existingRecord?.timestamps.createdAt ?? now,
+      updatedAt: now,
+    },
+    missingResources: [],
+  };
+}
+
+function composeArgs(
+  record: Pick<SandboxRecord, "composeProjectName" | "sandboxName">,
+  subcommand: readonly string[]
+): string[] {
+  return buildComposeCommandArgs({
+    composeFile: SANDBOX_COMPOSE_FILE,
+    composeEnvFile: getComposeEnvFilePath(record.sandboxName),
+    composeProjectName: record.composeProjectName,
+    subcommand,
+  });
+}
+
+function ensureComposeEnvironmentFile(
+  record: SandboxRecord
+): SandboxPreflightEffect<void> {
+  const composeEnvFile = getComposeEnvFilePath(record.sandboxName);
+  return Effect.tryPromise({
+    try: () => fs.access(composeEnvFile),
+    catch: (error) => error,
+  }).pipe(
+    Effect.catchAll((error) =>
+      isMissingFileError(error)
+        ? writeComposeEnvironmentFile(record, {
+            AUTH_EMAIL_FROM: "",
+            AUTH_EMAIL_FROM_NAME: "",
+            RESEND_API_KEY: "",
+          })
+        : Effect.fail(
+            toPreflightError(
+              error,
+              `Failed to access compose environment file for ${record.sandboxName}`
+            )
+          )
+    ),
+    Effect.asVoid
+  );
+}
+
+function writeComposeEnvironmentFile(
   record: SandboxRecord,
-  resourceNames: ReturnType<typeof makeSandboxResourceNames>
-): Promise<void> {
-  const inspect = await exec(
-    runCommand(
-      "docker",
-      ["container", "inspect", resourceNames.postgresContainer],
-      { allowNonZero: true }
-    )
-  );
-  if (inspect.exitCode === 0) {
-    const [container] = JSON.parse(inspect.stdout) as readonly {
-      readonly HostConfig?: {
-        readonly PortBindings?: Record<
-          string,
-          readonly { readonly HostPort?: string }[] | null
-        >;
-      };
-      readonly NetworkSettings?: {
-        readonly Networks?: Record<string, unknown>;
-      };
-    }[];
+  sharedEnvironment: {
+    readonly AUTH_EMAIL_FROM: string;
+    readonly AUTH_EMAIL_FROM_NAME: string;
+    readonly RESEND_API_KEY: string;
+  }
+): SandboxPreflightEffect<void> {
+  const composeEnvFile = getComposeEnvFilePath(record.sandboxName);
+  return Effect.gen(function* () {
+    yield* writeSandboxStateFile(
+      composeEnvFile,
+      renderComposeEnvironmentFile({
+        repoRoot: record.repoRoot,
+        worktreePath: record.worktreePath,
+        proxyPort: SANDBOX_PROXY_PORT,
+        overrides: buildComposeFallbackEnvironmentOverrides(
+          record,
+          sharedEnvironment
+        ),
+      })
+    ).pipe(
+      Effect.mapError((error) =>
+        toSandboxPreflightError(error, { preserveMessage: true })
+      )
+    );
+  });
+}
 
-    const hostPort =
-      container?.HostConfig?.PortBindings?.["5432/tcp"]?.[0]?.HostPort;
-    const attachedToSandboxNetwork = Boolean(
-      container?.NetworkSettings?.Networks?.[resourceNames.network]
+export function buildComposeFallbackEnvironmentOverrides(
+  record: SandboxRecord,
+  sharedEnvironment: {
+    readonly AUTH_EMAIL_FROM: string;
+    readonly AUTH_EMAIL_FROM_NAME: string;
+    readonly RESEND_API_KEY: string;
+  }
+): Record<string, string> {
+  const urls = buildRecordUrls(record);
+
+  return {
+    API_HOST_PORT: String(record.ports.api),
+    APP_HOST_PORT: String(record.ports.app),
+    AUTH_EMAIL_FROM: sharedEnvironment.AUTH_EMAIL_FROM,
+    AUTH_EMAIL_FROM_NAME: sharedEnvironment.AUTH_EMAIL_FROM_NAME,
+    AUTH_ORIGIN: `http://api:${record.ports.api}`,
+    BETTER_AUTH_BASE_URL: urls.api,
+    BETTER_AUTH_SECRET: record.betterAuthSecret,
+    DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/task_tracker",
+    HOST: "0.0.0.0",
+    PORT: String(record.ports.api),
+    POSTGRES_HOST_PORT: String(record.ports.postgres),
+    RESEND_API_KEY: sharedEnvironment.RESEND_API_KEY,
+    SANDBOX_ID: record.sandboxId,
+    SANDBOX_DEV_IMAGE: record.runtimeAssets.devImage,
+    SANDBOX_NODE_MODULES_VOLUME: record.runtimeAssets.nodeModulesVolume,
+    SANDBOX_NAME: record.sandboxName,
+    SANDBOX_PNPM_STORE_VOLUME: record.runtimeAssets.pnpmStoreVolume,
+    TASK_TRACKER_SANDBOX: "1",
+    VITE_AUTH_ORIGIN: urls.api,
+  };
+}
+
+function writeComposeEnvironmentFileFromSpec(
+  spec: Pick<SandboxRuntimeSpec, "sandboxName" | "overrides">,
+  context: WorktreeContext
+): SandboxPreflightEffect<void> {
+  const composeEnvFile = getComposeEnvFilePath(spec.sandboxName);
+  return Effect.gen(function* () {
+    yield* ensureSandboxStateDir(path.dirname(composeEnvFile)).pipe(
+      Effect.mapError((error) =>
+        toSandboxPreflightError(error, { preserveMessage: true })
+      )
+    );
+    yield* writeSandboxStateFile(
+      composeEnvFile,
+      renderComposeEnvironmentFile({
+        repoRoot: context.repoRoot,
+        worktreePath: context.worktreePath,
+        proxyPort: SANDBOX_PROXY_PORT,
+        overrides: spec.overrides,
+      })
+    ).pipe(
+      Effect.mapError((error) =>
+        toSandboxPreflightError(error, { preserveMessage: true })
+      )
+    );
+  });
+}
+
+function buildRecordUrls(
+  record: Pick<SandboxRecord, "hostnameSlug" | "ports" | "aliasesHealthy">
+): SandboxUrls {
+  return buildSandboxUrls(
+    {
+      hostnameSlug: record.hostnameSlug,
+      ports: record.ports,
+    },
+    {
+      aliasesHealthy: record.aliasesHealthy,
+      proxyPort: SANDBOX_PROXY_PORT,
+    }
+  );
+}
+
+function ensureSandboxDevImage(
+  record: Pick<SandboxRecord, "runtimeAssets" | "worktreePath">,
+  options: {
+    readonly forceInspect?: boolean;
+  } = {}
+): SandboxPreflightEffect<"marker" | "inspect"> {
+  const dockerfilePath = path.join(
+    record.worktreePath,
+    "packages",
+    "sandbox-cli",
+    "docker",
+    "sandbox-dev.Dockerfile"
+  );
+
+  return Effect.gen(function* () {
+    const markerPath = getSandboxDevImageMarkerPath(
+      record.runtimeAssets.devImage
     );
 
-    if (
-      hostPort === String(record.ports.postgres) &&
-      attachedToSandboxNetwork
-    ) {
-      await exec(
-        runCommand("docker", ["start", resourceNames.postgresContainer], {
+    if (!options.forceInspect) {
+      const markerExists = yield* checkFileExists(markerPath);
+
+      if (markerExists) {
+        return "marker" as const;
+      }
+    }
+
+    const inspectResult = yield* exec(
+      runCommand(
+        "docker",
+        ["image", "inspect", record.runtimeAssets.devImage],
+        {
           allowNonZero: true,
-        })
-      );
+        }
+      )
+    );
+
+    if (inspectResult.exitCode === 0) {
+      yield* rememberSandboxDevImage(markerPath, record.runtimeAssets.devImage);
+      return "inspect" as const;
+    }
+
+    yield* exec(
+      runCommand("docker", [
+        "build",
+        "--file",
+        dockerfilePath,
+        "--tag",
+        record.runtimeAssets.devImage,
+        record.worktreePath,
+      ])
+    );
+    yield* rememberSandboxDevImage(markerPath, record.runtimeAssets.devImage);
+    return "inspect" as const;
+  }).pipe(
+    Effect.tap(() =>
+      Effect.annotateCurrentSpan(
+        "sandboxDevImage",
+        record.runtimeAssets.devImage
+      )
+    )
+  );
+}
+
+function ensureSandboxSharedVolumes(
+  runtimeAssets: Pick<
+    SandboxRuntimeAssets,
+    "nodeModulesVolume" | "pnpmStoreVolume"
+  >
+): SandboxPreflightEffect<void> {
+  return Effect.all(
+    [
+      ensureDockerVolume(runtimeAssets.nodeModulesVolume),
+      ensureDockerVolume(runtimeAssets.pnpmStoreVolume),
+    ],
+    {
+      concurrency: "unbounded",
+      discard: true,
+    }
+  );
+}
+
+function ensureDockerVolume(
+  volumeName: SandboxDockerVolumeName
+): SandboxPreflightEffect<void> {
+  return Effect.gen(function* () {
+    yield* Effect.annotateCurrentSpan("dockerVolume", volumeName);
+
+    const inspectResult = yield* exec(
+      runCommand("docker", ["volume", "inspect", volumeName], {
+        allowNonZero: true,
+      })
+    );
+
+    if (inspectResult.exitCode === 0) {
       return;
     }
 
-    await removeContainer(resourceNames.postgresContainer);
-  }
-
-  await exec(
-    runCommand("docker", [
-      "run",
-      "-d",
-      "--name",
-      resourceNames.postgresContainer,
-      "--network",
-      resourceNames.network,
-      "-p",
-      `127.0.0.1:${record.ports.postgres}:5432`,
-      "-e",
-      `POSTGRES_DB=${SANDBOX_DEFAULT_DB}`,
-      "-e",
-      `POSTGRES_PASSWORD=${SANDBOX_POSTGRES_PASSWORD}`,
-      "-e",
-      `POSTGRES_USER=${SANDBOX_POSTGRES_USER}`,
-      "-v",
-      `${resourceNames.postgresVolume}:/var/lib/postgresql/data`,
-      "postgres:16-alpine",
-    ])
-  );
-}
-
-interface RecreateNodeServiceContainerOptions {
-  readonly containerName: string;
-  readonly network: string;
-  readonly publishedPort: number;
-  readonly image: string;
-  readonly worktreePath: string;
-  readonly nodeModulesVolume: string;
-  readonly pnpmStoreVolume: string;
-  readonly authOrigin: string;
-  readonly serverAuthOrigin: string;
-  readonly filter: "app" | "api";
-  readonly sandboxId: string;
-  readonly databaseUrl: string;
-  readonly betterAuthSecret?: string;
-}
-
-export function makeNodeServiceEnvironmentEntries(options: {
-  readonly authOrigin: string;
-  readonly databaseUrl: string;
-  readonly filter: "app" | "api";
-  readonly publishedPort: number;
-  readonly serverAuthOrigin: string;
-  readonly sandboxId: string;
-  readonly betterAuthSecret?: string;
-}): string[] {
-  const authEmailFrom = process.env.AUTH_EMAIL_FROM ?? DEFAULT_AUTH_EMAIL_FROM;
-  const authEmailFromName =
-    process.env.AUTH_EMAIL_FROM_NAME ?? DEFAULT_AUTH_EMAIL_FROM_NAME;
-  const resendApiKey = process.env.RESEND_API_KEY ?? DEFAULT_RESEND_API_KEY;
-
-  return [
-    "HOST=0.0.0.0",
-    `PORT=${options.publishedPort}`,
-    `SANDBOX_ID=${options.sandboxId}`,
-    "TASK_TRACKER_SANDBOX=1",
-    `DATABASE_URL=${options.databaseUrl}`,
-    ...(options.filter === "app"
-      ? [
-          `AUTH_ORIGIN=${options.serverAuthOrigin}`,
-          `VITE_AUTH_ORIGIN=${options.authOrigin}`,
-        ]
-      : []),
-    ...(options.filter === "api"
-      ? [
-          `AUTH_EMAIL_FROM=${authEmailFrom}`,
-          `AUTH_EMAIL_FROM_NAME=${authEmailFromName}`,
-          ...(options.betterAuthSecret
-            ? [`BETTER_AUTH_SECRET=${options.betterAuthSecret}`]
-            : []),
-          `BETTER_AUTH_BASE_URL=${options.authOrigin}`,
-          `RESEND_API_KEY=${resendApiKey}`,
-        ]
-      : []),
-    "PNPM_STORE_DIR=/pnpm/store",
-  ];
-}
-
-async function recreateNodeServiceContainer(
-  options: RecreateNodeServiceContainerOptions
-): Promise<void> {
-  const environmentEntries = makeNodeServiceEnvironmentEntries({
-    authOrigin: options.authOrigin,
-    databaseUrl: options.databaseUrl,
-    filter: options.filter,
-    publishedPort: options.publishedPort,
-    serverAuthOrigin: options.serverAuthOrigin,
-    sandboxId: options.sandboxId,
-    betterAuthSecret: options.betterAuthSecret,
+    yield* exec(runCommand("docker", ["volume", "create", volumeName]));
   });
+}
 
-  await removeContainer(options.containerName);
-  await exec(
-    runCommand("docker", [
-      "run",
-      "-d",
-      "--name",
-      options.containerName,
-      "--network",
-      options.network,
-      "-p",
-      `127.0.0.1:${options.publishedPort}:${options.publishedPort}`,
-      ...environmentEntries.flatMap((entry) => ["-e", entry]),
-      "-v",
-      `${options.worktreePath}:/workspace`,
-      "-v",
-      `${options.nodeModulesVolume}:/workspace/node_modules`,
-      "-v",
-      `${options.pnpmStoreVolume}:/pnpm/store`,
-      "-w",
-      "/workspace",
-      options.image,
-      options.filter,
-    ])
+function getSandboxDevImageMarkerPath(devImage: string): string {
+  const imageHash = createHash("sha256").update(devImage).digest("hex");
+
+  return path.join(
+    getSandboxStateRoot(),
+    "runtime-assets",
+    "images",
+    `${imageHash}.marker`
   );
+}
+
+function rememberSandboxDevImage(
+  markerPath: string,
+  devImage: string
+): SandboxPreflightEffect<void> {
+  return writeSandboxStateFile(markerPath, `${devImage}\n`).pipe(
+    Effect.mapError((error) =>
+      toSandboxPreflightError(error, { preserveMessage: true })
+    )
+  );
+}
+
+function checkFileExists(
+  filePath: string
+): Effect.Effect<boolean, never, never> {
+  return Effect.tryPromise({
+    try: () => fs.access(filePath),
+    catch: (error) => error,
+  }).pipe(
+    Effect.map(() => true),
+    Effect.catchAll(() => Effect.succeed(false))
+  );
+}
+
+function isMissingImageError(error: SandboxPreflightError): boolean {
+  const commandOutput = [error.message, error.stderr]
+    .filter(Boolean)
+    .join("\n");
+
+  return /no such image|pull access denied|not found/i.test(commandOutput);
 }
 
 function makeSandboxBetterAuthSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-function makeSandboxAuthOrigin(options: {
-  readonly hostnameSlug: string;
-  readonly publishedPort: number;
-  readonly aliasesHealthy: boolean;
-}): string {
-  return options.aliasesHealthy
-    ? `https://${options.hostnameSlug}.api.task-tracker.localhost:${SANDBOX_PROXY_PORT}`
-    : `http://127.0.0.1:${options.publishedPort}`;
+function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
-function makeSandboxServerAuthOrigin(options: {
-  readonly apiContainerName: string;
-  readonly publishedPort: number;
-}): string {
-  return `http://${options.apiContainerName}:${options.publishedPort}`;
-}
-
-async function removeContainer(name: string): Promise<void> {
-  await exec(runCommand("docker", ["rm", "-f", name], { allowNonZero: true }));
-}
-
-async function stopSandboxResources(sandboxId: string): Promise<void> {
-  const resourceNames = makeSandboxResourceNames(sandboxId);
-  await removeContainer(resourceNames.appContainer);
-  await removeContainer(resourceNames.apiContainer);
-  await removeContainer(resourceNames.postgresContainer);
-  await exec(
-    runCommand("docker", ["network", "rm", resourceNames.network], {
-      allowNonZero: true,
-    })
-  );
-}
-
-async function collectContainerLogs(
-  label: string,
-  containerName: string
-): Promise<string> {
-  const result = await exec(
-    runCommand("docker", ["logs", "--tail", "200", containerName], {
-      allowNonZero: true,
-    })
-  );
-  const content = [result.stdout.trim(), result.stderr.trim()]
-    .filter(Boolean)
-    .join("\n");
-  return `## ${label}\n${content || "(no logs available)"}`;
-}
-
-export async function waitForSandboxServicesReady(options: {
-  readonly timeoutMs: number;
-  readonly intervalMs: number;
-  readonly wait: (durationMs: number) => Promise<void>;
-  readonly createTimeoutError?: (
-    readiness: SandboxServiceReadiness
-  ) => SandboxPreflightError;
-  readonly checkPostgres: () => Promise<boolean>;
-  readonly checkApi: () => Promise<boolean>;
-  readonly checkApp: () => Promise<boolean>;
-}): Promise<void> {
-  let remainingMs = options.timeoutMs;
-  let readiness: SandboxServiceReadiness = {
-    postgres: false,
-    api: false,
-    app: false,
-  };
-
-  while (remainingMs > 0) {
-    const [postgresReady, apiReady, appReady] = await Promise.all([
-      options.checkPostgres(),
-      options.checkApi(),
-      options.checkApp(),
-    ]);
-
-    readiness = {
-      postgres: postgresReady,
-      api: apiReady,
-      app: appReady,
-    };
-
-    if (postgresReady && apiReady && appReady) {
-      return;
-    }
-
-    remainingMs -= options.intervalMs;
-    if (remainingMs <= 0) {
-      break;
-    }
-
-    await options.wait(options.intervalMs);
-  }
-
-  throw (
-    options.createTimeoutError?.(readiness) ??
-    new SandboxPreflightError({
-      message:
-        "Sandbox containers started but did not become healthy within 180 seconds",
-    })
-  );
-}
-
-async function checkHttpHealth(
-  port: number,
-  service: "app" | "api",
-  sandboxId: string
-): Promise<boolean> {
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}/health`, {
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(2000),
-    });
-    if (!response.ok) {
-      return false;
-    }
-
-    const body = (await response.json()) as {
-      service?: string;
-      sandboxId?: string;
-      ok?: boolean;
-    };
-    return (
-      body.ok === true &&
-      body.service === service &&
-      body.sandboxId === sandboxId
-    );
-  } catch {
-    return false;
-  }
+function tryPromisePreflight<A>(
+  message: string,
+  tryFn: () => Promise<A>
+): SandboxPreflightEffect<A> {
+  return Effect.tryPromise({
+    try: tryFn,
+    catch: (error) => toPreflightError(error, message),
+  });
 }
 
 function toPreflightError(
   error: unknown,
-  fallback: string
+  message: string
 ): SandboxPreflightError {
-  return new SandboxPreflightError({
-    message: error instanceof Error ? error.message : fallback,
-  });
-}
-
-interface SandboxServiceReadiness {
-  readonly postgres: boolean;
-  readonly api: boolean;
-  readonly app: boolean;
-}
-
-function makeEphemeralSandboxRecord(input: {
-  readonly sandboxId: string;
-  readonly repoRoot: string;
-  readonly worktreePath: string;
-  readonly hostnameSlug: string;
-  readonly status: SandboxRecord["status"];
-}): SandboxRecord {
-  const resourceNames = makeSandboxResourceNames(input.sandboxId);
-  const now = new Date().toISOString();
-
-  return {
-    sandboxId: input.sandboxId,
-    repoRoot: input.repoRoot,
-    worktreePath: input.worktreePath,
-    hostnameSlug: input.hostnameSlug,
-    status: input.status,
-    containers: {
-      app: resourceNames.appContainer,
-      api: resourceNames.apiContainer,
-      postgres: resourceNames.postgresContainer,
-    },
-    ports: DEFAULT_PORTS,
-    hostnames: {
-      app: `${input.hostnameSlug}.app.task-tracker.localhost`,
-      api: `${input.hostnameSlug}.api.task-tracker.localhost`,
-    },
-    timestamps: {
-      createdAt: now,
-      updatedAt: now,
-    },
-    missingResources: ["app", "api", "postgres"],
-  };
+  return toSandboxPreflightError(error, { message });
 }
