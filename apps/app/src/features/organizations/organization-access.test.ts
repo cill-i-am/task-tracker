@@ -1,9 +1,12 @@
 import { isRedirect } from "@tanstack/react-router";
 
 import {
+  ensureActiveOrganizationId,
+  listOrganizations,
   redirectIfOrganizationReady,
   requireOrganizationAccess,
 } from "./organization-access";
+import type { OrganizationSummary } from "./organization-access";
 
 interface Session {
   session: {
@@ -24,13 +27,17 @@ interface Organization {
 
 const {
   mockedGetServerSession,
-  mockedGetServerOrganizations,
+  mockedListServerOrganizations,
+  mockedGetStrictServerOrganizations,
   mockedGetSession,
   mockedGetClientOrganizations,
   mockedIsServerEnvironment,
 } = vi.hoisted(() => ({
   mockedGetServerSession: vi.fn<() => Promise<Session | null>>(),
-  mockedGetServerOrganizations: vi.fn<() => Promise<Organization[] | null>>(),
+  mockedListServerOrganizations:
+    vi.fn<() => Promise<readonly OrganizationSummary[]>>(),
+  mockedGetStrictServerOrganizations:
+    vi.fn<() => Promise<readonly OrganizationSummary[]>>(),
   mockedGetSession:
     vi.fn<() => Promise<{ data: Session | null; error: Error | null }>>(),
   mockedGetClientOrganizations:
@@ -40,15 +47,25 @@ const {
   mockedIsServerEnvironment: vi.fn<() => boolean>(),
 }));
 
+vi.mock(import("../auth/server-session"), async (importActual) => {
+  const actual = await importActual();
+
+  return {
+    ...actual,
+    getCurrentServerSession:
+      mockedGetServerSession as typeof actual.getCurrentServerSession,
+  };
+});
+
 vi.mock(import("./organization-server"), async (importActual) => {
   const actual = await importActual();
 
   return {
     ...actual,
-    getCurrentServerOrganizationSession:
-      mockedGetServerSession as typeof actual.getCurrentServerOrganizationSession,
+    listCurrentServerOrganizations:
+      mockedListServerOrganizations as typeof actual.listCurrentServerOrganizations,
     getCurrentServerOrganizations:
-      mockedGetServerOrganizations as typeof actual.getCurrentServerOrganizations,
+      mockedGetStrictServerOrganizations as typeof actual.getCurrentServerOrganizations,
   };
 });
 
@@ -77,6 +94,165 @@ describe("organization access helpers", () => {
     vi.clearAllMocks();
   });
 
+  it("lists organizations on the client", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetClientOrganizations.mockResolvedValue({
+      data: [{ id: "org_123", name: "Acme", slug: "acme" }],
+      error: null,
+    });
+
+    await expect(listOrganizations()).resolves.toStrictEqual([
+      { id: "org_123", name: "Acme", slug: "acme" },
+    ]);
+    expect(mockedListServerOrganizations).not.toHaveBeenCalled();
+  }, 1000);
+
+  it("uses the plan-shaped server list helper during SSR", async () => {
+    mockedIsServerEnvironment.mockReturnValue(true);
+    mockedListServerOrganizations.mockResolvedValue([
+      { id: "org_server", name: "Server Org", slug: "server-org" },
+    ]);
+
+    await expect(listOrganizations()).resolves.toStrictEqual([
+      { id: "org_server", name: "Server Org", slug: "server-org" },
+    ]);
+    expect(mockedListServerOrganizations).toHaveBeenCalledOnce();
+    expect(mockedGetStrictServerOrganizations).not.toHaveBeenCalled();
+  }, 1000);
+
+  it("rethrows client organization lookup failures", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetClientOrganizations.mockResolvedValue({
+      data: null,
+      error: new Error("organization endpoint failed"),
+    });
+
+    const failure = await listOrganizations().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain(
+      "organization endpoint failed"
+    );
+  }, 1000);
+
+  it("redirects unauthenticated users to /login from ensureActiveOrganizationId", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetSession.mockResolvedValue({ data: null, error: null });
+
+    const result = ensureActiveOrganizationId();
+
+    await expect(result).rejects.toMatchObject({
+      options: { to: "/login" },
+    });
+    await expect(result).rejects.toSatisfy(isRedirect);
+  }, 1000);
+
+  it("returns active organization id from the current session when available", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetSession.mockResolvedValue({
+      data: {
+        session: { activeOrganizationId: "org_active" },
+        user: {
+          id: "user_123",
+          name: "Taylor Example",
+          email: "taylor@example.com",
+        },
+      },
+      error: null,
+    });
+
+    await expect(ensureActiveOrganizationId()).resolves.toMatchObject({
+      activeOrganizationId: "org_active",
+    });
+    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
+  }, 1000);
+
+  it("falls back to the first organization when there is no active organization", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetSession.mockResolvedValue({
+      data: {
+        session: {},
+        user: {
+          id: "user_123",
+          name: "Taylor Example",
+          email: "taylor@example.com",
+        },
+      },
+      error: null,
+    });
+    mockedGetClientOrganizations.mockResolvedValue({
+      data: [
+        { id: "org_first", name: "First Org", slug: "first-org" },
+        { id: "org_second", name: "Second Org", slug: "second-org" },
+      ],
+      error: null,
+    });
+
+    await expect(ensureActiveOrganizationId()).resolves.toStrictEqual({
+      activeOrganizationId: "org_first",
+      session: {
+        session: {},
+        user: {
+          id: "user_123",
+          name: "Taylor Example",
+          email: "taylor@example.com",
+        },
+      },
+    });
+  }, 1000);
+
+  it("redirects to /create-organization when there are no organizations", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetSession.mockResolvedValue({
+      data: {
+        session: {},
+        user: {
+          id: "user_123",
+          name: "Taylor Example",
+          email: "taylor@example.com",
+        },
+      },
+      error: null,
+    });
+    mockedGetClientOrganizations.mockResolvedValue({
+      data: [],
+      error: null,
+    });
+
+    const result = ensureActiveOrganizationId();
+
+    await expect(result).rejects.toMatchObject({
+      options: { href: "/create-organization" },
+    });
+    await expect(result).rejects.toSatisfy(isRedirect);
+  }, 1000);
+
+  it("rethrows SSR organization lookup failures when list helper returns an ambiguous empty list", async () => {
+    mockedIsServerEnvironment.mockReturnValue(true);
+    mockedGetServerSession.mockResolvedValue({
+      session: {},
+      user: {
+        id: "user_123",
+        name: "Taylor Example",
+        email: "taylor@example.com",
+      },
+    });
+    mockedListServerOrganizations.mockResolvedValue([]);
+    mockedGetStrictServerOrganizations.mockRejectedValue(
+      new Error("upstream unavailable")
+    );
+
+    const failure = await ensureActiveOrganizationId().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBeFalsy();
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("upstream unavailable");
+  }, 1000);
+
   it("redirects authenticated users without organizations to /create-organization", async () => {
     mockedIsServerEnvironment.mockReturnValue(false);
     mockedGetSession.mockResolvedValue({
@@ -101,138 +277,21 @@ describe("organization access helpers", () => {
       options: { href: "/create-organization" },
     });
     await expect(result).rejects.toSatisfy(isRedirect);
-    expect(mockedGetClientOrganizations).toHaveBeenCalledOnce();
   }, 1000);
 
-  it("allows users with an active organization to pass through", async () => {
+  it("redirects unauthenticated users to /login from redirectIfOrganizationReady", async () => {
     mockedIsServerEnvironment.mockReturnValue(false);
-    mockedGetSession.mockResolvedValue({
-      data: {
-        session: {
-          activeOrganizationId: "org_active",
-        },
-        user: {
-          id: "user_123",
-          name: "Taylor Example",
-          email: "taylor@example.com",
-        },
-      },
-      error: null,
-    });
+    mockedGetSession.mockResolvedValue({ data: null, error: null });
 
-    await expect(requireOrganizationAccess()).resolves.toMatchObject({
-      organizationId: "org_active",
+    const result = redirectIfOrganizationReady();
+
+    await expect(result).rejects.toMatchObject({
+      options: { to: "/login" },
     });
-    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
+    await expect(result).rejects.toSatisfy(isRedirect);
   }, 1000);
 
-  it("uses the first organization as access context when no active organization exists", async () => {
-    const organizations = [
-      {
-        id: "org_first",
-        name: "First Org",
-        slug: "first-org",
-        createdAt: "2026-04-06T12:00:00.000Z",
-      },
-      {
-        id: "org_second",
-        name: "Second Org",
-        slug: "second-org",
-        createdAt: "2026-04-06T12:01:00.000Z",
-      },
-    ];
-
-    mockedIsServerEnvironment.mockReturnValue(false);
-    mockedGetSession.mockResolvedValue({
-      data: {
-        session: {},
-        user: {
-          id: "user_123",
-          name: "Taylor Example",
-          email: "taylor@example.com",
-        },
-      },
-      error: null,
-    });
-    mockedGetClientOrganizations.mockResolvedValue({
-      data: organizations,
-      error: null,
-    });
-
-    await expect(requireOrganizationAccess()).resolves.toStrictEqual({
-      session: {
-        session: {},
-        user: {
-          id: "user_123",
-          name: "Taylor Example",
-          email: "taylor@example.com",
-        },
-      },
-      organizations: [
-        { id: "org_first", name: "First Org", slug: "first-org" },
-        { id: "org_second", name: "Second Org", slug: "second-org" },
-      ],
-      organizationId: "org_first",
-    });
-    expect(mockedGetClientOrganizations).toHaveBeenCalledOnce();
-  }, 1000);
-
-  it("rethrows session lookup failures during access checks", async () => {
-    mockedIsServerEnvironment.mockReturnValue(false);
-    mockedGetSession.mockRejectedValue(new Error("session network down"));
-
-    const failure = await requireOrganizationAccess().catch(
-      (caughtError) => caughtError
-    );
-
-    expect(isRedirect(failure)).toBe(false);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("session network down");
-    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
-  }, 1000);
-
-  it("rethrows client session lookup errors returned with null data during access checks", async () => {
-    mockedIsServerEnvironment.mockReturnValue(false);
-    mockedGetSession.mockResolvedValue({
-      data: null,
-      error: new Error("session endpoint failed"),
-    });
-
-    const failure = await requireOrganizationAccess().catch(
-      (caughtError) => caughtError
-    );
-
-    expect(isRedirect(failure)).toBe(false);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("session endpoint failed");
-    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
-  }, 1000);
-
-  it("rethrows organization lookup failures during access checks for authenticated users", async () => {
-    mockedIsServerEnvironment.mockReturnValue(false);
-    mockedGetSession.mockResolvedValue({
-      data: {
-        session: {},
-        user: {
-          id: "user_123",
-          name: "Taylor Example",
-          email: "taylor@example.com",
-        },
-      },
-      error: null,
-    });
-    mockedGetClientOrganizations.mockRejectedValue(new Error("network down"));
-
-    const failure = await requireOrganizationAccess().catch(
-      (caughtError) => caughtError
-    );
-
-    expect(isRedirect(failure)).toBeFalsy();
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("network down");
-  }, 1000);
-
-  it("redirects onboarding users away from /create-organization when org access is ready", async () => {
+  it("redirects onboarding users away when organization access is already ready", async () => {
     mockedIsServerEnvironment.mockReturnValue(false);
     mockedGetSession.mockResolvedValue({
       data: {
@@ -256,7 +315,7 @@ describe("organization access helpers", () => {
     await expect(result).rejects.toSatisfy(isRedirect);
   }, 1000);
 
-  it("rethrows organization lookup failures instead of allowing onboarding to continue", async () => {
+  it("rethrows client-side organization lookup failures in redirectIfOrganizationReady", async () => {
     mockedIsServerEnvironment.mockReturnValue(false);
     mockedGetSession.mockResolvedValue({
       data: {
@@ -278,120 +337,5 @@ describe("organization access helpers", () => {
     expect(isRedirect(failure)).toBeFalsy();
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
-  }, 1000);
-
-  it("rethrows session lookup failures instead of allowing onboarding to continue", async () => {
-    mockedIsServerEnvironment.mockReturnValue(false);
-    mockedGetSession.mockRejectedValue(new Error("session network down"));
-
-    const failure = await redirectIfOrganizationReady().catch(
-      (caughtError) => caughtError
-    );
-
-    expect(isRedirect(failure)).toBe(false);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("session network down");
-    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
-  }, 1000);
-
-  it("rethrows client session lookup errors returned with null data instead of allowing onboarding to continue", async () => {
-    mockedIsServerEnvironment.mockReturnValue(false);
-    mockedGetSession.mockResolvedValue({
-      data: null,
-      error: new Error("session endpoint failed"),
-    });
-
-    const failure = await redirectIfOrganizationReady().catch(
-      (caughtError) => caughtError
-    );
-
-    expect(isRedirect(failure)).toBe(false);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("session endpoint failed");
-    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
-  }, 1000);
-
-  it("uses the server organization listing path during SSR", async () => {
-    mockedIsServerEnvironment.mockReturnValue(true);
-    mockedGetServerSession.mockResolvedValue({
-      session: {},
-      user: {
-        id: "user_123",
-        name: "Taylor Example",
-        email: "taylor@example.com",
-      },
-    });
-    mockedGetServerOrganizations.mockResolvedValue([
-      { id: "org_server", name: "Server Org", slug: "server-org" },
-    ]);
-
-    await expect(requireOrganizationAccess()).resolves.toStrictEqual({
-      session: {
-        session: {},
-        user: {
-          id: "user_123",
-          name: "Taylor Example",
-          email: "taylor@example.com",
-        },
-      },
-      organizations: [
-        { id: "org_server", name: "Server Org", slug: "server-org" },
-      ],
-      organizationId: "org_server",
-    });
-    expect(mockedGetServerOrganizations).toHaveBeenCalledOnce();
-    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
-  }, 1000);
-
-  it("rethrows SSR organization lookup failures for authenticated users", async () => {
-    mockedIsServerEnvironment.mockReturnValue(true);
-    mockedGetServerSession.mockResolvedValue({
-      session: {},
-      user: {
-        id: "user_123",
-        name: "Taylor Example",
-        email: "taylor@example.com",
-      },
-    });
-    mockedGetServerOrganizations.mockRejectedValue(
-      new Error("upstream unavailable")
-    );
-
-    const failure = await requireOrganizationAccess().catch(
-      (caughtError) => caughtError
-    );
-
-    expect(isRedirect(failure)).toBeFalsy();
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("upstream unavailable");
-    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
-  }, 1000);
-
-  it("rethrows SSR session lookup failures during access checks", async () => {
-    mockedIsServerEnvironment.mockReturnValue(true);
-    mockedGetServerSession.mockRejectedValue(new Error("server session down"));
-
-    const failure = await requireOrganizationAccess().catch(
-      (caughtError) => caughtError
-    );
-
-    expect(isRedirect(failure)).toBe(false);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("server session down");
-    expect(mockedGetServerOrganizations).not.toHaveBeenCalled();
-  }, 1000);
-
-  it("rethrows SSR session lookup failures instead of allowing onboarding to continue", async () => {
-    mockedIsServerEnvironment.mockReturnValue(true);
-    mockedGetServerSession.mockRejectedValue(new Error("server session down"));
-
-    const failure = await redirectIfOrganizationReady().catch(
-      (caughtError) => caughtError
-    );
-
-    expect(isRedirect(failure)).toBe(false);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toContain("server session down");
-    expect(mockedGetServerOrganizations).not.toHaveBeenCalled();
   }, 1000);
 });

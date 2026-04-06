@@ -3,29 +3,28 @@ import { redirect } from "@tanstack/react-router";
 import { authClient } from "#/lib/auth-client";
 
 import { isServerEnvironment } from "../auth/runtime-environment";
-import type {
-  OrganizationAccessSession,
-  OrganizationSummary,
-} from "./organization-server";
+import { getCurrentServerSession } from "../auth/server-session";
 import {
-  getCurrentServerOrganizationSession,
   getCurrentServerOrganizations,
+  listCurrentServerOrganizations,
 } from "./organization-server";
 
-type Session = OrganizationAccessSession;
+export interface OrganizationSummary {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+}
+
+type Session = NonNullable<
+  Awaited<ReturnType<typeof authClient.getSession>>["data"]
+>;
 type RawOrganization = NonNullable<
   Awaited<ReturnType<typeof authClient.organization.list>>["data"]
 >[number];
 
-type OrganizationAccessState = {
-  session: Session;
-  organizations: readonly OrganizationSummary[];
-  organizationId: string | null;
-} | null;
-
 async function getCurrentSession(): Promise<Session | null> {
   if (isServerEnvironment()) {
-    return await getCurrentServerOrganizationSession();
+    return await getCurrentServerSession();
   }
 
   const session = await authClient.getSession();
@@ -37,9 +36,11 @@ async function getCurrentSession(): Promise<Session | null> {
   return session.data ?? null;
 }
 
-async function getCurrentOrganizations() {
+export async function listOrganizations(): Promise<
+  readonly OrganizationSummary[]
+> {
   if (isServerEnvironment()) {
-    return await getCurrentServerOrganizations();
+    return await listCurrentServerOrganizations();
   }
 
   const organizations = await authClient.organization.list();
@@ -55,52 +56,71 @@ async function getCurrentOrganizations() {
   return organizations.data.map(toOrganizationSummary);
 }
 
-async function getOrganizationAccessState(): Promise<OrganizationAccessState> {
+export async function ensureActiveOrganizationId() {
   const session = await getCurrentSession();
 
   if (!session) {
-    return null;
+    throw redirect({ to: "/login" });
   }
 
-  const activeOrganizationId = session.session.activeOrganizationId ?? null;
+  const { activeOrganizationId } = session.session;
 
   if (activeOrganizationId) {
     return {
+      activeOrganizationId,
       session,
-      organizations: [],
-      organizationId: activeOrganizationId,
     };
   }
 
-  const organizations = await getCurrentOrganizations();
+  const organizations = await resolveOrganizationListForAccess(
+    await listOrganizations()
+  );
+
+  const [firstOrganization] = organizations;
+
+  if (!firstOrganization) {
+    throw redirect({ href: "/create-organization" });
+  }
 
   return {
+    activeOrganizationId: firstOrganization.id,
     session,
-    organizations,
-    organizationId: organizations[0]?.id ?? null,
   };
 }
 
 export async function requireOrganizationAccess() {
-  const access = await getOrganizationAccessState();
-
-  if (!access) {
-    throw redirect({ to: "/login" });
-  }
-
-  if (access.organizationId) {
-    return access;
-  }
-
-  throw redirect({ href: "/create-organization" });
+  return await ensureActiveOrganizationId();
 }
 
 export async function redirectIfOrganizationReady() {
-  const access = await getOrganizationAccessState();
+  const session = await getCurrentSession();
 
-  if (access?.organizationId) {
+  if (!session) {
+    throw redirect({ to: "/login" });
+  }
+
+  if (session.session.activeOrganizationId) {
     throw redirect({ to: "/" });
   }
+
+  const organizations = await resolveOrganizationListForAccess(
+    await listOrganizations()
+  );
+
+  if (organizations.length > 0) {
+    throw redirect({ to: "/" });
+  }
+}
+
+async function resolveOrganizationListForAccess(
+  organizations: readonly OrganizationSummary[]
+): Promise<readonly OrganizationSummary[]> {
+  if (!isServerEnvironment() || organizations.length > 0) {
+    return organizations;
+  }
+
+  const strictOrganizations = await getCurrentServerOrganizations();
+  return strictOrganizations.map(toOrganizationSummary);
 }
 
 function toOrganizationSummary(

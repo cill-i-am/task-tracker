@@ -27,9 +27,14 @@ export type OrganizationAccessSession = NonNullable<
   >["data"]
 >;
 
+interface ServerAuthRequest {
+  cookie: string;
+  authBaseURL: string;
+}
+
 export const getCurrentServerOrganizationSession = createServerOnlyFn(
   async (): Promise<OrganizationAccessSession | null> => {
-    const authRequest = readServerAuthRequest();
+    const authRequest = readServerSessionRequest();
 
     if (!authRequest) {
       return null;
@@ -63,24 +68,26 @@ export const getCurrentServerOrganizationSession = createServerOnlyFn(
   }
 );
 
-export const getCurrentServerOrganizations = createServerOnlyFn(async () => {
+export const listCurrentServerOrganizations = createServerOnlyFn(async () => {
   const authRequest = readServerAuthRequest();
 
   if (!authRequest) {
-    throw new Error(
-      "Cannot list organizations without the current auth cookie."
-    );
+    return [] as const;
   }
 
-  const response = await fetch(
-    new URL("organization/list", `${authRequest.authBaseURL}/`),
-    {
-      headers: {
-        accept: "application/json",
-        cookie: authRequest.cookie,
-      },
-    }
-  );
+  const response = await fetchOrganizations(authRequest);
+
+  if (!response.ok) {
+    return [] as const;
+  }
+
+  const organizations = (await response.json()) as unknown;
+  return decodeOrganizationSummariesOrEmpty(organizations);
+});
+
+export const getCurrentServerOrganizations = createServerOnlyFn(async () => {
+  const authRequest = readServerAuthRequestStrict();
+  const response = await fetchOrganizations(authRequest);
 
   if (!response.ok) {
     throw new Error(
@@ -94,30 +101,17 @@ export const getCurrentServerOrganizations = createServerOnlyFn(async () => {
     throw new Error("Organization lookup returned no data.");
   }
 
-  try {
-    return Schema.decodeUnknownSync(OrganizationSummaryListSchema)(
-      organizations
-    );
-  } catch {
-    throw new Error("Organization lookup returned an invalid payload.");
-  }
+  return decodeOrganizationSummariesStrict(organizations);
 });
 
-function readServerAuthRequest(): {
-  cookie: string;
-  authBaseURL: string;
-} | null {
+function readServerSessionRequest(): ServerAuthRequest | null {
   const cookie = getRequestHeader("cookie");
 
   if (!cookie) {
     return null;
   }
 
-  const serverAuthOrigin = readServerAuthOrigin();
-  const authBaseURL = resolveAuthBaseURL(
-    `${getRequestProtocol()}://${getRequestHost()}`,
-    serverAuthOrigin
-  );
+  const authBaseURL = readServerAuthBaseURL();
 
   if (!authBaseURL) {
     throw new Error(
@@ -128,6 +122,46 @@ function readServerAuthRequest(): {
   return { cookie, authBaseURL };
 }
 
+function readServerAuthRequest(): ServerAuthRequest | null {
+  const cookie = getRequestHeader("cookie");
+  const authBaseURL = readServerAuthBaseURL();
+
+  if (!cookie || !authBaseURL) {
+    return null;
+  }
+
+  return { cookie, authBaseURL };
+}
+
+function readServerAuthRequestStrict(): ServerAuthRequest {
+  const cookie = getRequestHeader("cookie");
+
+  if (!cookie) {
+    throw new Error(
+      "Cannot list organizations without the current auth cookie."
+    );
+  }
+
+  const authBaseURL = readServerAuthBaseURL();
+
+  if (!authBaseURL) {
+    throw new Error(
+      "Cannot resolve the auth base URL for organization auth requests."
+    );
+  }
+
+  return { cookie, authBaseURL };
+}
+
+function readServerAuthBaseURL(): string | undefined {
+  const serverAuthOrigin = readServerAuthOrigin();
+
+  return resolveAuthBaseURL(
+    `${getRequestProtocol()}://${getRequestHost()}`,
+    serverAuthOrigin
+  );
+}
+
 function readServerAuthOrigin(): string | undefined {
   if (typeof __SERVER_AUTH_ORIGIN__ === "string") {
     return __SERVER_AUTH_ORIGIN__;
@@ -135,6 +169,46 @@ function readServerAuthOrigin(): string | undefined {
 
   const authOrigin = process.env.AUTH_ORIGIN;
   return typeof authOrigin === "string" ? authOrigin : undefined;
+}
+
+async function fetchOrganizations(authRequest: ServerAuthRequest) {
+  return await fetch(
+    new URL("organization/list", `${authRequest.authBaseURL}/`),
+    {
+      headers: {
+        accept: "application/json",
+        cookie: authRequest.cookie,
+      },
+    }
+  );
+}
+
+function decodeOrganizationSummariesOrEmpty(
+  organizations: unknown
+): readonly OrganizationSummary[] {
+  if (!organizations) {
+    return [];
+  }
+
+  try {
+    return Schema.decodeUnknownSync(OrganizationSummaryListSchema)(
+      organizations
+    );
+  } catch {
+    return [];
+  }
+}
+
+function decodeOrganizationSummariesStrict(
+  organizations: unknown
+): readonly OrganizationSummary[] {
+  try {
+    return Schema.decodeUnknownSync(OrganizationSummaryListSchema)(
+      organizations
+    );
+  } catch {
+    throw new Error("Organization lookup returned an invalid payload.");
+  }
 }
 
 function isOrganizationAccessSession(
@@ -160,7 +234,7 @@ function isOrganizationAccessSession(
     return false;
   }
 
-  const {activeOrganizationId} = value.session;
+  const { activeOrganizationId } = value.session;
 
   return (
     activeOrganizationId === undefined ||
