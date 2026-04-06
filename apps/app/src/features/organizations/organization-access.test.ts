@@ -133,6 +133,21 @@ describe("organization access helpers", () => {
   }, 1000);
 
   it("uses the first organization as access context when no active organization exists", async () => {
+    const organizations = [
+      {
+        id: "org_first",
+        name: "First Org",
+        slug: "first-org",
+        createdAt: "2026-04-06T12:00:00.000Z",
+      },
+      {
+        id: "org_second",
+        name: "Second Org",
+        slug: "second-org",
+        createdAt: "2026-04-06T12:01:00.000Z",
+      },
+    ];
+
     mockedIsServerEnvironment.mockReturnValue(false);
     mockedGetSession.mockResolvedValue({
       data: {
@@ -146,17 +161,40 @@ describe("organization access helpers", () => {
       error: null,
     });
     mockedGetClientOrganizations.mockResolvedValue({
-      data: [
-        { id: "org_first", name: "First Org", slug: "first-org" },
-        { id: "org_second", name: "Second Org", slug: "second-org" },
-      ],
+      data: organizations,
       error: null,
     });
 
-    await expect(requireOrganizationAccess()).resolves.toMatchObject({
+    await expect(requireOrganizationAccess()).resolves.toStrictEqual({
+      session: {
+        session: {},
+        user: {
+          id: "user_123",
+          name: "Taylor Example",
+          email: "taylor@example.com",
+        },
+      },
+      organizations: [
+        { id: "org_first", name: "First Org", slug: "first-org" },
+        { id: "org_second", name: "Second Org", slug: "second-org" },
+      ],
       organizationId: "org_first",
     });
     expect(mockedGetClientOrganizations).toHaveBeenCalledOnce();
+  }, 1000);
+
+  it("rethrows session lookup failures during access checks", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetSession.mockRejectedValue(new Error("session network down"));
+
+    const failure = await requireOrganizationAccess().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBeFalsy();
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("session network down");
+    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
   }, 1000);
 
   it("rethrows organization lookup failures during access checks for authenticated users", async () => {
@@ -178,7 +216,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
   }, 1000);
@@ -226,9 +264,23 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
+  }, 1000);
+
+  it("rethrows session lookup failures instead of allowing onboarding to continue", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetSession.mockRejectedValue(new Error("session network down"));
+
+    const failure = await redirectIfOrganizationReady().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBeFalsy();
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("session network down");
+    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
   }, 1000);
 
   it("uses the server organization listing path during SSR", async () => {
@@ -245,7 +297,18 @@ describe("organization access helpers", () => {
       { id: "org_server", name: "Server Org", slug: "server-org" },
     ]);
 
-    await expect(requireOrganizationAccess()).resolves.toMatchObject({
+    await expect(requireOrganizationAccess()).resolves.toStrictEqual({
+      session: {
+        session: {},
+        user: {
+          id: "user_123",
+          name: "Taylor Example",
+          email: "taylor@example.com",
+        },
+      },
+      organizations: [
+        { id: "org_server", name: "Server Org", slug: "server-org" },
+      ],
       organizationId: "org_server",
     });
     expect(mockedGetServerOrganizations).toHaveBeenCalledOnce();
@@ -270,7 +333,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("upstream unavailable");
     expect(mockedGetClientOrganizations).not.toHaveBeenCalled();

@@ -8,15 +8,17 @@ import { Schema } from "effect";
 
 import { resolveAuthBaseURL } from "#/lib/auth-client";
 
-const ServerOrganization = Schema.Struct({
+const OrganizationSummarySchema = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   slug: Schema.String,
 });
 
-const ServerOrganizations = Schema.Array(ServerOrganization);
+const OrganizationSummaryListSchema = Schema.Array(OrganizationSummarySchema);
 
-type ServerOrganization = Schema.Schema.Type<typeof ServerOrganization>;
+export type OrganizationSummary = Schema.Schema.Type<
+  typeof OrganizationSummarySchema
+>;
 
 export const getCurrentServerOrganizations = createServerOnlyFn(async () => {
   const cookie = getRequestHeader("cookie");
@@ -61,7 +63,9 @@ export const getCurrentServerOrganizations = createServerOnlyFn(async () => {
   }
 
   try {
-    return Schema.decodeUnknownSync(ServerOrganizations)(organizations);
+    return Schema.decodeUnknownSync(OrganizationSummaryListSchema)(
+      organizations
+    );
   } catch {
     throw new Error("Organization lookup returned an invalid payload.");
   }
