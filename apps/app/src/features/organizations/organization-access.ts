@@ -1,4 +1,4 @@
-import { isRedirect, redirect } from "@tanstack/react-router";
+import { redirect } from "@tanstack/react-router";
 
 import { authClient } from "#/lib/auth-client";
 
@@ -77,39 +77,23 @@ async function getOrganizationAccessState(): Promise<OrganizationAccessState> {
 }
 
 export async function requireOrganizationAccess() {
-  try {
-    const access = await getOrganizationAccessState();
+  const access = await getOrganizationAccessState();
 
-    if (!access) {
-      throw redirect({ to: "/login" });
-    }
-
-    if (access.organizationId) {
-      return access;
-    }
-
-    throw redirect({ to: "/create-organization" as never });
-  } catch (error) {
-    if (isRedirect(error)) {
-      throw error;
-    }
-
+  if (!access) {
     throw redirect({ to: "/login" });
   }
+
+  if (access.organizationId) {
+    return access;
+  }
+
+  throw redirect({ to: "/create-organization" as never });
 }
 
 export async function redirectIfOrganizationReady() {
-  try {
-    const access = await getOrganizationAccessState();
+  const access = await getOrganizationAccessState();
 
-    if (access?.organizationId) {
-      throw redirect({ to: "/" });
-    }
-  } catch (error) {
-    if (isRedirect(error)) {
-      throw error;
-    }
-
-    throw redirect({ to: "/login" });
+  if (access?.organizationId) {
+    throw redirect({ to: "/" });
   }
 }
