@@ -32,27 +32,21 @@ const {
   mockedGetServerSession: vi.fn<() => Promise<Session | null>>(),
   mockedGetServerOrganizations: vi.fn<() => Promise<Organization[] | null>>(),
   mockedGetSession:
-    vi.fn<() => Promise<{ data: Session | null; error: null }>>(),
+    vi.fn<() => Promise<{ data: Session | null; error: Error | null }>>(),
   mockedGetClientOrganizations:
-    vi.fn<() => Promise<{ data: Organization[] | null; error: null }>>(),
+    vi.fn<
+      () => Promise<{ data: Organization[] | null; error: Error | null }>
+    >(),
   mockedIsServerEnvironment: vi.fn<() => boolean>(),
 }));
-
-vi.mock(import("../auth/server-session"), async (importActual) => {
-  const actual = await importActual();
-
-  return {
-    ...actual,
-    getCurrentServerSession:
-      mockedGetServerSession as typeof actual.getCurrentServerSession,
-  };
-});
 
 vi.mock(import("./organization-server"), async (importActual) => {
   const actual = await importActual();
 
   return {
     ...actual,
+    getCurrentServerOrganizationSession:
+      mockedGetServerSession as typeof actual.getCurrentServerOrganizationSession,
     getCurrentServerOrganizations:
       mockedGetServerOrganizations as typeof actual.getCurrentServerOrganizations,
   };
@@ -191,9 +185,26 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("session network down");
+    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
+  }, 1000);
+
+  it("rethrows client session lookup errors returned with null data during access checks", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetSession.mockResolvedValue({
+      data: null,
+      error: new Error("session endpoint failed"),
+    });
+
+    const failure = await requireOrganizationAccess().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBe(false);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("session endpoint failed");
     expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
   }, 1000);
 
@@ -216,7 +227,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    expect(isRedirect(failure)).toBeFalsy();
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
   }, 1000);
@@ -264,7 +275,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    expect(isRedirect(failure)).toBeFalsy();
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
   }, 1000);
@@ -277,9 +288,26 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("session network down");
+    expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
+  }, 1000);
+
+  it("rethrows client session lookup errors returned with null data instead of allowing onboarding to continue", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedGetSession.mockResolvedValue({
+      data: null,
+      error: new Error("session endpoint failed"),
+    });
+
+    const failure = await redirectIfOrganizationReady().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBe(false);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("session endpoint failed");
     expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
   }, 1000);
 
@@ -333,9 +361,37 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    expect(isRedirect(failure)).toBeFalsy();
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("upstream unavailable");
     expect(mockedGetClientOrganizations).not.toHaveBeenCalled();
+  }, 1000);
+
+  it("rethrows SSR session lookup failures during access checks", async () => {
+    mockedIsServerEnvironment.mockReturnValue(true);
+    mockedGetServerSession.mockRejectedValue(new Error("server session down"));
+
+    const failure = await requireOrganizationAccess().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBe(false);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("server session down");
+    expect(mockedGetServerOrganizations).not.toHaveBeenCalled();
+  }, 1000);
+
+  it("rethrows SSR session lookup failures instead of allowing onboarding to continue", async () => {
+    mockedIsServerEnvironment.mockReturnValue(true);
+    mockedGetServerSession.mockRejectedValue(new Error("server session down"));
+
+    const failure = await redirectIfOrganizationReady().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBe(false);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("server session down");
+    expect(mockedGetServerOrganizations).not.toHaveBeenCalled();
   }, 1000);
 });

@@ -3,13 +3,16 @@ import { redirect } from "@tanstack/react-router";
 import { authClient } from "#/lib/auth-client";
 
 import { isServerEnvironment } from "../auth/runtime-environment";
-import { getCurrentServerSession } from "../auth/server-session";
-import type { OrganizationSummary } from "./organization-server";
-import { getCurrentServerOrganizations } from "./organization-server";
+import type {
+  OrganizationAccessSession,
+  OrganizationSummary,
+} from "./organization-server";
+import {
+  getCurrentServerOrganizationSession,
+  getCurrentServerOrganizations,
+} from "./organization-server";
 
-type Session = NonNullable<
-  Awaited<ReturnType<typeof authClient.getSession>>["data"]
->;
+type Session = OrganizationAccessSession;
 type RawOrganization = NonNullable<
   Awaited<ReturnType<typeof authClient.organization.list>>["data"]
 >[number];
@@ -20,12 +23,17 @@ type OrganizationAccessState = {
   organizationId: string | null;
 } | null;
 
-async function getCurrentSession() {
+async function getCurrentSession(): Promise<Session | null> {
   if (isServerEnvironment()) {
-    return await getCurrentServerSession();
+    return await getCurrentServerOrganizationSession();
   }
 
   const session = await authClient.getSession();
+
+  if (session.error) {
+    throw session.error;
+  }
+
   return session.data ?? null;
 }
 
