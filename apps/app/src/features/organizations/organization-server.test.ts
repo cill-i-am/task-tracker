@@ -136,6 +136,19 @@ describe("server organization lookup", () => {
     await expect(listCurrentServerOrganizations()).resolves.toStrictEqual([]);
   }, 1000);
 
+  it("returns [] from listCurrentServerOrganizations when fetch throws", async () => {
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cookie" ? "better-auth.session_token=session-token" : undefined
+    );
+    mockedGetRequestProtocol.mockReturnValue("http");
+    mockedGetRequestHost.mockReturnValue("127.0.0.1:4300");
+    process.env.AUTH_ORIGIN = "http://tt-sbx-api:4301";
+
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
+
+    await expect(listCurrentServerOrganizations()).resolves.toStrictEqual([]);
+  }, 1000);
+
   it("forwards the current auth cookie to the resolved auth origin for strict session lookup", async () => {
     const authSession: AuthSession = {
       session: {
@@ -183,6 +196,51 @@ describe("server organization lookup", () => {
         },
       }
     );
+  }, 1000);
+
+  it("preserves extra fields on strict session lookup after validation", async () => {
+    const authSession = {
+      session: {
+        id: "session_123",
+        createdAt: "2026-04-04T17:08:12.497Z",
+        updatedAt: "2026-04-04T17:08:12.497Z",
+        userId: "user_123",
+        expiresAt: "2026-04-11T17:08:12.497Z",
+        token: "session-token",
+        ipAddress: "",
+        userAgent: "curl/8.7.1",
+        activeOrganizationId: "org_123",
+        extraSessionField: "keep-me",
+      },
+      user: {
+        id: "user_123",
+        name: "Taylor Example",
+        email: "taylor@example.com",
+        image: null,
+        emailVerified: false,
+        createdAt: "2026-04-04T17:08:12.488Z",
+        updatedAt: "2026-04-04T17:08:12.488Z",
+        extraUserField: "keep-me-too",
+      },
+    };
+
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cookie" ? "better-auth.session_token=session-token" : undefined
+    );
+    mockedGetRequestProtocol.mockReturnValue("http");
+    mockedGetRequestHost.mockReturnValue("127.0.0.1:4300");
+    process.env.AUTH_ORIGIN = "http://tt-sbx-api:4301";
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(authSession));
+
+    await expect(getCurrentServerOrganizationSession()).resolves.toMatchObject({
+      session: {
+        extraSessionField: "keep-me",
+      },
+      user: {
+        extraUserField: "keep-me-too",
+      },
+    });
   }, 1000);
 
   it("returns null when strict session lookup positively resolves to no session", async () => {

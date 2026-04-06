@@ -93,14 +93,18 @@ export const listCurrentServerOrganizations = createServerOnlyFn(async () => {
     return [] as const;
   }
 
-  const response = await fetchOrganizations(authRequest);
+  try {
+    const response = await fetchOrganizations(authRequest);
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return [] as const;
+    }
+
+    const organizations = (await response.json()) as unknown;
+    return decodeOrganizationSummariesOrEmpty(organizations);
+  } catch {
     return [] as const;
   }
-
-  const organizations = (await response.json()) as unknown;
-  return decodeOrganizationSummariesOrEmpty(organizations);
 });
 
 export const getCurrentServerOrganizations = createServerOnlyFn(async () => {
@@ -233,8 +237,10 @@ export function decodeOrganizationAccessSession(
   session: unknown
 ): OrganizationAccessSession {
   try {
-    return Schema.decodeUnknownSync(OrganizationAccessSessionSchema)(session);
+    Schema.decodeUnknownSync(OrganizationAccessSessionSchema)(session);
   } catch {
     throw new Error("Session lookup returned an invalid payload.");
   }
+
+  return session as OrganizationAccessSession;
 }
