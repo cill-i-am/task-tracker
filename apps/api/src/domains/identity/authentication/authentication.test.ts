@@ -14,6 +14,7 @@ import {
   makeAuthenticationConfig,
   makeAuthenticationTrustedOrigins,
 } from "./config.js";
+import * as schemaModule from "./schema.js";
 import {
   authSchema,
   account,
@@ -126,6 +127,21 @@ describe("auth schema", () => {
       account,
       verification,
       rateLimit,
+    });
+  }, 10_000);
+
+  it("exports the organization tables and active organization session field", () => {
+    expect(schemaModule.organization).toBeDefined();
+    expect(schemaModule.member).toBeDefined();
+    expect(schemaModule.invitation).toBeDefined();
+    expect(
+      (session as unknown as Record<string, unknown>).activeOrganizationId
+    ).toBeDefined();
+    expect(authSchema).toMatchObject({
+      organization: schemaModule.organization,
+      member: schemaModule.member,
+      invitation: schemaModule.invitation,
+      session,
     });
   }, 10_000);
 

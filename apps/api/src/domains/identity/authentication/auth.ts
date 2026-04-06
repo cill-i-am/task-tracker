@@ -1,6 +1,7 @@
 import { HttpApiBuilder, HttpApp } from "@effect/platform";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { organization } from "better-auth/plugins/organization";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Effect, Layer, Runtime } from "effect";
 
@@ -38,6 +39,7 @@ export function createAuthentication(options: {
       provider: "pg",
       schema: authSchema,
     }),
+    plugins: [organization()],
     emailAndPassword: {
       ...authConfig.emailAndPassword,
       sendResetPassword: async ({ token, user, url }) => {

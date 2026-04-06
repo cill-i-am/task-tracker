@@ -21,6 +21,85 @@ describe("authentication integration", () => {
     await Promise.all([...cleanup].toReversed().map((step) => step()));
   });
 
+  it("creates an organization after sign-up and stores it as the active organization in the session", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase();
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const adminPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => adminPool.end());
+
+    if (!(await canConnect(adminPool))) {
+      context.skip(
+        "Auth integration database unavailable; skipping organization flow coverage"
+      );
+    }
+
+    await applyMigration(databaseUrl, "0000_careless_anita_blake.sql");
+    await applyMigration(databaseUrl, "0001_giant_speedball.sql");
+    await applyMigration(databaseUrl, "0002_slippery_hulk.sql");
+    await applyMigration(databaseUrl, "0003_organizations.sql");
+
+    const authPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => authPool.end());
+
+    const auth = createAuthentication({
+      backgroundTaskHandler: () => {},
+      config: makeAuthenticationConfig({
+        baseUrl: "http://127.0.0.1:3000",
+        secret: "0123456789abcdef0123456789abcdef",
+        databaseUrl,
+      }),
+      database: drizzle(authPool, { schema: authSchema }),
+      reportPasswordResetEmailFailure: () => {},
+      sendPasswordResetEmail: async () => {},
+    });
+
+    const cookieJar = new Map<string, string>();
+
+    const signUpResponse = await auth.handler(
+      makeJsonRequest("/sign-up/email", {
+        email: "org-flow@example.com",
+        name: "Org Flow User",
+        password: "correct horse battery staple",
+      })
+    );
+    updateCookieJar(cookieJar, signUpResponse);
+    expect(signUpResponse.status).toBe(200);
+
+    const organizationResponse = await auth.handler(
+      makeJsonRequest(
+        "/organization/create",
+        {
+          name: "Org Flow Organization",
+          slug: "org-flow-organization",
+        },
+        {
+          cookieJar,
+        }
+      )
+    );
+    updateCookieJar(cookieJar, organizationResponse);
+    expect(organizationResponse.status).toBe(200);
+
+    const sessionAfterOrganizationCreateResponse = await auth.handler(
+      makeRequest("/get-session", {
+        cookieJar,
+      })
+    );
+    expect(sessionAfterOrganizationCreateResponse.status).toBe(200);
+    const sessionAfterOrganizationCreate =
+      (await sessionAfterOrganizationCreateResponse.json()) as SessionResponse;
+    expect(sessionAfterOrganizationCreate?.user?.email).toBe(
+      "org-flow@example.com"
+    );
+    expect(
+      sessionAfterOrganizationCreate?.session?.activeOrganizationId
+    ).toBeDefined();
+  }, 30_000);
+
   it("migrates a non-empty rate_limit table and serves sign-up, sign-in, sign-out, session, password reset, reset callback handoff, session revocation, and rate limiting", async (context: {
     skip: (note?: string) => never;
   }) => {
@@ -39,6 +118,7 @@ describe("authentication integration", () => {
 
     await applyMigration(databaseUrl, "0000_careless_anita_blake.sql");
     await applyMigration(databaseUrl, "0001_giant_speedball.sql");
+    await applyMigration(databaseUrl, "0003_organizations.sql");
 
     await adminPool.query(
       `insert into rate_limit (key, count, last_request) values ($1, $2, $3)`,
@@ -289,6 +369,7 @@ describe("authentication integration", () => {
     await applyMigration(databaseUrl, "0000_careless_anita_blake.sql");
     await applyMigration(databaseUrl, "0001_giant_speedball.sql");
     await applyMigration(databaseUrl, "0002_slippery_hulk.sql");
+    await applyMigration(databaseUrl, "0003_organizations.sql");
 
     const authPool = new Pool({ connectionString: databaseUrl });
     cleanup.push(() => authPool.end());
@@ -449,6 +530,9 @@ interface RequestOptions {
 interface SessionResponse {
   readonly user?: {
     readonly email?: string;
+  };
+  readonly session?: {
+    readonly activeOrganizationId?: string;
   };
 }
 
