@@ -5,6 +5,7 @@ import { authClient } from "#/lib/auth-client";
 import { isServerEnvironment } from "../auth/runtime-environment";
 import { getCurrentServerSession } from "../auth/server-session";
 import {
+  decodeOrganizationAccessSession,
   getCurrentServerOrganizationSession,
   getCurrentServerOrganizations,
   listCurrentServerOrganizations,
@@ -28,7 +29,7 @@ async function getCurrentSession(): Promise<Session | null> {
     const session = await getCurrentServerSession();
 
     if (session) {
-      return session;
+      return decodeOrganizationAccessSession(session);
     }
 
     return await getCurrentServerOrganizationSession();

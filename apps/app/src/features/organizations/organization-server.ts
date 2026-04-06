@@ -82,11 +82,7 @@ export const getCurrentServerOrganizationSession = createServerOnlyFn(
       return null;
     }
 
-    try {
-      return Schema.decodeUnknownSync(OrganizationAccessSessionSchema)(session);
-    } catch {
-      throw new Error("Session lookup returned an invalid payload.");
-    }
+    return decodeOrganizationAccessSession(session);
   }
 );
 
@@ -230,5 +226,15 @@ function decodeOrganizationSummariesStrict(
     );
   } catch {
     throw new Error("Organization lookup returned an invalid payload.");
+  }
+}
+
+export function decodeOrganizationAccessSession(
+  session: unknown
+): OrganizationAccessSession {
+  try {
+    return Schema.decodeUnknownSync(OrganizationAccessSessionSchema)(session);
+  } catch {
+    throw new Error("Session lookup returned an invalid payload.");
   }
 }

@@ -10,12 +10,24 @@ import type { OrganizationSummary } from "./organization-access";
 
 interface Session {
   session: {
+    id?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    userId?: string;
+    expiresAt?: string;
+    token?: string;
+    ipAddress?: string | null;
+    userAgent?: string | null;
     activeOrganizationId?: string | null;
   };
   user: {
     id: string;
     name: string;
     email: string;
+    image?: string | null;
+    emailVerified?: boolean;
+    createdAt?: string;
+    updatedAt?: string;
   };
 }
 
@@ -164,10 +176,32 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    expect(isRedirect(failure)).toBeFalsy();
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("server session down");
     expect(mockedListServerOrganizations).not.toHaveBeenCalled();
+  }, 1000);
+
+  it("rethrows invalid non-null SSR session payloads during access checks", async () => {
+    mockedIsServerEnvironment.mockReturnValue(true);
+    mockedGetServerSession.mockResolvedValue({
+      user: {
+        id: "user_123",
+        name: "Taylor Example",
+        email: "taylor@example.com",
+      },
+    } as Session);
+
+    const failure = await requireOrganizationAccess().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBeFalsy();
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain(
+      "Session lookup returned an invalid payload."
+    );
+    expect(mockedGetStrictServerSession).not.toHaveBeenCalled();
   }, 1000);
 
   it("returns active organization id from the current session when available", async () => {
@@ -255,11 +289,24 @@ describe("organization access helpers", () => {
   it("rethrows SSR organization lookup failures when list helper returns an ambiguous empty list", async () => {
     mockedIsServerEnvironment.mockReturnValue(true);
     mockedGetServerSession.mockResolvedValue({
-      session: {},
+      session: {
+        id: "session_123",
+        createdAt: "2026-04-04T17:08:12.497Z",
+        updatedAt: "2026-04-04T17:08:12.497Z",
+        userId: "user_123",
+        expiresAt: "2026-04-11T17:08:12.497Z",
+        token: "session-token",
+        ipAddress: "",
+        userAgent: "curl/8.7.1",
+      },
       user: {
         id: "user_123",
         name: "Taylor Example",
         email: "taylor@example.com",
+        image: null,
+        emailVerified: false,
+        createdAt: "2026-04-04T17:08:12.488Z",
+        updatedAt: "2026-04-04T17:08:12.488Z",
       },
     });
     mockedListServerOrganizations.mockResolvedValue([]);
@@ -271,9 +318,64 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("upstream unavailable");
+  }, 1000);
+
+  it("uses the strict SSR organization fallback when the lenient list is empty", async () => {
+    mockedIsServerEnvironment.mockReturnValue(true);
+    mockedGetServerSession.mockResolvedValue({
+      session: {
+        id: "session_123",
+        createdAt: "2026-04-04T17:08:12.497Z",
+        updatedAt: "2026-04-04T17:08:12.497Z",
+        userId: "user_123",
+        expiresAt: "2026-04-11T17:08:12.497Z",
+        token: "session-token",
+        ipAddress: "",
+        userAgent: "curl/8.7.1",
+      },
+      user: {
+        id: "user_123",
+        name: "Taylor Example",
+        email: "taylor@example.com",
+        image: null,
+        emailVerified: false,
+        createdAt: "2026-04-04T17:08:12.488Z",
+        updatedAt: "2026-04-04T17:08:12.488Z",
+      },
+    });
+    mockedListServerOrganizations.mockResolvedValue([]);
+    mockedGetStrictServerOrganizations.mockResolvedValue([
+      { id: "org_server", name: "Server Org", slug: "server-org" },
+    ]);
+
+    await expect(ensureActiveOrganizationId()).resolves.toStrictEqual({
+      activeOrganizationId: "org_server",
+      session: {
+        session: {
+          id: "session_123",
+          createdAt: "2026-04-04T17:08:12.497Z",
+          updatedAt: "2026-04-04T17:08:12.497Z",
+          userId: "user_123",
+          expiresAt: "2026-04-11T17:08:12.497Z",
+          token: "session-token",
+          ipAddress: "",
+          userAgent: "curl/8.7.1",
+          activeOrganizationId: "org_server",
+        },
+        user: {
+          id: "user_123",
+          name: "Taylor Example",
+          email: "taylor@example.com",
+          image: null,
+          emailVerified: false,
+          createdAt: "2026-04-04T17:08:12.488Z",
+          updatedAt: "2026-04-04T17:08:12.488Z",
+        },
+      },
+    });
   }, 1000);
 
   it("redirects authenticated users without organizations to /create-organization", async () => {
@@ -325,7 +427,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    expect(isRedirect(failure)).toBeFalsy();
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("server session down");
     expect(mockedListServerOrganizations).not.toHaveBeenCalled();
@@ -374,7 +476,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
   }, 1000);
