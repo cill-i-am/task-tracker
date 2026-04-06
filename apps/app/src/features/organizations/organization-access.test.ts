@@ -164,7 +164,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("server session down");
     expect(mockedListServerOrganizations).not.toHaveBeenCalled();
@@ -214,7 +214,9 @@ describe("organization access helpers", () => {
     await expect(ensureActiveOrganizationId()).resolves.toStrictEqual({
       activeOrganizationId: "org_first",
       session: {
-        session: {},
+        session: {
+          activeOrganizationId: "org_first",
+        },
         user: {
           id: "user_123",
           name: "Taylor Example",
@@ -269,7 +271,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    expect(isRedirect(failure)).toBeFalsy();
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("upstream unavailable");
   }, 1000);
@@ -323,7 +325,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("server session down");
     expect(mockedListServerOrganizations).not.toHaveBeenCalled();
@@ -372,7 +374,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    expect(isRedirect(failure)).toBeFalsy();
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
   }, 1000);

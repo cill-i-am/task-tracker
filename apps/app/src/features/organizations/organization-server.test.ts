@@ -12,6 +12,13 @@ interface Organization {
 
 interface Session {
   id: string;
+  createdAt: string;
+  updatedAt: string;
+  userId: string;
+  expiresAt: string;
+  token: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
   activeOrganizationId?: string | null;
 }
 
@@ -19,6 +26,10 @@ interface User {
   id: string;
   name: string;
   email: string;
+  image?: string | null;
+  emailVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface AuthSession {
@@ -129,12 +140,23 @@ describe("server organization lookup", () => {
     const authSession: AuthSession = {
       session: {
         id: "session_123",
+        createdAt: "2026-04-04T17:08:12.497Z",
+        updatedAt: "2026-04-04T17:08:12.497Z",
+        userId: "user_123",
+        expiresAt: "2026-04-11T17:08:12.497Z",
+        token: "session-token",
+        ipAddress: "",
+        userAgent: "curl/8.7.1",
         activeOrganizationId: "org_123",
       },
       user: {
         id: "user_123",
         name: "Taylor Example",
         email: "taylor@example.com",
+        image: null,
+        emailVerified: false,
+        createdAt: "2026-04-04T17:08:12.488Z",
+        updatedAt: "2026-04-04T17:08:12.488Z",
       },
     };
 
@@ -198,6 +220,37 @@ describe("server organization lookup", () => {
     );
   }, 1000);
 
+  it("throws when strict session lookup returns a malformed session payload", async () => {
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cookie" ? "better-auth.session_token=session-token" : undefined
+    );
+    mockedGetRequestProtocol.mockReturnValue("http");
+    mockedGetRequestHost.mockReturnValue("127.0.0.1:4300");
+    process.env.AUTH_ORIGIN = "http://tt-sbx-api:4301";
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({
+        session: {
+          activeOrganizationId: "org_123",
+        },
+        user: {
+          id: "user_123",
+          name: "Taylor Example",
+          email: "taylor@example.com",
+        },
+      })
+    );
+
+    const failure = await getCurrentServerOrganizationSession().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain(
+      "Session lookup returned an invalid payload."
+    );
+  }, 1000);
+
   it("throws when strict organization lookup responds with a non-ok status", async () => {
     mockedGetRequestHeader.mockImplementation((name) =>
       name === "cookie" ? "better-auth.session_token=session-token" : undefined
@@ -238,5 +291,20 @@ describe("server organization lookup", () => {
     expect((failure as Error).message).toContain(
       "Organization lookup returned an invalid payload."
     );
+  }, 1000);
+
+  it("returns [] when the lenient organization list payload has invalid items", async () => {
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cookie" ? "better-auth.session_token=session-token" : undefined
+    );
+    mockedGetRequestProtocol.mockReturnValue("http");
+    mockedGetRequestHost.mockReturnValue("127.0.0.1:4300");
+    process.env.AUTH_ORIGIN = "http://tt-sbx-api:4301";
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json([{ id: 123, name: "Acme", slug: "acme" }])
+    );
+
+    await expect(listCurrentServerOrganizations()).resolves.toStrictEqual([]);
   }, 1000);
 });

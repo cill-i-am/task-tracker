@@ -7,7 +7,6 @@ import {
 import { Schema } from "effect";
 
 import { resolveAuthBaseURL } from "#/lib/auth-client";
-import type { createTaskTrackerAuthClient } from "#/lib/auth-client";
 
 const OrganizationSummarySchema = Schema.Struct({
   id: Schema.String,
@@ -17,14 +16,37 @@ const OrganizationSummarySchema = Schema.Struct({
 
 const OrganizationSummaryListSchema = Schema.Array(OrganizationSummarySchema);
 
+const NullableString = Schema.NullOr(Schema.String);
+
+const OrganizationAccessSessionSchema = Schema.Struct({
+  session: Schema.Struct({
+    id: Schema.String,
+    createdAt: Schema.String,
+    updatedAt: Schema.String,
+    userId: Schema.String,
+    expiresAt: Schema.String,
+    token: Schema.String,
+    ipAddress: Schema.optional(NullableString),
+    userAgent: Schema.optional(NullableString),
+    activeOrganizationId: Schema.optional(NullableString),
+  }),
+  user: Schema.Struct({
+    id: Schema.String,
+    name: Schema.String,
+    email: Schema.String,
+    image: Schema.optional(NullableString),
+    emailVerified: Schema.Boolean,
+    createdAt: Schema.String,
+    updatedAt: Schema.String,
+  }),
+});
+
 export type OrganizationSummary = Schema.Schema.Type<
   typeof OrganizationSummarySchema
 >;
 
-export type OrganizationAccessSession = NonNullable<
-  Awaited<
-    ReturnType<ReturnType<typeof createTaskTrackerAuthClient>["getSession"]>
-  >["data"]
+export type OrganizationAccessSession = Schema.Schema.Type<
+  typeof OrganizationAccessSessionSchema
 >;
 
 interface ServerAuthRequest {
@@ -60,11 +82,11 @@ export const getCurrentServerOrganizationSession = createServerOnlyFn(
       return null;
     }
 
-    if (!isOrganizationAccessSession(session)) {
+    try {
+      return Schema.decodeUnknownSync(OrganizationAccessSessionSchema)(session);
+    } catch {
       throw new Error("Session lookup returned an invalid payload.");
     }
-
-    return session;
   }
 );
 
@@ -209,40 +231,4 @@ function decodeOrganizationSummariesStrict(
   } catch {
     throw new Error("Organization lookup returned an invalid payload.");
   }
-}
-
-function isOrganizationAccessSession(
-  value: unknown
-): value is OrganizationAccessSession {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  if (!isRecord(value.session) || !isRecord(value.user)) {
-    return false;
-  }
-
-  if (typeof value.user.id !== "string") {
-    return false;
-  }
-
-  if (typeof value.user.name !== "string") {
-    return false;
-  }
-
-  if (typeof value.user.email !== "string") {
-    return false;
-  }
-
-  const { activeOrganizationId } = value.session;
-
-  return (
-    activeOrganizationId === undefined ||
-    activeOrganizationId === null ||
-    typeof activeOrganizationId === "string"
-  );
-}
-
-function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
-  return typeof value === "object" && value !== null;
 }

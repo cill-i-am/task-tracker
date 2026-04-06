@@ -91,7 +91,7 @@ export async function ensureActiveOrganizationId() {
 
   return {
     activeOrganizationId: firstOrganization.id,
-    session,
+    session: withActiveOrganizationId(session, firstOrganization.id),
   };
 }
 
@@ -138,4 +138,17 @@ function toOrganizationSummary(
     name: organization.name,
     slug: organization.slug,
   };
+}
+
+function withActiveOrganizationId(
+  session: Session,
+  activeOrganizationId: string
+) {
+  return {
+    ...session,
+    session: {
+      ...session.session,
+      activeOrganizationId,
+    },
+  } satisfies Session;
 }
