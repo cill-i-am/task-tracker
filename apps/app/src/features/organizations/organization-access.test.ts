@@ -27,6 +27,7 @@ interface Organization {
 
 const {
   mockedGetServerSession,
+  mockedGetStrictServerSession,
   mockedListServerOrganizations,
   mockedGetStrictServerOrganizations,
   mockedGetSession,
@@ -34,6 +35,7 @@ const {
   mockedIsServerEnvironment,
 } = vi.hoisted(() => ({
   mockedGetServerSession: vi.fn<() => Promise<Session | null>>(),
+  mockedGetStrictServerSession: vi.fn<() => Promise<Session | null>>(),
   mockedListServerOrganizations:
     vi.fn<() => Promise<readonly OrganizationSummary[]>>(),
   mockedGetStrictServerOrganizations:
@@ -62,6 +64,8 @@ vi.mock(import("./organization-server"), async (importActual) => {
 
   return {
     ...actual,
+    getCurrentServerOrganizationSession:
+      mockedGetStrictServerSession as typeof actual.getCurrentServerOrganizationSession,
     listCurrentServerOrganizations:
       mockedListServerOrganizations as typeof actual.listCurrentServerOrganizations,
     getCurrentServerOrganizations:
@@ -147,6 +151,23 @@ describe("organization access helpers", () => {
       options: { to: "/login" },
     });
     await expect(result).rejects.toSatisfy(isRedirect);
+  }, 1000);
+
+  it("rethrows SSR session lookup failures during access checks", async () => {
+    mockedIsServerEnvironment.mockReturnValue(true);
+    mockedGetServerSession.mockResolvedValue(null);
+    mockedGetStrictServerSession.mockRejectedValue(
+      new Error("server session down")
+    );
+
+    const failure = await requireOrganizationAccess().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBeFalsy();
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("server session down");
+    expect(mockedListServerOrganizations).not.toHaveBeenCalled();
   }, 1000);
 
   it("returns active organization id from the current session when available", async () => {
@@ -248,7 +269,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("upstream unavailable");
   }, 1000);
@@ -289,6 +310,23 @@ describe("organization access helpers", () => {
       options: { to: "/login" },
     });
     await expect(result).rejects.toSatisfy(isRedirect);
+  }, 1000);
+
+  it("rethrows SSR session lookup failures instead of redirecting to /login", async () => {
+    mockedIsServerEnvironment.mockReturnValue(true);
+    mockedGetServerSession.mockResolvedValue(null);
+    mockedGetStrictServerSession.mockRejectedValue(
+      new Error("server session down")
+    );
+
+    const failure = await redirectIfOrganizationReady().catch(
+      (caughtError) => caughtError
+    );
+
+    expect(isRedirect(failure)).toBeFalsy();
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("server session down");
+    expect(mockedListServerOrganizations).not.toHaveBeenCalled();
   }, 1000);
 
   it("redirects onboarding users away when organization access is already ready", async () => {
@@ -334,7 +372,7 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    expect(isRedirect(failure)).toBe(false);
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
   }, 1000);

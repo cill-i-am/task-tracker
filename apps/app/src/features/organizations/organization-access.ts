@@ -5,6 +5,7 @@ import { authClient } from "#/lib/auth-client";
 import { isServerEnvironment } from "../auth/runtime-environment";
 import { getCurrentServerSession } from "../auth/server-session";
 import {
+  getCurrentServerOrganizationSession,
   getCurrentServerOrganizations,
   listCurrentServerOrganizations,
 } from "./organization-server";
@@ -24,7 +25,13 @@ type RawOrganization = NonNullable<
 
 async function getCurrentSession(): Promise<Session | null> {
   if (isServerEnvironment()) {
-    return await getCurrentServerSession();
+    const session = await getCurrentServerSession();
+
+    if (session) {
+      return session;
+    }
+
+    return await getCurrentServerOrganizationSession();
   }
 
   const session = await authClient.getSession();
