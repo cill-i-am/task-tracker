@@ -63,6 +63,10 @@ describe("makeAuthenticationConfig()", () => {
             window: 60,
             max: 3,
           },
+          "/send-verification-email": {
+            window: 60,
+            max: 3,
+          },
         },
       },
       emailAndPassword: {
@@ -78,6 +82,21 @@ describe("makeAuthenticationConfig()", () => {
     });
 
     expect(config).not.toHaveProperty("socialProviders");
+  }, 10_000);
+
+  it("applies a dedicated resend verification email rate limit", () => {
+    const config = makeAuthenticationConfig({
+      baseUrl: "http://127.0.0.1:3001",
+      secret: "super-secret-value",
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
+    });
+
+    expect(
+      config.rateLimit.customRules["/send-verification-email"]
+    ).toStrictEqual({
+      window: 60,
+      max: 3,
+    });
   }, 10_000);
 
   it("adds the matching app origin for a portless sandbox URL", () => {

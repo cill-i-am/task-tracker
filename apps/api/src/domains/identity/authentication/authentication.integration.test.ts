@@ -329,7 +329,96 @@ describe("authentication integration", () => {
     expect(sessionAfterVerifyResponse.status).toBe(200);
     const sessionAfterVerify =
       (await sessionAfterVerifyResponse.json()) as SessionResponse;
-    expect(sessionAfterVerify?.user?.emailVerified).toBeTruthy();
+    expect(sessionAfterVerify?.user?.emailVerified).toBe(true);
+  }, 30_000);
+
+  it("rate limits repeated verification email resend requests", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase();
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const adminPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => adminPool.end());
+
+    if (!(await canConnect(adminPool))) {
+      context.skip(
+        "Auth integration database unavailable; skipping resend verification rate-limit coverage"
+      );
+    }
+
+    await applyMigration(databaseUrl, "0000_careless_anita_blake.sql");
+    await applyMigration(databaseUrl, "0001_giant_speedball.sql");
+    await applyMigration(databaseUrl, "0002_slippery_hulk.sql");
+    await applyMigration(databaseUrl, "0003_organizations.sql");
+
+    const authPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => authPool.end());
+
+    const auth = createAuthentication({
+      backgroundTaskHandler: async (task) => {
+        await task;
+      },
+      config: makeAuthenticationConfig({
+        baseUrl: "http://127.0.0.1:3000",
+        secret: "0123456789abcdef0123456789abcdef",
+        databaseUrl,
+      }),
+      database: drizzle(authPool, { schema: authSchema }),
+      reportPasswordResetEmailFailure: () => {},
+      reportVerificationEmailFailure: () => {},
+      sendPasswordResetEmail: async () => {},
+      sendVerificationEmail: async () => {},
+    });
+
+    const cookieJar = new Map<string, string>();
+    const callbackURL = "http://127.0.0.1:4173/verify-email";
+
+    const signUpResponse = await auth.handler(
+      makeJsonRequest("/sign-up/email", {
+        email: "verify-rate-limit@example.com",
+        name: "Verify Rate Limit User",
+        password: "correct horse battery staple",
+        callbackURL,
+      })
+    );
+    updateCookieJar(cookieJar, signUpResponse);
+    expect(signUpResponse.status).toBe(200);
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const resendResponse = await auth.handler(
+        makeJsonRequest(
+          "/send-verification-email",
+          {
+            email: "verify-rate-limit@example.com",
+            callbackURL,
+          },
+          {
+            cookieJar,
+            forwardedFor: "203.0.113.25",
+          }
+        )
+      );
+      updateCookieJar(cookieJar, resendResponse);
+      expect(resendResponse.status).toBe(200);
+    }
+
+    const limitedResponse = await auth.handler(
+      makeJsonRequest(
+        "/send-verification-email",
+        {
+          email: "verify-rate-limit@example.com",
+          callbackURL,
+        },
+        {
+          cookieJar,
+          forwardedFor: "203.0.113.25",
+        }
+      )
+    );
+
+    expect(limitedResponse.status).toBe(429);
   }, 30_000);
 
   it("rejects organization creation when the slug violates the app contract", async (context: {

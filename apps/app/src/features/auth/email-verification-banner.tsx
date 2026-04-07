@@ -44,7 +44,7 @@ export function EmailVerificationBanner({
         return;
       }
 
-      setSuccessText("A new verification email is on the way.");
+      setSuccessText("Another verification email has been requested.");
     } catch (error) {
       setErrorText(getEmailVerificationFailureMessage(error));
     } finally {
@@ -53,7 +53,12 @@ export function EmailVerificationBanner({
   }
 
   return (
-    <Alert className="mx-4 mt-4">
+    <Alert
+      className="mx-4 mt-4"
+      role="region"
+      aria-label="Email verification reminder"
+      aria-live="polite"
+    >
       <AlertTitle>Verify your email</AlertTitle>
       <AlertDescription className="flex flex-col gap-4">
         <p>

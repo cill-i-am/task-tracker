@@ -79,4 +79,33 @@ describe("email verification banner", () => {
       });
     }
   );
+
+  it(
+    "uses a non-assertive banner region and softer resend confirmation copy",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+
+      render(
+        <EmailVerificationBanner
+          email="person@example.com"
+          emailVerified={false}
+        />
+      );
+
+      expect(
+        screen.getByRole("region", { name: "Email verification reminder" })
+      ).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole("button", { name: "Resend verification email" })
+      );
+
+      await expect(
+        screen.findByText("Another verification email has been requested.")
+      ).resolves.toBeInTheDocument();
+    }
+  );
 });
