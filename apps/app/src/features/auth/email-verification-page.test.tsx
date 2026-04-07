@@ -28,8 +28,23 @@ vi.mock(import("@tanstack/react-router"), async () => {
 });
 
 describe("email verification page", () => {
-  it("shows the success state by default", () => {
+  it("shows the invalid-link state by default", () => {
     render(<EmailVerificationPage />);
+
+    expect(screen.getByText("Verification link invalid")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This verification link is invalid or has expired. Request a fresh verification email from the app."
+      )
+    ).toBeInTheDocument();
+
+    const appLink = screen.getByRole("link", { name: "Go to the app" });
+    expect(appLink).toHaveAttribute("href", "/");
+    expect(appLink).toHaveAttribute("data-router-link", "true");
+  }, 10_000);
+
+  it("shows the success state for status=success", () => {
+    render(<EmailVerificationPage search={{ status: "success" }} />);
 
     expect(screen.getByText("Email verified")).toBeInTheDocument();
     expect(
@@ -37,10 +52,6 @@ describe("email verification page", () => {
         "Your email address is verified. You can continue in the app or sign in again if needed."
       )
     ).toBeInTheDocument();
-
-    const appLink = screen.getByRole("link", { name: "Go to the app" });
-    expect(appLink).toHaveAttribute("href", "/");
-    expect(appLink).toHaveAttribute("data-router-link", "true");
   }, 10_000);
 
   it("shows the invalid-link state for INVALID_TOKEN", () => {
@@ -63,5 +74,16 @@ describe("email verification page", () => {
         "This verification link is invalid or has expired. Request a fresh verification email from the app."
       )
     ).toBeInTheDocument();
+  }, 10_000);
+
+  it("prefers the invalid-link state when error and status=success are both present", () => {
+    render(
+      <EmailVerificationPage
+        search={{ error: "INVALID_TOKEN", status: "success" }}
+      />
+    );
+
+    expect(screen.getByText("Verification link invalid")).toBeInTheDocument();
+    expect(screen.queryByText("Email verified")).not.toBeInTheDocument();
   }, 10_000);
 });

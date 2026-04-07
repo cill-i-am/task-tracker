@@ -14,13 +14,17 @@ const { mockedSendVerificationEmail } = vi.hoisted(() => ({
   >(),
 }));
 
-vi.mock(import("#/lib/auth-client"), () => ({
-  authClient: {
-    sendVerificationEmail: mockedSendVerificationEmail,
-  } as unknown as typeof AuthClientModule.authClient,
-  buildEmailVerificationRedirectTo: (origin: string) =>
-    new URL("/verify-email", origin).toString(),
-}));
+vi.mock(import("#/lib/auth-client"), async () => {
+  const actual =
+    await vi.importActual<typeof AuthClientModule>("#/lib/auth-client");
+
+  return {
+    authClient: {
+      sendVerificationEmail: mockedSendVerificationEmail,
+    } as unknown as typeof AuthClientModule.authClient,
+    buildEmailVerificationRedirectTo: actual.buildEmailVerificationRedirectTo,
+  };
+});
 
 describe("email verification banner", () => {
   beforeEach(() => {
@@ -74,7 +78,7 @@ describe("email verification banner", () => {
       await waitFor(() => {
         expect(mockedSendVerificationEmail).toHaveBeenCalledWith({
           email: "person@example.com",
-          callbackURL: "http://localhost:3000/verify-email",
+          callbackURL: "http://localhost:3000/verify-email?status=success",
         });
       });
     }

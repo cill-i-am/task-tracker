@@ -46,16 +46,20 @@ vi.mock(import("./auth-navigation"), () => ({
   useAuthSuccessNavigation: () => () => mockedNavigate({ to: "/" }),
 }));
 
-vi.mock(import("#/lib/auth-client"), () => ({
-  authClient: {
-    getSession: mockedGetSession,
-    signUp: {
-      email: mockedSignUpEmail,
-    },
-  } as unknown as typeof AuthClientModule.authClient,
-  buildEmailVerificationRedirectTo: (origin: string) =>
-    new URL("/verify-email", origin).toString(),
-}));
+vi.mock(import("#/lib/auth-client"), async () => {
+  const actual =
+    await vi.importActual<typeof AuthClientModule>("#/lib/auth-client");
+
+  return {
+    authClient: {
+      getSession: mockedGetSession,
+      signUp: {
+        email: mockedSignUpEmail,
+      },
+    } as unknown as typeof AuthClientModule.authClient,
+    buildEmailVerificationRedirectTo: actual.buildEmailVerificationRedirectTo,
+  };
+});
 
 describe("signup page", () => {
   beforeEach(() => {
@@ -98,7 +102,7 @@ describe("signup page", () => {
         name: "Taylor Example",
         email: "person@example.com",
         password: "password123",
-        callbackURL: "http://localhost:3000/verify-email",
+        callbackURL: "http://localhost:3000/verify-email?status=success",
       });
     });
     await waitFor(() => {

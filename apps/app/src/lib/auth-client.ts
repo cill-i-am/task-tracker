@@ -74,7 +74,10 @@ export function buildPasswordResetRedirectTo(origin: string): string {
 }
 
 export function buildEmailVerificationRedirectTo(origin: string): string {
-  return new URL("/verify-email", origin).toString();
+  const redirectURL = new URL("/verify-email", origin);
+  redirectURL.searchParams.set("status", "success");
+
+  return redirectURL.toString();
 }
 
 function readConfiguredAuthOrigin(): string | undefined {

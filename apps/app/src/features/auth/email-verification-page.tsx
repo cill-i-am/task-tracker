@@ -13,6 +13,7 @@ import { decodeEmailVerificationSearch } from "./email-verification-search";
 interface EmailVerificationPageProps {
   search?: {
     error?: string;
+    status?: string;
   };
 }
 

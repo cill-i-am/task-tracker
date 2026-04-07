@@ -1,8 +1,18 @@
 import { decodeEmailVerificationSearch } from "./email-verification-search";
 
 describe("email verification search", () => {
-  it("defaults to the success state", () => {
+  it("maps bare search params to the invalid-token state", () => {
     expect(decodeEmailVerificationSearch({})).toStrictEqual({
+      status: "invalid-token",
+    });
+  }, 1000);
+
+  it("maps status=success to the success state", () => {
+    expect(
+      decodeEmailVerificationSearch({
+        status: "success",
+      })
+    ).toStrictEqual({
       status: "success",
     });
   }, 1000);
@@ -31,6 +41,17 @@ describe("email verification search", () => {
     expect(
       decodeEmailVerificationSearch({
         error: "USER_NOT_FOUND",
+      })
+    ).toStrictEqual({
+      status: "invalid-token",
+    });
+  }, 1000);
+
+  it("prefers any string error over status=success", () => {
+    expect(
+      decodeEmailVerificationSearch({
+        error: "USER_NOT_FOUND",
+        status: "success",
       })
     ).toStrictEqual({
       status: "invalid-token",

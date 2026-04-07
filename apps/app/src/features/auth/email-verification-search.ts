@@ -6,6 +6,7 @@ const INVALID_TOKEN_STATUS = { status: "invalid-token" } as const;
 
 const RawEmailVerificationSearch = Schema.Struct({
   error: Schema.optional(Schema.Unknown),
+  status: Schema.optional(Schema.Unknown),
 });
 
 const EmailVerificationSearch = Schema.transform(
@@ -20,10 +21,17 @@ const EmailVerificationSearch = Schema.transform(
   ),
   {
     strict: true,
-    decode: ({ error }) =>
-      typeof error === "string" ? INVALID_TOKEN_STATUS : SUCCESS_STATUS,
+    decode: ({ error, status }) => {
+      if (typeof error === "string") {
+        return INVALID_TOKEN_STATUS;
+      }
+
+      return status === "success" ? SUCCESS_STATUS : INVALID_TOKEN_STATUS;
+    },
     encode: (search) =>
-      search.status === "invalid-token" ? { error: INVALID_TOKEN } : {},
+      search.status === "invalid-token"
+        ? { error: INVALID_TOKEN }
+        : { status: "success" },
   }
 );
 
