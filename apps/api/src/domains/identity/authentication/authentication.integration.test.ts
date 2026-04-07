@@ -331,7 +331,11 @@ describe("authentication integration", () => {
     expect(sessionAfterVerifyResponse.status).toBe(200);
     const sessionAfterVerify =
       (await sessionAfterVerifyResponse.json()) as SessionResponse;
-    expect(sessionAfterVerify?.user?.emailVerified).toBe(true);
+    expect(sessionAfterVerify).toMatchObject({
+      user: {
+        emailVerified: true,
+      },
+    });
   }, 30_000);
 
   it("rate limits repeated verification email resend requests", async (context: {

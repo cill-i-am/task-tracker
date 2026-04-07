@@ -16,7 +16,7 @@ function createTestSlug(prefix: string): string {
 }
 
 async function expectAuthenticatedHome(page: Page) {
-  await expect(page).toHaveURL("http://localhost:4173/");
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Your work" })).toBeVisible();
   await expect(page.getByText("Start simple, ship quickly.")).toHaveCount(0);
 }
@@ -100,7 +100,7 @@ test.describe("auth pages", () => {
     await expect(page).toHaveURL(/\/login$/);
     await expect(loginPage.heading).toBeVisible();
     expect(
-      documentRequests.filter((url) => url === "http://localhost:4173/")
+      documentRequests.filter((url) => new URL(url).pathname === "/")
     ).toHaveLength(0);
   });
 

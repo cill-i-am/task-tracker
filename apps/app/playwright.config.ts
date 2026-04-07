@@ -11,12 +11,12 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   use: {
-    baseURL: "http://localhost:4173",
+    baseURL: "http://127.0.0.1:4173",
     trace: "on-first-retry",
   },
   webServer: {
     command:
-      "sh -c 'pnpm --filter api exec tsx watch src/index.ts >/tmp/task-tracker-auth-e2e-api.log 2>&1 & api_pid=$!; trap \"kill $api_pid\" EXIT; until curl --silent --max-time 1 http://127.0.0.1:3001/api/auth/get-session >/dev/null 2>&1; do sleep 0.5; done; pnpm --filter app exec vite dev --port 4173 --strictPort'",
+      "sh -c 'pnpm --filter api exec tsx src/index.ts >/tmp/task-tracker-auth-e2e-api.log 2>&1 & api_pid=$!; trap \"kill $api_pid\" EXIT; until curl --silent --max-time 1 http://127.0.0.1:3001/api/auth/get-session >/dev/null 2>&1; do sleep 0.5; done; pnpm --filter app exec vite dev --host 127.0.0.1 --port 4173 --strictPort'",
     env: {
       ...process.env,
       AUTH_EMAIL_FROM: playwrightAuthEmailFrom,
@@ -26,7 +26,7 @@ export default defineConfig({
       PORT: "3001",
       RESEND_API_KEY: playwrightResendApiKey,
     },
-    port: 4173,
+    url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
