@@ -179,7 +179,9 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    const redirectFailure = isRedirect(failure);
+
+    expect({ redirectFailure }).toStrictEqual({ redirectFailure: false });
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("server session down");
     expect(mockedListServerOrganizations).not.toHaveBeenCalled();
@@ -195,7 +197,9 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    const redirectFailure = isRedirect(failure);
+
+    expect({ redirectFailure }).toStrictEqual({ redirectFailure: false });
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain(
       "Session lookup returned an invalid payload."
@@ -369,7 +373,9 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    const redirectFailure = isRedirect(failure);
+
+    expect({ redirectFailure }).toStrictEqual({ redirectFailure: false });
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("upstream unavailable");
     expect(mockedSetClientActiveOrganization).not.toHaveBeenCalled();
@@ -483,7 +489,9 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBeFalsy();
+    const redirectFailure = isRedirect(failure);
+
+    expect({ redirectFailure }).toStrictEqual({ redirectFailure: false });
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("server session down");
     expect(mockedListServerOrganizations).not.toHaveBeenCalled();
@@ -566,7 +574,9 @@ describe("organization access helpers", () => {
       (caughtError) => caughtError
     );
 
-    expect(isRedirect(failure)).toBe(false);
+    const redirectFailure = isRedirect(failure);
+
+    expect({ redirectFailure }).toStrictEqual({ redirectFailure: false });
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toContain("network down");
   }, 1000);
