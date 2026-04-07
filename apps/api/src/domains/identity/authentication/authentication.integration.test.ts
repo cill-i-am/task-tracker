@@ -216,6 +216,122 @@ describe("authentication integration", () => {
     );
   }, 30_000);
 
+  it("sends verification mail on sign-up, supports resend, and marks the session user verified after the verification redirect", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase();
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const adminPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => adminPool.end());
+
+    if (!(await canConnect(adminPool))) {
+      context.skip(
+        "Auth integration database unavailable; skipping email verification flow coverage"
+      );
+    }
+
+    await applyMigration(databaseUrl, "0000_careless_anita_blake.sql");
+    await applyMigration(databaseUrl, "0001_giant_speedball.sql");
+    await applyMigration(databaseUrl, "0002_slippery_hulk.sql");
+    await applyMigration(databaseUrl, "0003_organizations.sql");
+
+    const authPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => authPool.end());
+
+    const deliveredVerificationUrls: string[] = [];
+    const auth = createAuthentication({
+      backgroundTaskHandler: async (task) => {
+        await task;
+      },
+      config: makeAuthenticationConfig({
+        baseUrl: "http://127.0.0.1:3000",
+        secret: "0123456789abcdef0123456789abcdef",
+        databaseUrl,
+      }),
+      database: drizzle(authPool, { schema: authSchema }),
+      reportPasswordResetEmailFailure: () => {},
+      reportVerificationEmailFailure: () => {},
+      sendPasswordResetEmail: async () => {},
+      sendVerificationEmail: async ({ verificationUrl }) => {
+        deliveredVerificationUrls.push(verificationUrl);
+        await Promise.resolve();
+      },
+    });
+
+    const cookieJar = new Map<string, string>();
+    const callbackURL = "http://127.0.0.1:4173/verify-email";
+
+    const signUpResponse = await auth.handler(
+      makeJsonRequest("/sign-up/email", {
+        email: "verify-flow@example.com",
+        name: "Verify Flow User",
+        password: "correct horse battery staple",
+        callbackURL,
+      })
+    );
+    updateCookieJar(cookieJar, signUpResponse);
+    expect(signUpResponse.status).toBe(200);
+    expect(deliveredVerificationUrls).toHaveLength(1);
+    expect(deliveredVerificationUrls[0]).toContain("/verify-email?token=");
+    expect(deliveredVerificationUrls[0]).toContain(
+      "callbackURL=http%3A%2F%2F127.0.0.1%3A4173%2Fverify-email"
+    );
+
+    const resendVerificationResponse = await auth.handler(
+      makeJsonRequest(
+        "/send-verification-email",
+        {
+          email: "verify-flow@example.com",
+          callbackURL,
+        },
+        {
+          cookieJar,
+        }
+      )
+    );
+    updateCookieJar(cookieJar, resendVerificationResponse);
+    expect(resendVerificationResponse.status).toBe(200);
+    expect(deliveredVerificationUrls).toHaveLength(2);
+
+    const latestVerificationUrl = deliveredVerificationUrls.at(-1);
+    expect(latestVerificationUrl).toBeDefined();
+    const parsedVerificationUrl = new URL(latestVerificationUrl as string);
+
+    const verifyHeaders = new Headers();
+    if (cookieJar.size > 0) {
+      verifyHeaders.set(
+        "cookie",
+        [...cookieJar.entries()]
+          .map(([name, value]) => `${name}=${value}`)
+          .join("; ")
+      );
+    }
+
+    const verifyResponse = await auth.handler(
+      new Request(
+        `http://127.0.0.1:3000${parsedVerificationUrl.pathname}${parsedVerificationUrl.search}`,
+        {
+          headers: verifyHeaders,
+        }
+      )
+    );
+    updateCookieJar(cookieJar, verifyResponse);
+    expect(verifyResponse.status).toBe(302);
+    expect(verifyResponse.headers.get("location")).toBe(callbackURL);
+
+    const sessionAfterVerifyResponse = await auth.handler(
+      makeRequest("/get-session", {
+        cookieJar,
+      })
+    );
+    expect(sessionAfterVerifyResponse.status).toBe(200);
+    const sessionAfterVerify =
+      (await sessionAfterVerifyResponse.json()) as SessionResponse;
+    expect(sessionAfterVerify?.user?.emailVerified).toBeTruthy();
+  }, 30_000);
+
   it("rejects organization creation when the slug violates the app contract", async (context: {
     skip: (note?: string) => never;
   }) => {
@@ -717,6 +833,7 @@ interface RequestOptions {
 interface SessionResponse {
   readonly user?: {
     readonly email?: string;
+    readonly emailVerified?: boolean;
   };
   readonly session?: {
     readonly activeOrganizationId?: string;
