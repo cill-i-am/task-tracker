@@ -26,20 +26,16 @@ export function createAuthentication(options: {
   readonly config: AuthenticationConfig;
   readonly database: NodePgDatabase<typeof authSchema>;
   readonly reportPasswordResetEmailFailure: (error: unknown) => void;
-  readonly reportVerificationEmailFailure?: (error: unknown) => void;
+  readonly reportVerificationEmailFailure: (error: unknown) => void;
   readonly sendPasswordResetEmail: (
     input: PasswordResetEmailInput
   ) => Promise<void>;
-  readonly sendVerificationEmail?: (
+  readonly sendVerificationEmail: (
     input: EmailVerificationEmailInput
   ) => Promise<void>;
 }) {
   const { config, database, sendPasswordResetEmail, sendVerificationEmail } =
     options;
-  const reportVerificationEmailFailure =
-    options.reportVerificationEmailFailure ?? (() => {});
-  const sendVerificationEmailHandler =
-    sendVerificationEmail ?? (() => Promise.resolve());
   const { databaseUrl: _databaseUrl, ...authConfig } = config;
 
   return betterAuth({
@@ -100,14 +96,14 @@ export function createAuthentication(options: {
       ...authConfig.emailVerification,
       sendVerificationEmail: async ({ user, token, url }) => {
         try {
-          await sendVerificationEmailHandler({
+          await sendVerificationEmail({
             idempotencyKey: `email-verification/${user.id}/${token}`,
             recipientEmail: user.email,
             recipientName: user.name ?? user.email,
             verificationUrl: url,
           } as const satisfies EmailVerificationEmailInput);
         } catch (error) {
-          reportVerificationEmailFailure(error);
+          options.reportVerificationEmailFailure(error);
           throw error;
         }
       },
