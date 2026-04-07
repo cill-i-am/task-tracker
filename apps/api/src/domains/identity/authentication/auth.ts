@@ -21,6 +21,9 @@ import {
 import { ResendAuthEmailTransportLive } from "./resend-auth-email-transport.js";
 import { authSchema } from "./schema.js";
 
+type AuthEmailFailureReporter = (error: unknown) => void;
+type AuthEmailPromiseSender<Input> = (input: Input) => Promise<void>;
+
 export function createAuthentication(options: {
   readonly backgroundTaskHandler: (task: Promise<unknown>) => void;
   readonly config: AuthenticationConfig;
@@ -79,33 +82,31 @@ export function createAuthentication(options: {
     emailAndPassword: {
       ...authConfig.emailAndPassword,
       sendResetPassword: async ({ token, user, url }) => {
-        try {
-          await sendPasswordResetEmail({
+        await deliverAuthEmail({
+          reportFailure: options.reportPasswordResetEmailFailure,
+          send: sendPasswordResetEmail,
+          input: {
             idempotencyKey: `password-reset/${user.id}/${token}`,
             recipientEmail: user.email,
             recipientName: user.name ?? user.email,
             resetUrl: url,
-          } as const satisfies PasswordResetEmailInput);
-        } catch (error) {
-          options.reportPasswordResetEmailFailure(error);
-          throw error;
-        }
+          } as const satisfies PasswordResetEmailInput,
+        });
       },
     },
     emailVerification: {
       ...authConfig.emailVerification,
       sendVerificationEmail: async ({ user, token, url }) => {
-        try {
-          await sendVerificationEmail({
+        await deliverAuthEmail({
+          reportFailure: options.reportVerificationEmailFailure,
+          send: sendVerificationEmail,
+          input: {
             idempotencyKey: `email-verification/${user.id}/${token}`,
             recipientEmail: user.email,
             recipientName: user.name ?? user.email,
             verificationUrl: url,
-          } as const satisfies EmailVerificationEmailInput);
-        } catch (error) {
-          options.reportVerificationEmailFailure(error);
-          throw error;
-        }
+          } as const satisfies EmailVerificationEmailInput,
+        });
       },
     },
   });
@@ -123,26 +124,28 @@ function makeAuthenticationBackgroundTaskHandler() {
   };
 }
 
-function makePasswordResetEmailFailureReporter(
-  runtime: Runtime.Runtime<never>
+async function deliverAuthEmail<Input>(options: {
+  readonly input: Input;
+  readonly reportFailure: AuthEmailFailureReporter;
+  readonly send: AuthEmailPromiseSender<Input>;
+}) {
+  try {
+    await options.send(options.input);
+  } catch (error) {
+    options.reportFailure(error);
+    throw error;
+  }
+}
+
+function makeEmailFailureReporter(
+  runtime: Runtime.Runtime<never>,
+  label: string
 ) {
   const runFork = Runtime.runFork(runtime);
 
   return (error: unknown) => {
     runFork(
-      Effect.logError("Password reset email delivery failed", {
-        error: serializeBackgroundTaskError(error),
-      })
-    );
-  };
-}
-
-function makeVerificationEmailFailureReporter(runtime: Runtime.Runtime<never>) {
-  const runFork = Runtime.runFork(runtime);
-
-  return (error: unknown) => {
-    runFork(
-      Effect.logError("Verification email delivery failed", {
+      Effect.logError(label, {
         error: serializeBackgroundTaskError(error),
       })
     );
@@ -271,10 +274,14 @@ export class Authentication extends Effect.Service<Authentication>()(
       const runtime = yield* Effect.runtime<never>();
       const runPromise = Runtime.runPromise(runtime);
       const backgroundTaskHandler = makeAuthenticationBackgroundTaskHandler();
-      const reportPasswordResetEmailFailure =
-        makePasswordResetEmailFailureReporter(runtime);
-      const reportVerificationEmailFailure =
-        makeVerificationEmailFailureReporter(runtime);
+      const reportPasswordResetEmailFailure = makeEmailFailureReporter(
+        runtime,
+        "Password reset email delivery failed"
+      );
+      const reportVerificationEmailFailure = makeEmailFailureReporter(
+        runtime,
+        "Verification email delivery failed"
+      );
 
       return createAuthentication({
         backgroundTaskHandler,
