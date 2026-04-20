@@ -1181,7 +1181,8 @@ function ensureComposeEnvironmentFile(
         ? writeComposeEnvironmentFile(record, {
             AUTH_EMAIL_FROM: "",
             AUTH_EMAIL_FROM_NAME: "",
-            RESEND_API_KEY: "",
+            CLOUDFLARE_ACCOUNT_ID: "",
+            CLOUDFLARE_API_TOKEN: "",
           })
         : Effect.fail(
             toPreflightError(
@@ -1199,7 +1200,8 @@ function writeComposeEnvironmentFile(
   sharedEnvironment: {
     readonly AUTH_EMAIL_FROM: string;
     readonly AUTH_EMAIL_FROM_NAME: string;
-    readonly RESEND_API_KEY: string;
+    readonly CLOUDFLARE_ACCOUNT_ID: string;
+    readonly CLOUDFLARE_API_TOKEN: string;
   }
 ): SandboxPreflightEffect<void> {
   const composeEnvFile = getComposeEnvFilePath(record.sandboxName);
@@ -1228,7 +1230,8 @@ export function buildComposeFallbackEnvironmentOverrides(
   sharedEnvironment: {
     readonly AUTH_EMAIL_FROM: string;
     readonly AUTH_EMAIL_FROM_NAME: string;
-    readonly RESEND_API_KEY: string;
+    readonly CLOUDFLARE_ACCOUNT_ID: string;
+    readonly CLOUDFLARE_API_TOKEN: string;
   }
 ): Record<string, string> {
   const urls = buildRecordUrls(record);
@@ -1241,11 +1244,12 @@ export function buildComposeFallbackEnvironmentOverrides(
     AUTH_ORIGIN: `http://api:${record.ports.api}`,
     BETTER_AUTH_BASE_URL: urls.api,
     BETTER_AUTH_SECRET: record.betterAuthSecret,
+    CLOUDFLARE_ACCOUNT_ID: sharedEnvironment.CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_API_TOKEN: sharedEnvironment.CLOUDFLARE_API_TOKEN,
     DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/task_tracker",
     HOST: "0.0.0.0",
     PORT: String(record.ports.api),
     POSTGRES_HOST_PORT: String(record.ports.postgres),
-    RESEND_API_KEY: sharedEnvironment.RESEND_API_KEY,
     SANDBOX_ID: record.sandboxId,
     SANDBOX_DEV_IMAGE: record.runtimeAssets.devImage,
     SANDBOX_NODE_MODULES_VOLUME: record.runtimeAssets.nodeModulesVolume,

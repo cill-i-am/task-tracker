@@ -44,7 +44,8 @@ describe("buildSandboxRuntimeSpec()", () => {
         sharedEnvironment: {
           AUTH_EMAIL_FROM: "auth@example.com",
           AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          RESEND_API_KEY: "re_live_123",
+          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
         },
       })
     );
@@ -89,7 +90,8 @@ describe("buildSandboxRuntimeSpec()", () => {
         sharedEnvironment: {
           AUTH_EMAIL_FROM: "auth@example.com",
           AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          RESEND_API_KEY: "re_live_123",
+          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
         },
       })
     );
@@ -118,7 +120,8 @@ describe("buildSandboxRuntimeSpec()", () => {
         sharedEnvironment: {
           AUTH_EMAIL_FROM: "auth@example.com",
           AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          RESEND_API_KEY: "re_live_123",
+          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
         },
       })
     );
@@ -150,7 +153,8 @@ describe("buildSandboxRuntimeSpec()", () => {
         sharedEnvironment: {
           AUTH_EMAIL_FROM: "auth@example.com",
           AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          RESEND_API_KEY: "re_live_123",
+          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
         },
       }).pipe(Effect.either)
     );

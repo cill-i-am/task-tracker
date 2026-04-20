@@ -109,7 +109,8 @@ function extractMissingVariables(error: unknown): Set<string> {
   for (const variable of [
     "AUTH_EMAIL_FROM",
     "AUTH_EMAIL_FROM_NAME",
-    "RESEND_API_KEY",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_API_TOKEN",
   ]) {
     if (message.includes(variable)) {
       missing.add(variable);

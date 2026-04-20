@@ -461,12 +461,14 @@ describe("buildComposeFallbackEnvironmentOverrides()", () => {
       buildComposeFallbackEnvironmentOverrides(baseRecord, {
         AUTH_EMAIL_FROM: "",
         AUTH_EMAIL_FROM_NAME: "",
-        RESEND_API_KEY: "",
+        CLOUDFLARE_ACCOUNT_ID: "",
+        CLOUDFLARE_API_TOKEN: "",
       })
     ).toMatchObject({
       AUTH_EMAIL_FROM: "",
       AUTH_EMAIL_FROM_NAME: "",
-      RESEND_API_KEY: "",
+      CLOUDFLARE_ACCOUNT_ID: "",
+      CLOUDFLARE_API_TOKEN: "",
       BETTER_AUTH_BASE_URL: "https://alpha.api.task-tracker.localhost:1355",
       SANDBOX_NAME: "alpha",
     });

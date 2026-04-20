@@ -24,7 +24,8 @@ describe("loadSandboxSharedEnvironment()", () => {
     expect(result.left.missing).toStrictEqual([
       "AUTH_EMAIL_FROM",
       "AUTH_EMAIL_FROM_NAME",
-      "RESEND_API_KEY",
+      "CLOUDFLARE_ACCOUNT_ID",
+      "CLOUDFLARE_API_TOKEN",
     ]);
   }, 10_000);
 
@@ -41,7 +42,8 @@ describe("loadSandboxSharedEnvironment()", () => {
               [
                 "AUTH_EMAIL_FROM=auth@example.com",
                 'AUTH_EMAIL_FROM_NAME="Task Tracker"',
-                "RESEND_API_KEY=re_live_123",
+                "CLOUDFLARE_ACCOUNT_ID=cloudflare-account-live",
+                "CLOUDFLARE_API_TOKEN=cloudflare-token-live",
                 "# trailing comment should be ignored",
               ].join("\n")
             );
@@ -55,7 +57,8 @@ describe("loadSandboxSharedEnvironment()", () => {
     expect(result).toStrictEqual({
       AUTH_EMAIL_FROM: "auth@example.com",
       AUTH_EMAIL_FROM_NAME: "Override Sender",
-      RESEND_API_KEY: "re_live_123",
+      CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+      CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
     });
   }, 10_000);
 
@@ -66,7 +69,8 @@ describe("loadSandboxSharedEnvironment()", () => {
         processEnv: {
           AUTH_EMAIL_FROM: "auth@example.com",
           AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          RESEND_API_KEY: "re_live_123",
+          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
         },
         readFile: () =>
           Effect.fail(
@@ -78,7 +82,8 @@ describe("loadSandboxSharedEnvironment()", () => {
     expect(result).toStrictEqual({
       AUTH_EMAIL_FROM: "auth@example.com",
       AUTH_EMAIL_FROM_NAME: "Task Tracker",
-      RESEND_API_KEY: "re_live_123",
+      CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+      CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
     });
   }, 10_000);
 
@@ -93,7 +98,8 @@ describe("loadSandboxSharedEnvironment()", () => {
               [
                 "AUTH_EMAIL_FROM=auth@example.com",
                 'AUTH_EMAIL_FROM_NAME="Task Tracker Sandbox"',
-                "RESEND_API_KEY=re_live_123",
+                "CLOUDFLARE_ACCOUNT_ID=cloudflare-account-live",
+                "CLOUDFLARE_API_TOKEN=cloudflare-token-live",
               ].join("\n")
             );
           }
@@ -106,7 +112,8 @@ describe("loadSandboxSharedEnvironment()", () => {
     expect(result).toStrictEqual({
       AUTH_EMAIL_FROM: "auth@example.com",
       AUTH_EMAIL_FROM_NAME: "Task Tracker Sandbox",
-      RESEND_API_KEY: "re_live_123",
+      CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+      CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
     });
   }, 10_000);
 
@@ -117,7 +124,8 @@ describe("loadSandboxSharedEnvironment()", () => {
         processEnv: {
           AUTH_EMAIL_FROM: "auth@example.com",
           AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          RESEND_API_KEY: "re_live_123",
+          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
         },
         readFile: () => Effect.fail(new Error("permission denied")),
       }).pipe(Effect.either)

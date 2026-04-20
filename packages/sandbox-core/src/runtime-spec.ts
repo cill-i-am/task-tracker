@@ -60,13 +60,15 @@ export type SandboxRuntimeAssets = Schema.Schema.Type<
 export interface SharedSandboxEnvironment {
   readonly AUTH_EMAIL_FROM: string;
   readonly AUTH_EMAIL_FROM_NAME: string;
-  readonly RESEND_API_KEY: string;
+  readonly CLOUDFLARE_ACCOUNT_ID: string;
+  readonly CLOUDFLARE_API_TOKEN: string;
 }
 
 export const SharedSandboxEnvironment = Schema.Struct({
   AUTH_EMAIL_FROM: Schema.NonEmptyString,
   AUTH_EMAIL_FROM_NAME: Schema.NonEmptyString,
-  RESEND_API_KEY: Schema.NonEmptyString,
+  CLOUDFLARE_ACCOUNT_ID: Schema.NonEmptyString,
+  CLOUDFLARE_API_TOKEN: Schema.NonEmptyString,
 });
 
 export const SandboxRuntimeOverrides = Schema.Struct({
@@ -77,11 +79,12 @@ export const SandboxRuntimeOverrides = Schema.Struct({
   AUTH_ORIGIN: SandboxHttpUrl,
   BETTER_AUTH_BASE_URL: SandboxHttpUrl,
   BETTER_AUTH_SECRET: Schema.NonEmptyString,
+  CLOUDFLARE_ACCOUNT_ID: Schema.NonEmptyString,
+  CLOUDFLARE_API_TOKEN: Schema.NonEmptyString,
   DATABASE_URL: SandboxPostgresUrl,
   HOST: Schema.String,
   PORT: Schema.String,
   POSTGRES_HOST_PORT: Schema.String,
-  RESEND_API_KEY: Schema.NonEmptyString,
   SANDBOX_ID: SandboxIdSchema,
   SANDBOX_DEV_IMAGE: SandboxDockerImageReference,
   SANDBOX_NODE_MODULES_VOLUME: SandboxDockerVolumeName,
@@ -112,11 +115,12 @@ export function buildSandboxRuntimeOverrides(input: {
     AUTH_ORIGIN: `http://api:${input.ports.api}`,
     BETTER_AUTH_BASE_URL: input.urls.api,
     BETTER_AUTH_SECRET: input.betterAuthSecret,
+    CLOUDFLARE_ACCOUNT_ID: input.sharedEnvironment.CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_API_TOKEN: input.sharedEnvironment.CLOUDFLARE_API_TOKEN,
     DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/task_tracker",
     HOST: "0.0.0.0",
     PORT: String(input.ports.api),
     POSTGRES_HOST_PORT: String(input.ports.postgres),
-    RESEND_API_KEY: input.sharedEnvironment.RESEND_API_KEY,
     SANDBOX_ID: input.sandboxId,
     SANDBOX_DEV_IMAGE: input.runtimeAssets.devImage,
     SANDBOX_NODE_MODULES_VOLUME: input.runtimeAssets.nodeModulesVolume,

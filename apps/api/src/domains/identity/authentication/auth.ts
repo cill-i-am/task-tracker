@@ -9,13 +9,13 @@ import { Effect, Layer, Runtime } from "effect";
 
 import { AuthEmailSender } from "./auth-email.js";
 import type { PasswordResetEmailInput } from "./auth-email.js";
+import { CloudflareAuthEmailTransportLive } from "./cloudflare-auth-email-transport.js";
 import { loadAuthenticationConfig } from "./config.js";
 import type { AuthenticationConfig } from "./config.js";
 import {
   AuthenticationDatabase,
   AuthenticationDatabaseLive,
 } from "./database.js";
-import { ResendAuthEmailTransportLive } from "./resend-auth-email-transport.js";
 import { authSchema } from "./schema.js";
 
 export function createAuthentication(options: {
@@ -221,7 +221,7 @@ function withAuthenticationCors(
 }
 
 const AuthenticationEmailSenderLive = AuthEmailSender.Default.pipe(
-  Layer.provide(ResendAuthEmailTransportLive)
+  Layer.provide(CloudflareAuthEmailTransportLive)
 );
 
 export class Authentication extends Effect.Service<Authentication>()(
