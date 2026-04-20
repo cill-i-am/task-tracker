@@ -10,11 +10,7 @@ import { AuthEmailTransport } from "./auth-email.js";
 import type { TransportMessage } from "./auth-email.js";
 
 interface CloudflareSendEmailRequest {
-  readonly from: {
-    readonly address: string;
-    readonly name: string;
-  };
-  readonly headers?: Record<string, string>;
+  readonly from: string;
   readonly html: string;
   readonly subject: string;
   readonly text: string;
@@ -38,25 +34,21 @@ interface CloudflareApiClient {
   ) => PromiseLike<CloudflareSendEmailResponse>;
 }
 
-const DELIVERY_KEY_HEADER = "X-Task-Tracker-Delivery-Key";
+interface SingleRecipientResponseBuckets {
+  readonly delivered: readonly string[];
+  readonly permanentBounces: readonly string[];
+  readonly queued: readonly string[];
+}
 
 function buildPayload(
   config: {
     readonly from: string;
     readonly fromName: string;
   },
-  message: TransportMessage
+  message: Omit<TransportMessage, "deliveryKey">
 ): CloudflareSendEmailRequest {
   return {
-    from: {
-      address: config.from,
-      name: config.fromName,
-    },
-    headers: message.deliveryKey
-      ? {
-          [DELIVERY_KEY_HEADER]: message.deliveryKey,
-        }
-      : undefined,
+    from: `${config.fromName} <${config.from}>`,
     to: [message.to],
     subject: message.subject,
     text: message.text,
@@ -64,19 +56,68 @@ function buildPayload(
   };
 }
 
-function collectDeliveredRecipients(response: CloudflareSendEmailResponse) {
-  return new Set([
-    ...(response.result?.delivered ?? []),
-    ...(response.result?.queued ?? []),
-  ]);
+function isStringArray(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
 }
 
-function collectPermanentBounces(response: CloudflareSendEmailResponse) {
-  if (!response.result?.permanent_bounces) {
-    return new Set<string>();
+function decodeSingleRecipientResponseBuckets(
+  response: CloudflareSendEmailResponse
+): SingleRecipientResponseBuckets {
+  const {result} = response;
+
+  if (
+    !result ||
+    !isStringArray(result.delivered) ||
+    !isStringArray(result.permanent_bounces) ||
+    !isStringArray(result.queued)
+  ) {
+    throw new AuthEmailRequestError({
+      message: "Auth email request failed",
+      cause: "Cloudflare returned a malformed email send response",
+    });
   }
 
-  return new Set(response.result.permanent_bounces);
+  return {
+    delivered: result.delivered,
+    permanentBounces: result.permanent_bounces,
+    queued: result.queued,
+  };
+}
+
+function classifySingleRecipientResponse(
+  response: CloudflareSendEmailResponse,
+  recipient: string
+) {
+  const buckets = decodeSingleRecipientResponseBuckets(response);
+  const deliveryOutcomes = [
+    ...buckets.delivered.map((address) => ({
+      address,
+      bucket: "delivered" as const,
+    })),
+    ...buckets.queued.map((address) => ({
+      address,
+      bucket: "queued" as const,
+    })),
+    ...buckets.permanentBounces.map((address) => ({
+      address,
+      bucket: "permanent_bounces" as const,
+    })),
+  ];
+
+  if (
+    deliveryOutcomes.length !== 1 ||
+    deliveryOutcomes[0]?.address !== recipient
+  ) {
+    throw new AuthEmailRequestError({
+      message: "Auth email request failed",
+      cause:
+        "Cloudflare returned an unexpected single-recipient delivery status",
+    });
+  }
+
+  return deliveryOutcomes[0].bucket;
 }
 
 function makeAuthEmailRequestError(cause: unknown) {
@@ -136,37 +177,60 @@ export function makeCloudflareAuthEmailTransport(options?: {
 
     return {
       send: (message: TransportMessage) =>
-        Effect.tryPromise({
-          try: async () => {
-            const response = await cloudflare.post(
-              `/accounts/${config.cloudflareAccountId}/email/sending/send`,
-              {
-                body: buildPayload(config, message),
-              }
-            );
+        Effect.log("Auth email transport send attempt", {
+          provider: "cloudflare",
+          recipient: message.to,
+          deliveryKey: message.deliveryKey,
+          outcomeBucket: "attempt",
+        }).pipe(
+          Effect.zipRight(
+            Effect.tryPromise({
+              try: async () => {
+                const response = await cloudflare.post(
+                  `/accounts/${config.cloudflareAccountId}/email/sending/send`,
+                  {
+                    body: buildPayload(config, message),
+                  }
+                );
 
-            const deliveredRecipients = collectDeliveredRecipients(response);
-
-            if (deliveredRecipients.has(message.to)) {
-              return;
-            }
-
-            const permanentBounces = collectPermanentBounces(response);
-
-            if (permanentBounces.has(message.to)) {
-              throw new AuthEmailRejectedError({
-                message: "Auth email was rejected",
-                cause: `Cloudflare permanently bounced ${message.to}`,
-              });
-            }
-
-            throw new AuthEmailRequestError({
-              message: "Auth email request failed",
-              cause: "Cloudflare returned an unexpected delivery status",
-            });
-          },
-          catch: makeAuthEmailRequestError,
-        }),
+                return classifySingleRecipientResponse(response, message.to);
+              },
+              catch: makeAuthEmailRequestError,
+            })
+          ),
+          Effect.flatMap((outcomeBucket) =>
+            outcomeBucket === "permanent_bounces"
+              ? Effect.fail(
+                  new AuthEmailRejectedError({
+                    message: "Auth email was rejected",
+                    cause: `Cloudflare permanently bounced ${message.to}`,
+                  })
+                )
+              : Effect.log("Auth email transport send outcome", {
+                  provider: "cloudflare",
+                  recipient: message.to,
+                  deliveryKey: message.deliveryKey,
+                  outcomeBucket,
+                })
+          ),
+          Effect.catchTags({
+            AuthEmailRejectedError: (error) =>
+              Effect.log("Auth email transport send outcome", {
+                provider: "cloudflare",
+                recipient: message.to,
+                deliveryKey: message.deliveryKey,
+                outcomeBucket: "permanent_bounces",
+              }).pipe(Effect.zipRight(Effect.fail(error))),
+            AuthEmailRequestError: (error) =>
+              Effect.log("Auth email transport send outcome", {
+                provider: "cloudflare",
+                recipient: message.to,
+                deliveryKey: message.deliveryKey,
+                outcomeBucket: "request_failed",
+              }).pipe(Effect.zipRight(Effect.fail(error))),
+          }),
+          Effect.asVoid
+        ),
     };
   });
 }

@@ -58,22 +58,18 @@ describe("makeCloudflareAuthEmailTransport()", () => {
         path: "/accounts/account_123/email/sending/send",
         options: {
           body: {
-            from: {
-              address: "auth@task-tracker.localhost",
-              name: "Task Tracker Auth",
-            },
+            from: "Task Tracker Auth <auth@task-tracker.localhost>",
             to: ["alice@example.com"],
             subject: "Reset your password",
             text: "Reset link",
             html: "<p>Reset link</p>",
-            headers: undefined,
           },
         },
       },
     ]);
   }, 10_000);
 
-  it("passes through the delivery key as a custom Cloudflare header", async () => {
+  it("keeps deliveryKey out of the Cloudflare provider payload", async () => {
     const requests: unknown[] = [];
 
     await Effect.runPromise(
@@ -106,18 +102,11 @@ describe("makeCloudflareAuthEmailTransport()", () => {
         path: "/accounts/account_123/email/sending/send",
         options: {
           body: {
-            from: {
-              address: "auth@task-tracker.localhost",
-              name: "Task Tracker Auth",
-            },
+            from: "Task Tracker Auth <auth@task-tracker.localhost>",
             to: ["alice@example.com"],
             subject: "Reset your password",
             text: "Reset link",
             html: "<p>Reset link</p>",
-            headers: {
-              "X-Task-Tracker-Delivery-Key":
-                "password-reset/user-123/token-abc123",
-            },
           },
         },
       },
@@ -178,6 +167,39 @@ describe("makeCloudflareAuthEmailTransport()", () => {
       _tag: "AuthEmailRequestError",
       message: "Auth email request failed",
       cause: "socket hang up",
+    });
+  }, 10_000);
+
+  it("fails when Cloudflare returns an unexpected single-recipient response", async () => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(
+        makeCloudflareAuthEmailTransport({
+          cloudflare: {
+            post: () =>
+              Promise.resolve({
+                result: {
+                  delivered: ["alice@example.com"],
+                  permanent_bounces: [],
+                  queued: ["other@example.com"],
+                },
+              }),
+          },
+        }),
+        (transport) => transport.send(makeMessage())
+      ).pipe(Effect.withConfigProvider(makeConfigProvider()), Effect.either)
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      return;
+    }
+
+    expect(result.left).toBeInstanceOf(AuthEmailRequestError);
+    expect(result.left).toMatchObject({
+      _tag: "AuthEmailRequestError",
+      message: "Auth email request failed",
+      cause:
+        "Cloudflare returned an unexpected single-recipient delivery status",
     });
   }, 10_000);
 });
