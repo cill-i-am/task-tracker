@@ -1,9 +1,13 @@
-import { Layer, Effect } from "effect";
+import { Config, Layer, Effect } from "effect";
 import type { CreateEmailOptions, CreateEmailResponse } from "resend";
 import { Resend as ResendClient } from "resend";
 
 import { loadAuthEmailConfig } from "./auth-email-config.js";
-import { AuthEmailDeliveryError } from "./auth-email-errors.js";
+import {
+  AuthEmailConfigurationError,
+  AuthEmailRejectedError,
+  AuthEmailRequestError,
+} from "./auth-email-errors.js";
 import { AuthEmailTransport } from "./auth-email.js";
 import type { TransportMessage } from "./auth-email.js";
 
@@ -21,7 +25,10 @@ function formatFromAddress(from: string, fromName: string) {
 }
 
 function makeAuthEmailDeliveryError(cause: unknown) {
-  if (cause instanceof AuthEmailDeliveryError) {
+  if (
+    cause instanceof AuthEmailRequestError ||
+    cause instanceof AuthEmailRejectedError
+  ) {
     return cause;
   }
 
@@ -31,14 +38,14 @@ function makeAuthEmailDeliveryError(cause: unknown) {
     "message" in cause &&
     typeof cause.message === "string"
   ) {
-    return new AuthEmailDeliveryError({
-      message: "Failed to send auth email via Resend",
+    return new AuthEmailRequestError({
+      message: "Auth email request failed",
       cause: cause.message,
     });
   }
 
-  return new AuthEmailDeliveryError({
-    message: "Failed to send auth email via Resend",
+  return new AuthEmailRequestError({
+    message: "Auth email request failed",
     cause: String(cause),
   });
 }
@@ -56,6 +63,20 @@ function buildPayload(
   };
 }
 
+const loadResendApiKey = Config.string("RESEND_API_KEY").pipe(
+  Config.validate({
+    message: "RESEND_API_KEY must not be empty",
+    validation: (value) => value.trim().length > 0,
+  }),
+  Effect.mapError(
+    (cause) =>
+      new AuthEmailConfigurationError({
+        message: "Invalid resend auth email transport configuration",
+        cause: cause.toString(),
+      })
+  )
+);
+
 export function makeResendAuthEmailTransport(options?: {
   readonly resend?: {
     readonly emails: ResendEmailsClient;
@@ -63,7 +84,8 @@ export function makeResendAuthEmailTransport(options?: {
 }) {
   return Effect.gen(function* makeResendAuthEmailTransportEffect() {
     const config = yield* loadAuthEmailConfig;
-    const resend = options?.resend ?? new ResendClient(config.resendApiKey);
+    const resendApiKey = yield* loadResendApiKey;
+    const resend = options?.resend ?? new ResendClient(resendApiKey);
     const configuredSender = formatFromAddress(config.from, config.fromName);
 
     return {
@@ -72,16 +94,16 @@ export function makeResendAuthEmailTransport(options?: {
           try: async () => {
             const response = await resend.emails.send(
               buildPayload(message, configuredSender),
-              message.idempotencyKey
+              message.deliveryKey
                 ? {
-                    idempotencyKey: message.idempotencyKey,
+                    idempotencyKey: message.deliveryKey,
                   }
                 : undefined
             );
 
             if (response.error) {
-              throw new AuthEmailDeliveryError({
-                message: "Failed to send auth email via Resend",
+              throw new AuthEmailRejectedError({
+                message: "Auth email was rejected",
                 cause: response.error.message,
               });
             }

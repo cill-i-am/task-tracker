@@ -2,11 +2,14 @@
 
 import { Context, Effect, ParseResult, Schema } from "effect";
 
-import type { AuthEmailDeliveryError } from "./auth-email-errors.js";
-import { PasswordResetDeliveryError } from "./auth-email-errors.js";
+import type {
+  AuthEmailRejectedError,
+  AuthEmailRequestError} from "./auth-email-errors.js";
+import {
+  PasswordResetDeliveryError,
+} from "./auth-email-errors.js";
 
 const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const RESEND_IDEMPOTENCY_KEY_MAX_LENGTH = 256;
 
 function isValidEmailAddress(value: string) {
   return EMAIL_ADDRESS_PATTERN.test(value);
@@ -42,15 +45,10 @@ const EmailAddress = Schema.String.pipe(
   })
 );
 
-const EmailIdempotencyKey = Schema.String.pipe(
-  Schema.filter(
-    (value) =>
-      value.length > 0 && value.length <= RESEND_IDEMPOTENCY_KEY_MAX_LENGTH,
-    {
-      message: () =>
-        `Expected a non-empty idempotency key up to ${RESEND_IDEMPOTENCY_KEY_MAX_LENGTH} characters`,
-    }
-  )
+const DeliveryKey = Schema.String.pipe(
+  Schema.filter((value) => value.length > 0, {
+    message: () => "Expected a non-empty delivery key",
+  })
 );
 
 const ResetUrl = Schema.String.pipe(
@@ -60,7 +58,7 @@ const ResetUrl = Schema.String.pipe(
 );
 
 export const PasswordResetEmailInput = Schema.Struct({
-  idempotencyKey: EmailIdempotencyKey,
+  deliveryKey: DeliveryKey,
   recipientEmail: EmailAddress,
   recipientName: Schema.String,
   resetUrl: ResetUrl,
@@ -75,12 +73,16 @@ const decodePasswordResetEmailInput = Schema.decodeUnknown(
 );
 
 export interface TransportMessage {
+  readonly deliveryKey?: string;
   readonly html: string;
-  readonly idempotencyKey?: string;
   readonly subject: string;
   readonly text: string;
   readonly to: string;
 }
+
+export type AuthEmailTransportError =
+  | AuthEmailRejectedError
+  | AuthEmailRequestError;
 
 export class AuthEmailTransport extends Context.Tag(
   "@task-tracker/domains/identity/authentication/AuthEmailTransport"
@@ -89,7 +91,7 @@ export class AuthEmailTransport extends Context.Tag(
   {
     readonly send: (
       message: TransportMessage
-    ) => Effect.Effect<void, AuthEmailDeliveryError>;
+    ) => Effect.Effect<void, AuthEmailTransportError>;
   }
 >() {}
 
@@ -127,20 +129,29 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
 
         yield* transport
           .send({
-            idempotencyKey: input.idempotencyKey,
+            deliveryKey: input.deliveryKey,
             to: input.recipientEmail,
             subject,
             text,
             html,
           })
           .pipe(
-            Effect.mapError(
-              (error) =>
-                new PasswordResetDeliveryError({
-                  message: "Failed to deliver password reset email",
-                  cause: error.message,
-                })
-            )
+            Effect.catchTags({
+              AuthEmailRejectedError: (error) =>
+                Effect.fail(
+                  new PasswordResetDeliveryError({
+                    message: "Password reset email was rejected for delivery",
+                    cause: error.cause ?? error.message,
+                  })
+                ),
+              AuthEmailRequestError: (error) =>
+                Effect.fail(
+                  new PasswordResetDeliveryError({
+                    message: "Failed to deliver password reset email",
+                    cause: error.cause ?? error.message,
+                  })
+                ),
+            })
           );
       });
 

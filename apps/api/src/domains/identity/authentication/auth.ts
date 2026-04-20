@@ -73,7 +73,7 @@ export function createAuthentication(options: {
       sendResetPassword: async ({ token, user, url }) => {
         try {
           await sendPasswordResetEmail({
-            idempotencyKey: `password-reset/${user.id}/${token}`,
+            deliveryKey: `password-reset/${user.id}/${token}`,
             recipientEmail: user.email,
             recipientName: user.name ?? user.email,
             resetUrl: url,

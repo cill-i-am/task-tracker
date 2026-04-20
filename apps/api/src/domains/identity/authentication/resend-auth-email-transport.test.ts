@@ -1,7 +1,10 @@
 import { ConfigProvider, Effect } from "effect";
 import type { CreateEmailResponse } from "resend";
 
-import { AuthEmailDeliveryError } from "./auth-email-errors.js";
+import {
+  AuthEmailRejectedError,
+  AuthEmailRequestError,
+} from "./auth-email-errors.js";
 import type { TransportMessage } from "./auth-email.js";
 import { makeResendAuthEmailTransport } from "./resend-auth-email-transport.js";
 
@@ -10,6 +13,8 @@ function makeConfigProvider() {
     new Map([
       ["AUTH_EMAIL_FROM", "auth@task-tracker.localhost"],
       ["AUTH_EMAIL_FROM_NAME", "Task Tracker Auth"],
+      ["CLOUDFLARE_ACCOUNT_ID", "account_123"],
+      ["CLOUDFLARE_API_TOKEN", "token_123"],
       ["RESEND_API_KEY", "re_test_123"],
     ])
   );
@@ -61,7 +66,7 @@ describe("makeResendAuthEmailTransport()", () => {
     ]);
   }, 10_000);
 
-  it("passes through the transport idempotency key to Resend", async () => {
+  it("passes through the transport delivery key to Resend", async () => {
     const sentOptions: unknown[] = [];
 
     await Effect.runPromise(
@@ -87,7 +92,7 @@ describe("makeResendAuthEmailTransport()", () => {
         (transport) =>
           transport.send({
             ...makeMessage(),
-            idempotencyKey: "password-reset/user-123/token-abc123",
+            deliveryKey: "password-reset/user-123/token-abc123",
           })
       ).pipe(Effect.withConfigProvider(makeConfigProvider()))
     );
@@ -127,15 +132,15 @@ describe("makeResendAuthEmailTransport()", () => {
       return;
     }
 
-    expect(result.left).toBeInstanceOf(AuthEmailDeliveryError);
+    expect(result.left).toBeInstanceOf(AuthEmailRejectedError);
     expect(result.left).toMatchObject({
-      _tag: "AuthEmailDeliveryError",
-      message: "Failed to send auth email via Resend",
+      _tag: "AuthEmailRejectedError",
+      message: "Auth email was rejected",
       cause: "upstream timeout",
     });
   }, 10_000);
 
-  it("maps rejected resend requests into AuthEmailDeliveryError", async () => {
+  it("maps rejected resend requests into AuthEmailRequestError", async () => {
     const result = await Effect.runPromise(
       Effect.flatMap(
         makeResendAuthEmailTransport({
@@ -155,10 +160,10 @@ describe("makeResendAuthEmailTransport()", () => {
       return;
     }
 
-    expect(result.left).toBeInstanceOf(AuthEmailDeliveryError);
+    expect(result.left).toBeInstanceOf(AuthEmailRequestError);
     expect(result.left).toMatchObject({
-      _tag: "AuthEmailDeliveryError",
-      message: "Failed to send auth email via Resend",
+      _tag: "AuthEmailRequestError",
+      message: "Auth email request failed",
       cause: "socket hang up",
     });
   }, 10_000);

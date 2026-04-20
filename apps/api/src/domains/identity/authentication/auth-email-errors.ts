@@ -10,8 +10,16 @@ export class AuthEmailConfigurationError extends Schema.TaggedError<AuthEmailCon
   }
 ) {}
 
-export class AuthEmailDeliveryError extends Schema.TaggedError<AuthEmailDeliveryError>()(
-  "AuthEmailDeliveryError",
+export class AuthEmailRequestError extends Schema.TaggedError<AuthEmailRequestError>()(
+  "AuthEmailRequestError",
+  {
+    cause: Schema.optional(Schema.String),
+    message: Schema.String,
+  }
+) {}
+
+export class AuthEmailRejectedError extends Schema.TaggedError<AuthEmailRejectedError>()(
+  "AuthEmailRejectedError",
   {
     cause: Schema.optional(Schema.String),
     message: Schema.String,

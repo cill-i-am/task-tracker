@@ -9,9 +9,10 @@ function isValidEmailAddress(value: string) {
 }
 
 export interface AuthEmailConfig {
+  readonly cloudflareAccountId: string;
+  readonly cloudflareApiToken: string;
   readonly from: string;
   readonly fromName: string;
-  readonly resendApiKey: string;
 }
 
 export const loadAuthEmailConfig = Config.all({
@@ -24,9 +25,15 @@ export const loadAuthEmailConfig = Config.all({
   fromName: Config.string("AUTH_EMAIL_FROM_NAME").pipe(
     Config.withDefault("Task Tracker")
   ),
-  resendApiKey: Config.string("RESEND_API_KEY").pipe(
+  cloudflareAccountId: Config.string("CLOUDFLARE_ACCOUNT_ID").pipe(
     Config.validate({
-      message: "RESEND_API_KEY must not be empty",
+      message: "CLOUDFLARE_ACCOUNT_ID must not be empty",
+      validation: (value) => value.trim().length > 0,
+    })
+  ),
+  cloudflareApiToken: Config.string("CLOUDFLARE_API_TOKEN").pipe(
+    Config.validate({
+      message: "CLOUDFLARE_API_TOKEN must not be empty",
       validation: (value) => value.trim().length > 0,
     })
   ),

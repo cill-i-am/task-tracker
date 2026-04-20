@@ -1,9 +1,12 @@
 import { ConfigProvider, Effect, Layer } from "effect";
 
 import { loadAuthEmailConfig } from "./auth-email-config.js";
+import type {
+  AuthEmailRejectedError} from "./auth-email-errors.js";
 import {
   AuthEmailConfigurationError,
-  AuthEmailDeliveryError,
+  AuthEmailRequestError,
+  PasswordResetDeliveryError,
 } from "./auth-email-errors.js";
 import { AuthEmailSender, AuthEmailTransport } from "./auth-email.js";
 import type { TransportMessage } from "./auth-email.js";
@@ -11,7 +14,7 @@ import type { TransportMessage } from "./auth-email.js";
 function makeAuthEmailSenderTestLayer(
   send: (
     message: TransportMessage
-  ) => Effect.Effect<void, AuthEmailDeliveryError>
+  ) => Effect.Effect<void, AuthEmailRequestError | AuthEmailRejectedError>
 ) {
   return AuthEmailSender.Default.pipe(
     Layer.provide(
@@ -28,7 +31,7 @@ describe("auth email sender password reset delivery", () => {
 
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
-        idempotencyKey: "password-reset/user-123/token-abc123",
+        deliveryKey: "password-reset/user-123/token-abc123",
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl: "https://app.task-tracker.localhost/reset?token=abc123",
@@ -46,7 +49,7 @@ describe("auth email sender password reset delivery", () => {
     expect(result).toBeUndefined();
     expect(sentMessages).toStrictEqual([
       {
-        idempotencyKey: "password-reset/user-123/token-abc123",
+        deliveryKey: "password-reset/user-123/token-abc123",
         to: "alice@example.com",
         subject: "Reset your password",
         text: [
@@ -66,7 +69,7 @@ describe("auth email sender password reset delivery", () => {
   it("maps provider failures into PasswordResetDeliveryError", async () => {
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
-        idempotencyKey: "password-reset/user-123/token-abc123",
+        deliveryKey: "password-reset/user-123/token-abc123",
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl: "https://app.task-tracker.localhost/reset?token=abc123",
@@ -75,8 +78,8 @@ describe("auth email sender password reset delivery", () => {
         Effect.provide(
           makeAuthEmailSenderTestLayer(() =>
             Effect.fail(
-              new AuthEmailDeliveryError({
-                message: "Provider request failed",
+              new AuthEmailRequestError({
+                message: "Auth email request failed",
                 cause: "upstream timeout",
               })
             )
@@ -90,10 +93,11 @@ describe("auth email sender password reset delivery", () => {
       return;
     }
 
+    expect(result.left).toBeInstanceOf(PasswordResetDeliveryError);
     expect(result.left).toMatchObject({
       _tag: "PasswordResetDeliveryError",
       message: "Failed to deliver password reset email",
-      cause: "Provider request failed",
+      cause: "upstream timeout",
     });
   }, 10_000);
 
@@ -102,7 +106,7 @@ describe("auth email sender password reset delivery", () => {
 
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
-        idempotencyKey: "password-reset/user-123/token-abc123",
+        deliveryKey: "password-reset/user-123/token-abc123",
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl:
@@ -125,6 +129,7 @@ describe("auth email sender password reset delivery", () => {
     }
 
     expect(sentMessages).toStrictEqual([]);
+    expect(result.left).toBeInstanceOf(PasswordResetDeliveryError);
     expect(result.left).toMatchObject({
       _tag: "PasswordResetDeliveryError",
       message: "Invalid password reset email input",
@@ -136,7 +141,7 @@ describe("auth email sender password reset delivery", () => {
 
     await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
-        idempotencyKey: "password-reset/user-123/token-abc123",
+        deliveryKey: "password-reset/user-123/token-abc123",
         recipientEmail: "alice@example.com",
         recipientName: 'Alice & <Admin> "Boss"',
         resetUrl:
@@ -186,7 +191,8 @@ describe("auth email config loading", () => {
           ConfigProvider.fromMap(
             new Map([
               ["AUTH_EMAIL_FROM", "auth@task-tracker.localhost"],
-              ["RESEND_API_KEY", "re_test_123"],
+              ["CLOUDFLARE_ACCOUNT_ID", "account_123"],
+              ["CLOUDFLARE_API_TOKEN", "token_123"],
             ])
           )
         )
@@ -196,19 +202,17 @@ describe("auth email config loading", () => {
     expect(config).toStrictEqual({
       from: "auth@task-tracker.localhost",
       fromName: "Task Tracker",
-      resendApiKey: "re_test_123",
+      cloudflareAccountId: "account_123",
+      cloudflareApiToken: "token_123",
     });
   }, 10_000);
 
-  it("maps config failures into AuthEmailConfigurationError", async () => {
+  it("fails when required cloudflare auth email env vars are missing", async () => {
     const result = await Effect.runPromise(
       loadAuthEmailConfig.pipe(
         Effect.withConfigProvider(
           ConfigProvider.fromMap(
-            new Map([
-              ["AUTH_EMAIL_FROM", "auth@task-tracker.localhost"],
-              ["RESEND_API_KEY", ""],
-            ])
+            new Map([["AUTH_EMAIL_FROM", "auth@task-tracker.localhost"]])
           )
         ),
         Effect.either
@@ -222,7 +226,9 @@ describe("auth email config loading", () => {
 
     expect(result.left).toBeInstanceOf(AuthEmailConfigurationError);
     expect(result.left.message).toBe("Invalid auth email configuration");
-    expect(result.left.cause).toMatch(/RESEND_API_KEY/);
+    expect(result.left.cause).toMatch(
+      /CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN/
+    );
   }, 10_000);
 
   it("rejects invalid auth email sender addresses", async () => {
@@ -232,7 +238,8 @@ describe("auth email config loading", () => {
           ConfigProvider.fromMap(
             new Map([
               ["AUTH_EMAIL_FROM", "not-an-email"],
-              ["RESEND_API_KEY", "re_test_123"],
+              ["CLOUDFLARE_ACCOUNT_ID", "account_123"],
+              ["CLOUDFLARE_API_TOKEN", "token_123"],
             ])
           )
         ),
