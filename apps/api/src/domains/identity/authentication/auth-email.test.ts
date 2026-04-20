@@ -69,6 +69,34 @@ describe("auth email sender password reset delivery", () => {
     ]);
   }, 10_000);
 
+  it("accepts the owner role used by Better Auth invitations", async () => {
+    const sentMessages: TransportMessage[] = [];
+
+    const result = await Effect.runPromise(
+      AuthEmailSender.sendOrganizationInvitationEmail({
+        idempotencyKey: "organization-invitation/inv_456",
+        recipientEmail: "owner-invitee@example.com",
+        recipientName: "Jordan Example",
+        organizationName: "Northwind Ops",
+        inviterEmail: "existing-owner@example.com",
+        invitationUrl:
+          "https://app.task-tracker.localhost/accept-invitation/inv_456",
+        role: "owner",
+      }).pipe(
+        Effect.provide(
+          makeAuthEmailSenderTestLayer((message) =>
+            Effect.sync(() => {
+              sentMessages.push(message);
+            })
+          )
+        )
+      )
+    );
+
+    expect(result).toBeUndefined();
+    expect(sentMessages[0]?.text).toContain("as a owner.");
+  }, 10_000);
+
   it("composes the expected password reset message", async () => {
     const sentMessages: TransportMessage[] = [];
 

@@ -62,7 +62,11 @@ const ResetUrl = Schema.String.pipe(
   })
 );
 const InvitationUrl = ResetUrl;
-const InvitationRole = Schema.Literal("admin", "member");
+const InvitationRole = Schema.String.pipe(
+  Schema.filter((value) => value.trim().length > 0, {
+    message: () => "Expected a non-empty role",
+  })
+);
 
 export const PasswordResetEmailInput = Schema.Struct({
   idempotencyKey: EmailIdempotencyKey,

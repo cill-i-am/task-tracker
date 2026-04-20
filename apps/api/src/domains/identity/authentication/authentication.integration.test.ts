@@ -46,6 +46,7 @@ describe("authentication integration", () => {
     cleanup.push(() => authPool.end());
 
     const auth = createAuthentication({
+      appOrigin: "http://127.0.0.1:4173",
       backgroundTaskHandler: () => {},
       config: makeAuthenticationConfig({
         baseUrl: "http://127.0.0.1:3000",
@@ -54,6 +55,7 @@ describe("authentication integration", () => {
       }),
       database: drizzle(authPool, { schema: authSchema }),
       reportPasswordResetEmailFailure: () => {},
+      sendOrganizationInvitationEmail: async () => {},
       sendPasswordResetEmail: async () => {},
     });
 
@@ -239,6 +241,7 @@ describe("authentication integration", () => {
     cleanup.push(() => authPool.end());
 
     const auth = createAuthentication({
+      appOrigin: "http://127.0.0.1:4173",
       backgroundTaskHandler: () => {},
       config: makeAuthenticationConfig({
         baseUrl: "http://127.0.0.1:3000",
@@ -247,6 +250,7 @@ describe("authentication integration", () => {
       }),
       database: drizzle(authPool, { schema: authSchema }),
       reportPasswordResetEmailFailure: () => {},
+      sendOrganizationInvitationEmail: async () => {},
       sendPasswordResetEmail: async () => {},
     });
 
@@ -279,6 +283,149 @@ describe("authentication integration", () => {
     await expect(organizationResponse.json()).resolves.toMatchObject({
       code: "INVALID_ORGANIZATION_INPUT",
     });
+  }, 30_000);
+
+  it("sends an invitation email and activates the invited organization on acceptance", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase();
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const adminPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => adminPool.end());
+
+    if (!(await canConnect(adminPool))) {
+      context.skip(
+        "Auth integration database unavailable; skipping invitation flow coverage"
+      );
+    }
+
+    await applyMigration(databaseUrl, "0000_careless_anita_blake.sql");
+    await applyMigration(databaseUrl, "0001_giant_speedball.sql");
+    await applyMigration(databaseUrl, "0002_slippery_hulk.sql");
+    await applyMigration(databaseUrl, "0003_organizations.sql");
+
+    const authPool = new Pool({ connectionString: databaseUrl });
+    cleanup.push(() => authPool.end());
+
+    const sentInvitationEmails: unknown[] = [];
+    const auth = createAuthentication({
+      appOrigin: "http://127.0.0.1:4173",
+      backgroundTaskHandler: async (task) => {
+        await task;
+      },
+      config: makeAuthenticationConfig({
+        baseUrl: "http://127.0.0.1:3000",
+        secret: "0123456789abcdef0123456789abcdef",
+        databaseUrl,
+      }),
+      database: drizzle(authPool, { schema: authSchema }),
+      reportPasswordResetEmailFailure: () => {},
+      sendOrganizationInvitationEmail: (input) => {
+        sentInvitationEmails.push(input);
+        return Promise.resolve();
+      },
+      sendPasswordResetEmail: async () => {},
+    });
+
+    const ownerCookieJar = new Map<string, string>();
+    const ownerSignUpResponse = await auth.handler(
+      makeJsonRequest("/sign-up/email", {
+        email: "owner@example.com",
+        name: "Owner Example",
+        password: "correct horse battery staple",
+      })
+    );
+    updateCookieJar(ownerCookieJar, ownerSignUpResponse);
+    expect(ownerSignUpResponse.status).toBe(200);
+
+    const organizationResponse = await auth.handler(
+      makeJsonRequest(
+        "/organization/create",
+        {
+          name: "Acme Field Ops",
+          slug: "acme-field-ops",
+        },
+        {
+          cookieJar: ownerCookieJar,
+        }
+      )
+    );
+    updateCookieJar(ownerCookieJar, organizationResponse);
+    expect(organizationResponse.status).toBe(200);
+    const createdOrganization =
+      (await organizationResponse.json()) as CreatedOrganizationResponse;
+
+    const inviteResponse = await auth.handler(
+      makeJsonRequest(
+        "/organization/invite-member",
+        {
+          email: "member@example.com",
+          role: "member",
+        },
+        {
+          cookieJar: ownerCookieJar,
+        }
+      )
+    );
+    expect(inviteResponse.status).toBe(200);
+    const invitation = (await inviteResponse.json()) as {
+      readonly id: string;
+      readonly email: string;
+      readonly organizationId: string;
+      readonly role: string;
+      readonly status: string;
+    };
+    expect(invitation.email).toBe("member@example.com");
+    expect(invitation.organizationId).toBe(createdOrganization.id);
+    expect(sentInvitationEmails).toStrictEqual([
+      expect.objectContaining({
+        idempotencyKey: `organization-invitation/${invitation.id}`,
+        invitationUrl: `http://127.0.0.1:4173/accept-invitation/${invitation.id}`,
+        inviterEmail: "owner@example.com",
+        organizationName: "Acme Field Ops",
+        recipientEmail: "member@example.com",
+        role: "member",
+      }),
+    ]);
+
+    const invitedCookieJar = new Map<string, string>();
+    const invitedSignUpResponse = await auth.handler(
+      makeJsonRequest("/sign-up/email", {
+        email: "member@example.com",
+        name: "Member Example",
+        password: "correct horse battery staple",
+      })
+    );
+    updateCookieJar(invitedCookieJar, invitedSignUpResponse);
+    expect(invitedSignUpResponse.status).toBe(200);
+
+    const acceptInvitationResponse = await auth.handler(
+      makeJsonRequest(
+        "/organization/accept-invitation",
+        {
+          invitationId: invitation.id,
+        },
+        {
+          cookieJar: invitedCookieJar,
+        }
+      )
+    );
+    updateCookieJar(invitedCookieJar, acceptInvitationResponse);
+    expect(acceptInvitationResponse.status).toBe(200);
+
+    const invitedSessionResponse = await auth.handler(
+      makeRequest("/get-session", {
+        cookieJar: invitedCookieJar,
+      })
+    );
+    expect(invitedSessionResponse.status).toBe(200);
+    const invitedSession =
+      (await invitedSessionResponse.json()) as SessionResponse;
+    expect(invitedSession.session?.activeOrganizationId).toBe(
+      createdOrganization.id
+    );
   }, 30_000);
 
   it("migrates a non-empty rate_limit table and serves sign-up, sign-in, sign-out, session, password reset, reset callback handoff, session revocation, and rate limiting", async (context: {
@@ -325,6 +472,7 @@ describe("authentication integration", () => {
       Deferred.make<boolean>()
     );
     const auth = createAuthentication({
+      appOrigin: "http://127.0.0.1:4173",
       backgroundTaskHandler: () => {},
       config: makeAuthenticationConfig({
         baseUrl: "http://127.0.0.1:3000",
@@ -333,6 +481,7 @@ describe("authentication integration", () => {
       }),
       database: drizzle(authPool, { schema: authSchema }),
       reportPasswordResetEmailFailure: () => {},
+      sendOrganizationInvitationEmail: async () => {},
       sendPasswordResetEmail: async ({ resetUrl }) => {
         capturedResetUrls.push(resetUrl);
         await Effect.runPromise(Deferred.await(passwordResetDelivery));
@@ -556,6 +705,7 @@ describe("authentication integration", () => {
     const reportedFailures: unknown[] = [];
 
     const auth = createAuthentication({
+      appOrigin: "http://127.0.0.1:4173",
       backgroundTaskHandler: () => {},
       config: makeAuthenticationConfig({
         baseUrl: "http://127.0.0.1:3000",
@@ -566,6 +716,7 @@ describe("authentication integration", () => {
       reportPasswordResetEmailFailure: (error) => {
         reportedFailures.push(error);
       },
+      sendOrganizationInvitationEmail: async () => {},
       sendPasswordResetEmail: () => {
         throw new Error("upstream timeout");
       },
