@@ -33,3 +33,11 @@ export class OrganizationInvitationDeliveryError extends Schema.TaggedError<Orga
     message: Schema.String,
   }
 ) {}
+
+export class EmailVerificationDeliveryError extends Schema.TaggedError<EmailVerificationDeliveryError>()(
+  "EmailVerificationDeliveryError",
+  {
+    cause: Schema.optional(Schema.String),
+    message: Schema.String,
+  }
+) {}

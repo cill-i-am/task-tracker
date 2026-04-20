@@ -82,6 +82,13 @@ export function buildPasswordResetRedirectTo(
   return url.toString();
 }
 
+export function buildEmailVerificationRedirectTo(origin: string): string {
+  const redirectURL = new URL("/verify-email", origin);
+  redirectURL.searchParams.set("status", "success");
+
+  return redirectURL.toString();
+}
+
 function readConfiguredAuthOrigin(): string | undefined {
   const envOrigin = import.meta.env.VITE_AUTH_ORIGIN;
   return typeof envOrigin === "string" ? envOrigin : undefined;
