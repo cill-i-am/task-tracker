@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import CloudflareApi, { APIError } from "cloudflare";
 import type {
   EmailSendingSendParams,
@@ -104,6 +106,18 @@ function classifySingleRecipientResponse(
   return deliveryOutcomes[0].bucket;
 }
 
+function buildRecipientLogContext(recipient: string) {
+  const [_, domain = ""] = recipient.split("@");
+
+  return {
+    recipientDomain: domain,
+    recipientHash: createHash("sha256")
+      .update(recipient)
+      .digest("hex")
+      .slice(0, 16),
+  };
+}
+
 function makeAuthEmailRequestError(cause: unknown) {
   if (
     cause instanceof AuthEmailRequestError ||
@@ -154,8 +168,8 @@ export function makeCloudflareAuthEmailTransport(options?: {
     return {
       send: (message: TransportMessage) =>
         Effect.log("Auth email transport send attempt", {
+          ...buildRecipientLogContext(message.to),
           provider: "cloudflare",
-          recipient: message.to,
           deliveryKey: message.deliveryKey,
           outcomeBucket: "attempt",
         }).pipe(
@@ -180,8 +194,8 @@ export function makeCloudflareAuthEmailTransport(options?: {
                   })
                 )
               : Effect.log("Auth email transport send outcome", {
+                  ...buildRecipientLogContext(message.to),
                   provider: "cloudflare",
-                  recipient: message.to,
                   deliveryKey: message.deliveryKey,
                   outcomeBucket,
                 })
@@ -189,15 +203,15 @@ export function makeCloudflareAuthEmailTransport(options?: {
           Effect.catchTags({
             AuthEmailRejectedError: (error) =>
               Effect.log("Auth email transport send outcome", {
+                ...buildRecipientLogContext(message.to),
                 provider: "cloudflare",
-                recipient: message.to,
                 deliveryKey: message.deliveryKey,
                 outcomeBucket: "permanent_bounces",
               }).pipe(Effect.zipRight(Effect.fail(error))),
             AuthEmailRequestError: (error) =>
               Effect.log("Auth email transport send outcome", {
+                ...buildRecipientLogContext(message.to),
                 provider: "cloudflare",
-                recipient: message.to,
                 deliveryKey: message.deliveryKey,
                 outcomeBucket: "request_failed",
               }).pipe(Effect.zipRight(Effect.fail(error))),

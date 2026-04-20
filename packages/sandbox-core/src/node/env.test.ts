@@ -5,11 +5,14 @@ import {
   loadSandboxSharedEnvironment,
 } from "./env.js";
 
+const REQUIRED_SHARED_KEYS = ["EMAIL_SENDER", "EMAIL_PROVIDER_TOKEN"] as const;
+
 describe("loadSandboxSharedEnvironment()", () => {
   it("fails fast when required shared env is missing", async () => {
     const result = await Effect.runPromise(
       loadSandboxSharedEnvironment({
         repoRoot: "/repo",
+        requiredKeys: REQUIRED_SHARED_KEYS,
         processEnv: {},
         readFile: () => Effect.succeed(""),
       }).pipe(Effect.either)
@@ -21,12 +24,7 @@ describe("loadSandboxSharedEnvironment()", () => {
       throw new Error("Expected sandbox env loading to fail");
     }
     expect(result.left).toBeInstanceOf(SandboxEnvironmentError);
-    expect(result.left.missing).toStrictEqual([
-      "AUTH_EMAIL_FROM",
-      "AUTH_EMAIL_FROM_NAME",
-      "CLOUDFLARE_ACCOUNT_ID",
-      "CLOUDFLARE_API_TOKEN",
-    ]);
+    expect(result.left.missing).toStrictEqual([...REQUIRED_SHARED_KEYS]);
   }, 10_000);
 
   it("merges repo .env values and lets process env override them", async () => {
@@ -34,16 +32,15 @@ describe("loadSandboxSharedEnvironment()", () => {
       loadSandboxSharedEnvironment({
         repoRoot: "/repo",
         processEnv: {
-          AUTH_EMAIL_FROM_NAME: "Override Sender",
+          EMAIL_PROVIDER_TOKEN: "override-token",
         },
+        requiredKeys: REQUIRED_SHARED_KEYS,
         readFile: (filePath) => {
           if (filePath.endsWith(".env")) {
             return Effect.succeed(
               [
-                "AUTH_EMAIL_FROM=auth@example.com",
-                'AUTH_EMAIL_FROM_NAME="Task Tracker"',
-                "CLOUDFLARE_ACCOUNT_ID=cloudflare-account-live",
-                "CLOUDFLARE_API_TOKEN=cloudflare-token-live",
+                "EMAIL_SENDER=auth@example.com",
+                'EMAIL_PROVIDER_TOKEN="repo-token"',
                 "# trailing comment should be ignored",
               ].join("\n")
             );
@@ -55,10 +52,8 @@ describe("loadSandboxSharedEnvironment()", () => {
     );
 
     expect(result).toStrictEqual({
-      AUTH_EMAIL_FROM: "auth@example.com",
-      AUTH_EMAIL_FROM_NAME: "Override Sender",
-      CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-      CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
+      EMAIL_SENDER: "auth@example.com",
+      EMAIL_PROVIDER_TOKEN: "override-token",
     });
   }, 10_000);
 
@@ -66,11 +61,10 @@ describe("loadSandboxSharedEnvironment()", () => {
     const result = await Effect.runPromise(
       loadSandboxSharedEnvironment({
         repoRoot: "/repo",
+        requiredKeys: REQUIRED_SHARED_KEYS,
         processEnv: {
-          AUTH_EMAIL_FROM: "auth@example.com",
-          AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
+          EMAIL_SENDER: "auth@example.com",
+          EMAIL_PROVIDER_TOKEN: "live-token",
         },
         readFile: () =>
           Effect.fail(
@@ -80,10 +74,8 @@ describe("loadSandboxSharedEnvironment()", () => {
     );
 
     expect(result).toStrictEqual({
-      AUTH_EMAIL_FROM: "auth@example.com",
-      AUTH_EMAIL_FROM_NAME: "Task Tracker",
-      CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-      CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
+      EMAIL_SENDER: "auth@example.com",
+      EMAIL_PROVIDER_TOKEN: "live-token",
     });
   }, 10_000);
 
@@ -91,15 +83,14 @@ describe("loadSandboxSharedEnvironment()", () => {
     const result = await Effect.runPromise(
       loadSandboxSharedEnvironment({
         repoRoot: "/repo",
+        requiredKeys: REQUIRED_SHARED_KEYS,
         processEnv: {},
         readFile: (filePath) => {
           if (filePath.endsWith(".env")) {
             return Effect.succeed(
               [
-                "AUTH_EMAIL_FROM=auth@example.com",
-                'AUTH_EMAIL_FROM_NAME="Task Tracker Sandbox"',
-                "CLOUDFLARE_ACCOUNT_ID=cloudflare-account-live",
-                "CLOUDFLARE_API_TOKEN=cloudflare-token-live",
+                'EMAIL_SENDER="auth@example.com"',
+                'EMAIL_PROVIDER_TOKEN="quoted-token"',
               ].join("\n")
             );
           }
@@ -110,10 +101,8 @@ describe("loadSandboxSharedEnvironment()", () => {
     );
 
     expect(result).toStrictEqual({
-      AUTH_EMAIL_FROM: "auth@example.com",
-      AUTH_EMAIL_FROM_NAME: "Task Tracker Sandbox",
-      CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-      CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
+      EMAIL_SENDER: "auth@example.com",
+      EMAIL_PROVIDER_TOKEN: "quoted-token",
     });
   }, 10_000);
 
@@ -121,11 +110,10 @@ describe("loadSandboxSharedEnvironment()", () => {
     const result = await Effect.runPromise(
       loadSandboxSharedEnvironment({
         repoRoot: "/repo",
+        requiredKeys: REQUIRED_SHARED_KEYS,
         processEnv: {
-          AUTH_EMAIL_FROM: "auth@example.com",
-          AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
+          EMAIL_SENDER: "auth@example.com",
+          EMAIL_PROVIDER_TOKEN: "live-token",
         },
         readFile: () => Effect.fail(new Error("permission denied")),
       }).pipe(Effect.either)

@@ -57,30 +57,20 @@ export type SandboxRuntimeAssets = Schema.Schema.Type<
   typeof SandboxRuntimeAssets
 >;
 
-export interface SharedSandboxEnvironment {
-  readonly AUTH_EMAIL_FROM: string;
-  readonly AUTH_EMAIL_FROM_NAME: string;
-  readonly CLOUDFLARE_ACCOUNT_ID: string;
-  readonly CLOUDFLARE_API_TOKEN: string;
-}
-
-export const SharedSandboxEnvironment = Schema.Struct({
-  AUTH_EMAIL_FROM: Schema.NonEmptyString,
-  AUTH_EMAIL_FROM_NAME: Schema.NonEmptyString,
-  CLOUDFLARE_ACCOUNT_ID: Schema.NonEmptyString,
-  CLOUDFLARE_API_TOKEN: Schema.NonEmptyString,
+export const SharedSandboxEnvironment = Schema.Record({
+  key: Schema.String,
+  value: Schema.NonEmptyString,
 });
+export type SharedSandboxEnvironment = Schema.Schema.Type<
+  typeof SharedSandboxEnvironment
+>;
 
-export const SandboxRuntimeOverrides = Schema.Struct({
+const BaseSandboxRuntimeOverrides = Schema.Struct({
   API_HOST_PORT: Schema.String,
   APP_HOST_PORT: Schema.String,
-  AUTH_EMAIL_FROM: Schema.NonEmptyString,
-  AUTH_EMAIL_FROM_NAME: Schema.NonEmptyString,
   AUTH_ORIGIN: SandboxHttpUrl,
   BETTER_AUTH_BASE_URL: SandboxHttpUrl,
   BETTER_AUTH_SECRET: Schema.NonEmptyString,
-  CLOUDFLARE_ACCOUNT_ID: Schema.NonEmptyString,
-  CLOUDFLARE_API_TOKEN: Schema.NonEmptyString,
   DATABASE_URL: SandboxPostgresUrl,
   HOST: Schema.String,
   PORT: Schema.String,
@@ -94,9 +84,15 @@ export const SandboxRuntimeOverrides = Schema.Struct({
   VITE_AUTH_ORIGIN: SandboxHttpUrl,
 });
 
+export const SandboxRuntimeOverrides = Schema.Record({
+  key: Schema.String,
+  value: Schema.String,
+});
+
 export type SandboxRuntimeOverrides = Schema.Schema.Type<
   typeof SandboxRuntimeOverrides
->;
+> &
+  Schema.Schema.Type<typeof BaseSandboxRuntimeOverrides>;
 
 export function buildSandboxRuntimeOverrides(input: {
   readonly ports: SandboxPorts;
@@ -107,16 +103,15 @@ export function buildSandboxRuntimeOverrides(input: {
   readonly sandboxName: SandboxName;
   readonly sharedEnvironment: SharedSandboxEnvironment;
 }): SandboxRuntimeOverrides {
-  return Schema.decodeUnknownSync(SandboxRuntimeOverrides)({
+  const sharedEnvironment = Schema.decodeUnknownSync(SharedSandboxEnvironment)(
+    input.sharedEnvironment
+  );
+  const baseOverrides = Schema.decodeUnknownSync(BaseSandboxRuntimeOverrides)({
     API_HOST_PORT: String(input.ports.api),
     APP_HOST_PORT: String(input.ports.app),
-    AUTH_EMAIL_FROM: input.sharedEnvironment.AUTH_EMAIL_FROM,
-    AUTH_EMAIL_FROM_NAME: input.sharedEnvironment.AUTH_EMAIL_FROM_NAME,
     AUTH_ORIGIN: `http://api:${input.ports.api}`,
     BETTER_AUTH_BASE_URL: input.urls.api,
     BETTER_AUTH_SECRET: input.betterAuthSecret,
-    CLOUDFLARE_ACCOUNT_ID: input.sharedEnvironment.CLOUDFLARE_ACCOUNT_ID,
-    CLOUDFLARE_API_TOKEN: input.sharedEnvironment.CLOUDFLARE_API_TOKEN,
     DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/task_tracker",
     HOST: "0.0.0.0",
     PORT: String(input.ports.api),
@@ -129,6 +124,11 @@ export function buildSandboxRuntimeOverrides(input: {
     TASK_TRACKER_SANDBOX: "1",
     VITE_AUTH_ORIGIN: input.urls.api,
   });
+
+  return Schema.decodeUnknownSync(SandboxRuntimeOverrides)({
+    ...sharedEnvironment,
+    ...baseOverrides,
+  }) as SandboxRuntimeOverrides;
 }
 
 export const buildSandboxRuntimeSpec = Effect.fn("SandboxRuntimeSpec.build")(

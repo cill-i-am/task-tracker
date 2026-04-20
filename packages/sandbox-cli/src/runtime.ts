@@ -72,6 +72,12 @@ const SANDBOX_PROXY_PORT = 1355;
 const SANDBOX_READY_POLL_INTERVAL_MS = 1000;
 const SANDBOX_READY_TIMEOUT_MS = 180_000;
 const SANDBOX_STOP_TIMEOUT_SECONDS = 2;
+const AUTH_EMAIL_REQUIRED_ENV_KEYS = [
+  "AUTH_EMAIL_FROM",
+  "AUTH_EMAIL_FROM_NAME",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "CLOUDFLARE_API_TOKEN",
+] as const;
 const SANDBOX_COMPOSE_FILE = path.join(
   fileURLToPath(new URL("../docker", import.meta.url)),
   "sandbox.compose.yaml"
@@ -893,6 +899,7 @@ function loadSandboxEnvironmentOrThrow(
 ): SandboxPreflightEffect<SharedSandboxEnvironmentInput> {
   return loadSandboxSharedEnvironment({
     repoRoot,
+    requiredKeys: AUTH_EMAIL_REQUIRED_ENV_KEYS,
     processEnv: process.env,
   }).pipe(
     Effect.mapError((error) =>
@@ -1178,12 +1185,9 @@ function ensureComposeEnvironmentFile(
   }).pipe(
     Effect.catchAll((error) =>
       isMissingFileError(error)
-        ? writeComposeEnvironmentFile(record, {
-            AUTH_EMAIL_FROM: "",
-            AUTH_EMAIL_FROM_NAME: "",
-            CLOUDFLARE_ACCOUNT_ID: "",
-            CLOUDFLARE_API_TOKEN: "",
-          })
+        ? writeComposeEnvironmentFile(record, Object.fromEntries(
+              AUTH_EMAIL_REQUIRED_ENV_KEYS.map((key) => [key, ""])
+            ))
         : Effect.fail(
             toPreflightError(
               error,
@@ -1197,12 +1201,7 @@ function ensureComposeEnvironmentFile(
 
 function writeComposeEnvironmentFile(
   record: SandboxRecord,
-  sharedEnvironment: {
-    readonly AUTH_EMAIL_FROM: string;
-    readonly AUTH_EMAIL_FROM_NAME: string;
-    readonly CLOUDFLARE_ACCOUNT_ID: string;
-    readonly CLOUDFLARE_API_TOKEN: string;
-  }
+  sharedEnvironment: Readonly<Record<string, string>>
 ): SandboxPreflightEffect<void> {
   const composeEnvFile = getComposeEnvFilePath(record.sandboxName);
   return Effect.gen(function* () {
@@ -1227,25 +1226,17 @@ function writeComposeEnvironmentFile(
 
 export function buildComposeFallbackEnvironmentOverrides(
   record: SandboxRecord,
-  sharedEnvironment: {
-    readonly AUTH_EMAIL_FROM: string;
-    readonly AUTH_EMAIL_FROM_NAME: string;
-    readonly CLOUDFLARE_ACCOUNT_ID: string;
-    readonly CLOUDFLARE_API_TOKEN: string;
-  }
+  sharedEnvironment: Readonly<Record<string, string>>
 ): Record<string, string> {
   const urls = buildRecordUrls(record);
 
   return {
+    ...sharedEnvironment,
     API_HOST_PORT: String(record.ports.api),
     APP_HOST_PORT: String(record.ports.app),
-    AUTH_EMAIL_FROM: sharedEnvironment.AUTH_EMAIL_FROM,
-    AUTH_EMAIL_FROM_NAME: sharedEnvironment.AUTH_EMAIL_FROM_NAME,
     AUTH_ORIGIN: `http://api:${record.ports.api}`,
     BETTER_AUTH_BASE_URL: urls.api,
     BETTER_AUTH_SECRET: record.betterAuthSecret,
-    CLOUDFLARE_ACCOUNT_ID: sharedEnvironment.CLOUDFLARE_ACCOUNT_ID,
-    CLOUDFLARE_API_TOKEN: sharedEnvironment.CLOUDFLARE_API_TOKEN,
     DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/task_tracker",
     HOST: "0.0.0.0",
     PORT: String(record.ports.api),

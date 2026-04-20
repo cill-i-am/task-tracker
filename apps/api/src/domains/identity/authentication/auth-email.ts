@@ -4,12 +4,12 @@ import { Context, Effect, ParseResult, Schema } from "effect";
 
 import type {
   AuthEmailRejectedError,
-  AuthEmailRequestError} from "./auth-email-errors.js";
-import {
-  PasswordResetDeliveryError,
+  AuthEmailRequestError,
 } from "./auth-email-errors.js";
+import { PasswordResetDeliveryError } from "./auth-email-errors.js";
 
 const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_RESET_DELIVERY_KEY_PATTERN = /^password-reset\/[0-9a-f]{64}$/;
 
 function isValidEmailAddress(value: string) {
   return EMAIL_ADDRESS_PATTERN.test(value);
@@ -46,8 +46,9 @@ const EmailAddress = Schema.String.pipe(
 );
 
 const DeliveryKey = Schema.String.pipe(
-  Schema.filter((value) => value.length > 0, {
-    message: () => "Expected a non-empty delivery key",
+  Schema.filter((value) => PASSWORD_RESET_DELIVERY_KEY_PATTERN.test(value), {
+    message: () =>
+      "Expected a password reset delivery key in the format password-reset/<sha256>",
   })
 );
 

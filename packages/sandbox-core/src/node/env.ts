@@ -25,6 +25,7 @@ export const loadSandboxSharedEnvironment = Effect.fn(
   "SandboxEnv.loadSharedEnvironment"
 )(function* (input: {
   readonly repoRoot: string;
+  readonly requiredKeys: readonly string[];
   readonly processEnv?: Record<string, string | undefined>;
   readonly readFile?: (
     filePath: string
@@ -70,9 +71,20 @@ export const loadSandboxSharedEnvironment = Effect.fn(
     ),
   };
 
-  return yield* Schema.decodeUnknown(SharedSandboxEnvironment)(merged).pipe(
-    Effect.mapError((error) => {
-      const missing = [...extractMissingVariables(error)];
+  const requiredEnvironment = Object.fromEntries(
+    input.requiredKeys.map((key) => [key, merged[key]])
+  );
+
+  return yield* Schema.decodeUnknown(SharedSandboxEnvironment)(
+    requiredEnvironment
+  ).pipe(
+    Effect.mapError(() => {
+      const missing = input.requiredKeys.filter((key) => {
+        const value = merged[key];
+
+        return typeof value !== "string" || value.length === 0;
+      });
+
       return new SandboxEnvironmentError({
         message:
           missing.length === 0
@@ -100,24 +112,6 @@ function parseEnvironmentFile(content: string): Record<string, string> {
       (entry): entry is [string, string] => typeof entry[1] === "string"
     )
   );
-}
-
-function extractMissingVariables(error: unknown): Set<string> {
-  const missing = new Set<string>();
-  const message = JSON.stringify(error);
-
-  for (const variable of [
-    "AUTH_EMAIL_FROM",
-    "AUTH_EMAIL_FROM_NAME",
-    "CLOUDFLARE_ACCOUNT_ID",
-    "CLOUDFLARE_API_TOKEN",
-  ]) {
-    if (message.includes(variable)) {
-      missing.add(variable);
-    }
-  }
-
-  return missing;
 }
 
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {

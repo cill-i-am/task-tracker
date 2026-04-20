@@ -1,8 +1,7 @@
 import { ConfigProvider, Effect, Layer } from "effect";
 
 import { loadAuthEmailConfig } from "./auth-email-config.js";
-import type {
-  AuthEmailRejectedError} from "./auth-email-errors.js";
+import type { AuthEmailRejectedError } from "./auth-email-errors.js";
 import {
   AuthEmailConfigurationError,
   AuthEmailRequestError,
@@ -10,6 +9,9 @@ import {
 } from "./auth-email-errors.js";
 import { AuthEmailSender, AuthEmailTransport } from "./auth-email.js";
 import type { TransportMessage } from "./auth-email.js";
+
+const PASSWORD_RESET_DELIVERY_KEY =
+  "password-reset/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 function makeAuthEmailSenderTestLayer(
   send: (
@@ -31,7 +33,7 @@ describe("auth email sender password reset delivery", () => {
 
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
-        deliveryKey: "password-reset/user-123/token-abc123",
+        deliveryKey: PASSWORD_RESET_DELIVERY_KEY,
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl: "https://app.task-tracker.localhost/reset?token=abc123",
@@ -49,7 +51,7 @@ describe("auth email sender password reset delivery", () => {
     expect(result).toBeUndefined();
     expect(sentMessages).toStrictEqual([
       {
-        deliveryKey: "password-reset/user-123/token-abc123",
+        deliveryKey: PASSWORD_RESET_DELIVERY_KEY,
         to: "alice@example.com",
         subject: "Reset your password",
         text: [
@@ -69,7 +71,7 @@ describe("auth email sender password reset delivery", () => {
   it("maps provider failures into PasswordResetDeliveryError", async () => {
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
-        deliveryKey: "password-reset/user-123/token-abc123",
+        deliveryKey: PASSWORD_RESET_DELIVERY_KEY,
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl: "https://app.task-tracker.localhost/reset?token=abc123",
@@ -106,7 +108,7 @@ describe("auth email sender password reset delivery", () => {
 
     const result = await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
-        deliveryKey: "password-reset/user-123/token-abc123",
+        deliveryKey: PASSWORD_RESET_DELIVERY_KEY,
         recipientEmail: "alice@example.com",
         recipientName: "Alice",
         resetUrl:
@@ -136,12 +138,49 @@ describe("auth email sender password reset delivery", () => {
     });
   }, 10_000);
 
+  it("rejects unsafe delivery keys before sending", async () => {
+    const sentMessages: TransportMessage[] = [];
+
+    const result = await Effect.runPromise(
+      AuthEmailSender.sendPasswordResetEmail({
+        deliveryKey: "password-reset/user-123/token-abc123",
+        recipientEmail: "alice@example.com",
+        recipientName: "Alice",
+        resetUrl: "https://app.task-tracker.localhost/reset?token=abc123",
+      } as never).pipe(
+        Effect.either,
+        Effect.provide(
+          makeAuthEmailSenderTestLayer((message) =>
+            Effect.sync(() => {
+              sentMessages.push(message);
+            })
+          )
+        )
+      )
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      return;
+    }
+
+    expect(sentMessages).toStrictEqual([]);
+    expect(result.left).toBeInstanceOf(PasswordResetDeliveryError);
+    expect(result.left).toMatchObject({
+      _tag: "PasswordResetDeliveryError",
+      message: "Invalid password reset email input",
+    });
+    expect(result.left.cause).toMatch(
+      /password reset delivery key in the format password-reset\/<sha256>/
+    );
+  }, 10_000);
+
   it("escapes html-sensitive values in the composed html body", async () => {
     const sentMessages: TransportMessage[] = [];
 
     await Effect.runPromise(
       AuthEmailSender.sendPasswordResetEmail({
-        deliveryKey: "password-reset/user-123/token-abc123",
+        deliveryKey: PASSWORD_RESET_DELIVERY_KEY,
         recipientEmail: "alice@example.com",
         recipientName: 'Alice & <Admin> "Boss"',
         resetUrl:

@@ -11,6 +11,10 @@ const runtimeAssets = Schema.decodeUnknownSync(SandboxRuntimeAssets)({
   nodeModulesVolume: "tt-sbx-node-modules-123456789abc-def456789abc",
   pnpmStoreVolume: "tt-sbx-pnpm-store",
 });
+const sharedEnvironment = {
+  EMAIL_SENDER: "auth@example.com",
+  EMAIL_PROVIDER_TOKEN: "provider-token-live",
+};
 
 describe("validateSandboxName()", () => {
   it("accepts lowercase kebab-case names", () => {
@@ -41,12 +45,7 @@ describe("buildSandboxRuntimeSpec()", () => {
         betterAuthSecret: "0123456789abcdef0123456789abcdef",
         aliasesHealthy: true,
         proxyPort: 1355,
-        sharedEnvironment: {
-          AUTH_EMAIL_FROM: "auth@example.com",
-          AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
-        },
+        sharedEnvironment,
       })
     );
 
@@ -67,6 +66,8 @@ describe("buildSandboxRuntimeSpec()", () => {
         TASK_TRACKER_SANDBOX: "1",
         BETTER_AUTH_BASE_URL:
           "https://agent-one.api.task-tracker.localhost:1355",
+        EMAIL_SENDER: "auth@example.com",
+        EMAIL_PROVIDER_TOKEN: "provider-token-live",
       },
     });
   }, 10_000);
@@ -87,12 +88,7 @@ describe("buildSandboxRuntimeSpec()", () => {
         betterAuthSecret: "0123456789abcdef0123456789abcdef",
         aliasesHealthy: true,
         proxyPort: 1355,
-        sharedEnvironment: {
-          AUTH_EMAIL_FROM: "auth@example.com",
-          AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
-        },
+        sharedEnvironment,
       })
     );
 
@@ -117,12 +113,7 @@ describe("buildSandboxRuntimeSpec()", () => {
         betterAuthSecret: "0123456789abcdef0123456789abcdef",
         aliasesHealthy: false,
         proxyPort: 1355,
-        sharedEnvironment: {
-          AUTH_EMAIL_FROM: "auth@example.com",
-          AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
-        },
+        sharedEnvironment,
       })
     );
 
@@ -150,12 +141,7 @@ describe("buildSandboxRuntimeSpec()", () => {
         betterAuthSecret: "0123456789abcdef0123456789abcdef",
         aliasesHealthy: true,
         proxyPort: 1355,
-        sharedEnvironment: {
-          AUTH_EMAIL_FROM: "auth@example.com",
-          AUTH_EMAIL_FROM_NAME: "Task Tracker",
-          CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
-          CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
-        },
+        sharedEnvironment,
       }).pipe(Effect.either)
     );
 
