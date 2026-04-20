@@ -136,9 +136,9 @@ Rule:
 - auth startup now depends on valid auth email config as well as core Better
   Auth config, because `AuthenticationLive` composes `AuthEmailSender` with
   `CloudflareAuthEmailTransportLive` at boot
-- password reset emails carry a provider idempotency key so retries do not
-  duplicate delivery
-- that `deliveryKey` remains stable across transports so future verification
+- password reset emails carry a stable provider-neutral `deliveryKey` at the
+  auth boundary for correlation and transport stability
+- that `deliveryKey` stays consistent across transports so future verification
   mail can reuse the same boundary without baking provider-specific naming into
   the domain contract
 - Better Auth currently defers reset delivery through an in-process
