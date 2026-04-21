@@ -28,7 +28,7 @@ function createForwardedFor() {
 
 async function expectAuthenticatedHome(page: Page) {
   await expect(page).toHaveURL(`${APP_ORIGIN}/`);
-  await expect(page.getByText("Active organization")).toBeVisible();
+  await expect(page.getByText(/^Active organization$/)).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Invite teammates" })
   ).toBeVisible();

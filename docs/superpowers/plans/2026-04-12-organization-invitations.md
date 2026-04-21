@@ -91,7 +91,8 @@ it("renders an organization invitation email", async () => {
     recipientName: "Taylor Example",
     organizationName: "Acme Field Ops",
     inviterEmail: "owner@example.com",
-    invitationUrl: "https://app.task-tracker.localhost/accept-invitation/inv_123",
+    invitationUrl:
+      "https://app.task-tracker.localhost/accept-invitation/inv_123",
     role: "member",
   });
 
@@ -125,10 +126,13 @@ Add this config coverage near the existing env tests:
 it("requires AUTH_APP_ORIGIN for auth email configuration", async () => {
   const result = await Effect.runPromise(
     loadAuthEmailConfig.pipe(Effect.either).pipe(
-      Effect.provideService(ConfigProvider.ConfigProvider, makeConfigProvider([
-        ["AUTH_EMAIL_FROM", "auth@task-tracker.localhost"],
-        ["RESEND_API_KEY", "re_test_123"],
-      ]))
+      Effect.provideService(
+        ConfigProvider.ConfigProvider,
+        makeConfigProvider([
+          ["AUTH_EMAIL_FROM", "auth@task-tracker.localhost"],
+          ["RESEND_API_KEY", "re_test_123"],
+        ])
+      )
     )
   );
 
@@ -263,31 +267,33 @@ const sendOrganizationInvitationEmail = Effect.fn(
     )
   );
 
-  yield* transport.send({
-    idempotencyKey: input.idempotencyKey,
-    to: input.recipientEmail,
-    subject: `Join ${input.organizationName} on Task Tracker`,
-    text: [
-      `Hello ${input.recipientName},`,
-      "",
-      `${input.inviterEmail} invited you to join ${input.organizationName} as a ${input.role}.`,
-      "",
-      input.invitationUrl,
-    ].join("\n"),
-    html: [
-      `<p>Hello ${escapeHtml(input.recipientName)},</p>`,
-      `<p>${escapeHtml(input.inviterEmail)} invited you to join ${escapeHtml(input.organizationName)} as a ${escapeHtml(input.role)}.</p>`,
-      `<p><a href="${escapeHtml(input.invitationUrl)}">Accept invitation</a></p>`,
-    ].join(""),
-  }).pipe(
-    Effect.mapError(
-      (error) =>
-        new OrganizationInvitationDeliveryError({
-          message: "Failed to deliver organization invitation email",
-          cause: error.message,
-        })
-    )
-  );
+  yield* transport
+    .send({
+      idempotencyKey: input.idempotencyKey,
+      to: input.recipientEmail,
+      subject: `Join ${input.organizationName} on Task Tracker`,
+      text: [
+        `Hello ${input.recipientName},`,
+        "",
+        `${input.inviterEmail} invited you to join ${input.organizationName} as a ${input.role}.`,
+        "",
+        input.invitationUrl,
+      ].join("\n"),
+      html: [
+        `<p>Hello ${escapeHtml(input.recipientName)},</p>`,
+        `<p>${escapeHtml(input.inviterEmail)} invited you to join ${escapeHtml(input.organizationName)} as a ${escapeHtml(input.role)}.</p>`,
+        `<p><a href="${escapeHtml(input.invitationUrl)}">Accept invitation</a></p>`,
+      ].join(""),
+    })
+    .pipe(
+      Effect.mapError(
+        (error) =>
+          new OrganizationInvitationDeliveryError({
+            message: "Failed to deliver organization invitation email",
+            cause: error.message,
+          })
+      )
+    );
 });
 
 return {
@@ -467,7 +473,10 @@ it("creates an invitation and accepts it with the invited user", async () => {
   );
 
   expect(inviteResponse.status).toBe(200);
-  const invitation = (await inviteResponse.json()) as { id: string; email: string };
+  const invitation = (await inviteResponse.json()) as {
+    id: string;
+    email: string;
+  };
   expect(invitation.email).toBe("member@example.com");
 
   const invitedUser = await signUp({
@@ -697,7 +706,14 @@ it("submits an invitation and refreshes the pending invitations list", async () 
       data: {
         id: "org_123",
         name: "Acme Field Ops",
-        members: [{ id: "member_1", role: "owner", userId: "user_1", user: { email: "owner@example.com", name: "Owner Example" } }],
+        members: [
+          {
+            id: "member_1",
+            role: "owner",
+            userId: "user_1",
+            user: { email: "owner@example.com", name: "Owner Example" },
+          },
+        ],
         invitations: [],
       },
       error: null,
@@ -706,19 +722,38 @@ it("submits an invitation and refreshes the pending invitations list", async () 
       data: {
         id: "org_123",
         name: "Acme Field Ops",
-        members: [{ id: "member_1", role: "owner", userId: "user_1", user: { email: "owner@example.com", name: "Owner Example" } }],
-        invitations: [{ id: "inv_123", email: "member@example.com", role: "member", status: "pending" }],
+        members: [
+          {
+            id: "member_1",
+            role: "owner",
+            userId: "user_1",
+            user: { email: "owner@example.com", name: "Owner Example" },
+          },
+        ],
+        invitations: [
+          {
+            id: "inv_123",
+            email: "member@example.com",
+            role: "member",
+            status: "pending",
+          },
+        ],
       },
       error: null,
     });
 
-  mockedInviteMember.mockResolvedValue({ data: { id: "inv_123" }, error: null });
+  mockedInviteMember.mockResolvedValue({
+    data: { id: "inv_123" },
+    error: null,
+  });
 
   render(<OrganizationMembersPage />);
 
   await screen.findByText("Organization members");
   await userEvent.type(screen.getByLabelText("Email"), "member@example.com");
-  await userEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Send invitation" })
+  );
 
   await screen.findByText("member@example.com");
   expect(mockedInviteMember).toHaveBeenCalledWith({
@@ -782,7 +817,12 @@ import {
 } from "./organization-member-invite-schemas";
 
 export function OrganizationMembersPage() {
-  const [organization, setOrganization] = useState<Awaited<ReturnType<typeof authClient.organization.getFullOrganization>>["data"] | null>(null);
+  const [organization, setOrganization] = useState<
+    | Awaited<
+        ReturnType<typeof authClient.organization.getFullOrganization>
+      >["data"]
+    | null
+  >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   async function loadOrganization() {
@@ -861,7 +901,9 @@ export function OrganizationMembersPage() {
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(event) =>
-                      field.handleChange(event.target.value as "admin" | "member")
+                      field.handleChange(
+                        event.target.value as "admin" | "member"
+                      )
                     }
                   >
                     <option value="member">Member</option>
@@ -879,21 +921,28 @@ export function OrganizationMembersPage() {
           </form>
           <section className="space-y-3">
             <h2 className="text-sm font-medium">Pending invitations</h2>
-            {organization?.invitations?.filter((invitation) => invitation.status === "pending").map((invitation) => (
-              <div key={invitation.id} className="flex items-center justify-between rounded-md border p-3">
-                <div>
-                  <p>{invitation.email}</p>
-                  <p className="text-sm text-muted-foreground">{invitation.role}</p>
-                </div>
-                <a
-                  data-testid="pending-invitation-link"
-                  href={`/accept-invitation/${invitation.id}`}
-                  className="text-sm text-primary underline-offset-4 hover:underline"
+            {organization?.invitations
+              ?.filter((invitation) => invitation.status === "pending")
+              .map((invitation) => (
+                <div
+                  key={invitation.id}
+                  className="flex items-center justify-between rounded-md border p-3"
                 >
-                  Copy invite link
-                </a>
-              </div>
-            ))}
+                  <div>
+                    <p>{invitation.email}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {invitation.role}
+                    </p>
+                  </div>
+                  <a
+                    data-testid="pending-invitation-link"
+                    href={`/accept-invitation/${invitation.id}`}
+                    className="text-sm text-primary underline-offset-4 hover:underline"
+                  >
+                    Copy invite link
+                  </a>
+                </div>
+              ))}
           </section>
         </CardContent>
       </Card>
@@ -1194,7 +1243,11 @@ it("accepts the invitation when the recipient is signed in", async () => {
     <AcceptInvitationPage
       invitationId="inv_123"
       initialSession={{
-        user: { id: "user_123", email: "member@example.com", name: "Member Example" },
+        user: {
+          id: "user_123",
+          email: "member@example.com",
+          name: "Member Example",
+        },
         session: { id: "session_123" },
       }}
       initialInvitation={{
@@ -1209,7 +1262,9 @@ it("accepts the invitation when the recipient is signed in", async () => {
     />
   );
 
-  await userEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Accept invitation" })
+  );
 
   expect(mockedAcceptInvitation).toHaveBeenCalledWith({
     invitationId: "inv_123",
@@ -1257,13 +1312,23 @@ import { useEffect, useState } from "react";
 
 import { authClient } from "#/lib/auth-client";
 import { Button } from "#/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "#/components/ui/card";
 import { FieldError } from "#/components/ui/field";
 
 interface AcceptInvitationPageProps {
   readonly invitationId: string;
-  readonly initialSession?: Awaited<ReturnType<typeof authClient.getSession>>["data"] | null;
-  readonly initialInvitation?: Awaited<ReturnType<typeof authClient.organization.getInvitation>>["data"] | null;
+  readonly initialSession?:
+    | Awaited<ReturnType<typeof authClient.getSession>>["data"]
+    | null;
+  readonly initialInvitation?:
+    | Awaited<ReturnType<typeof authClient.organization.getInvitation>>["data"]
+    | null;
   readonly initialError?: string | null;
 }
 
@@ -1274,8 +1339,13 @@ export function AcceptInvitationPage({
   initialError = null,
 }: AcceptInvitationPageProps) {
   const navigate = useNavigate();
-  const [session, setSession] = useState<Awaited<ReturnType<typeof authClient.getSession>>["data"] | null>(initialSession);
-  const [invitation, setInvitation] = useState<Awaited<ReturnType<typeof authClient.organization.getInvitation>>["data"] | null>(initialInvitation);
+  const [session, setSession] = useState<
+    Awaited<ReturnType<typeof authClient.getSession>>["data"] | null
+  >(initialSession);
+  const [invitation, setInvitation] = useState<
+    | Awaited<ReturnType<typeof authClient.organization.getInvitation>>["data"]
+    | null
+  >(initialInvitation);
   const [error, setError] = useState<string | null>(initialError);
   const [isAccepting, setIsAccepting] = useState(false);
 
@@ -1300,7 +1370,9 @@ export function AcceptInvitationPage({
       if (cancelled) return;
 
       if (invitationResult.error || !invitationResult.data) {
-        setError("This invitation is invalid, expired, or belongs to a different email address.");
+        setError(
+          "This invitation is invalid, expired, or belongs to a different email address."
+        );
         return;
       }
 
@@ -1322,7 +1394,9 @@ export function AcceptInvitationPage({
     setIsAccepting(false);
 
     if (result.error) {
-      setError("We couldn't accept that invitation. Please make sure you're signed in with the invited email address.");
+      setError(
+        "We couldn't accept that invitation. Please make sure you're signed in with the invited email address."
+      );
       return;
     }
 
@@ -1334,16 +1408,15 @@ export function AcceptInvitationPage({
       <Card className="w-full">
         <CardHeader className="text-center">
           <CardTitle className="text-xl">Organization invitation</CardTitle>
-          <CardDescription>
-            Join your team on Task Tracker.
-          </CardDescription>
+          <CardDescription>Join your team on Task Tracker.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error ? <FieldError>{error}</FieldError> : null}
           {!session ? (
             <>
               <p className="text-sm text-muted-foreground">
-                Sign in or create an account with the email address that received this invitation.
+                Sign in or create an account with the email address that
+                received this invitation.
               </p>
               <div className="flex gap-3">
                 <Button asChild>
@@ -1365,7 +1438,10 @@ export function AcceptInvitationPage({
                 <strong>{invitation.organizationName}</strong> as a{" "}
                 <strong>{invitation.role}</strong>.
               </p>
-              <Button disabled={isAccepting} onClick={() => void acceptInvitation()}>
+              <Button
+                disabled={isAccepting}
+                onClick={() => void acceptInvitation()}
+              >
                 {isAccepting ? "Accepting invitation..." : "Accept invitation"}
               </Button>
             </>
@@ -1423,7 +1499,9 @@ export class MembersPage {
 
   async goto() {
     await this.page.goto("/members");
-    await expect(this.page.getByRole("heading", { name: "Organization members" })).toBeVisible();
+    await expect(
+      this.page.getByRole("heading", { name: "Organization members" })
+    ).toBeVisible();
   }
 }
 ```
@@ -1444,7 +1522,10 @@ function email(prefix: string) {
   return `${prefix}-${randomUUID()}@example.com`;
 }
 
-test("existing user accepts an invitation and lands in the app", async ({ browser, page }) => {
+test("existing user accepts an invitation and lands in the app", async ({
+  browser,
+  page,
+}) => {
   const ownerEmail = email("owner");
   const memberEmail = email("member");
   const password = "password123";
@@ -1494,7 +1575,9 @@ test("existing user accepts an invitation and lands in the app", async ({ browse
   await invitedLogin.password.fill(password);
   await invitedLogin.submit.click();
 
-  await expect(invitedPage.getByRole("button", { name: "Accept invitation" })).toBeVisible();
+  await expect(
+    invitedPage.getByRole("button", { name: "Accept invitation" })
+  ).toBeVisible();
   await invitedPage.getByRole("button", { name: "Accept invitation" }).click();
   await expect(invitedPage).toHaveURL("http://localhost:4173/");
 });
