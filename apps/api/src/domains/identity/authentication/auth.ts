@@ -10,8 +10,8 @@ import { Effect, Layer, Runtime } from "effect";
 import { loadAuthEmailConfig } from "./auth-email-config.js";
 import { AuthEmailSender } from "./auth-email.js";
 import type {
-  OrganizationInvitationEmailInput,
   EmailVerificationEmailInput,
+  OrganizationInvitationEmailInput,
   PasswordResetEmailInput,
 } from "./auth-email.js";
 import { loadAuthenticationConfig } from "./config.js";
@@ -172,10 +172,21 @@ function makeEmailFailureReporter(
   const runFork = Runtime.runFork(runtime);
 
   return (error: unknown) => {
+    const serializedError = serializeBackgroundTaskError(error);
+
     runFork(
-      Effect.logError(label, {
-        error: serializeBackgroundTaskError(error),
-      })
+      Effect.logError("Authentication background email delivery failed").pipe(
+        Effect.annotateLogs({
+          authEmailFailureLabel: label,
+          ...(serializedError.cause
+            ? { authEmailFailureCause: serializedError.cause }
+            : {}),
+          authEmailFailureMessage: serializedError.message,
+          ...(serializedError.tag
+            ? { authEmailFailureTag: serializedError.tag }
+            : {}),
+        })
+      )
     );
   };
 }

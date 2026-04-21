@@ -2,7 +2,7 @@ import { Layer, Effect } from "effect";
 import type { CreateEmailOptions, CreateEmailResponse } from "resend";
 import { Resend as ResendClient } from "resend";
 
-import { loadAuthEmailConfig } from "./auth-email-config.js";
+import { AuthEmailConfigService } from "./auth-email-config.js";
 import { AuthEmailDeliveryError } from "./auth-email-errors.js";
 import { AuthEmailTransport } from "./auth-email.js";
 import type { TransportMessage } from "./auth-email.js";
@@ -62,7 +62,7 @@ export function makeResendAuthEmailTransport(options?: {
   };
 }) {
   return Effect.gen(function* makeResendAuthEmailTransportEffect() {
-    const config = yield* loadAuthEmailConfig;
+    const config = yield* AuthEmailConfigService;
     const resend = options?.resend ?? new ResendClient(config.resendApiKey);
     const configuredSender = formatFromAddress(config.from, config.fromName);
 
@@ -89,7 +89,7 @@ export function makeResendAuthEmailTransport(options?: {
           catch: makeAuthEmailDeliveryError,
         }),
     };
-  });
+  }).pipe(Effect.provide(AuthEmailConfigService.Default));
 }
 
 export const ResendAuthEmailTransportLive = Layer.effect(
