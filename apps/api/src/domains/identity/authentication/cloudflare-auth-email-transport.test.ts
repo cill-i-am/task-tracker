@@ -170,7 +170,7 @@ describe("makeCloudflareAuthEmailTransport()", () => {
     expect(requests).toHaveLength(1);
   }, 10_000);
 
-  it("allows retries after request failures clear the deliveryKey reservation", async () => {
+  it("keeps request-failure reservations alive long enough to dedupe immediate retries", async () => {
     const requests: unknown[] = [];
     let attempt = 0;
 
@@ -203,7 +203,7 @@ describe("makeCloudflareAuthEmailTransport()", () => {
 
     await Effect.runPromise(transport.send(makeMessage()));
 
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(1);
   }, 10_000);
 
   it("expires stale deliveryKey reservations after the ttl elapses", async () => {

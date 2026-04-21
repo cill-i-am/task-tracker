@@ -270,8 +270,9 @@ export function makeCloudflareAuthEmailTransport(options?: {
           return sendEffect;
         }
 
-        // The current auth flow already relies on in-process background tasks, so
-        // a short-lived process-local reservation restores practical dedupe.
+        // This is best-effort, process-local dedupe for the in-process background
+        // task model; it favors avoiding duplicate delivery over retrying after
+        // ambiguous failures.
         return Effect.sync(() =>
           reserveDeliveryKey(deliveryKeyDedupeEntries, deliveryKey)
         ).pipe(
@@ -289,9 +290,9 @@ export function makeCloudflareAuthEmailTransport(options?: {
                         retainDeliveryKey(deliveryKeyDedupeEntries, deliveryKey)
                       ).pipe(Effect.zipRight(Effect.fail(error))),
                     AuthEmailRequestError: (error) =>
-                      Effect.sync(() => {
-                        deliveryKeyDedupeEntries.delete(deliveryKey);
-                      }).pipe(Effect.zipRight(Effect.fail(error))),
+                      Effect.sync(() =>
+                        retainDeliveryKey(deliveryKeyDedupeEntries, deliveryKey)
+                      ).pipe(Effect.zipRight(Effect.fail(error))),
                   })
                 )
               : Effect.log("Auth email transport send outcome", {

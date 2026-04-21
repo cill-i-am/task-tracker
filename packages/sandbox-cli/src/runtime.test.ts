@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { validateSandboxName } from "@task-tracker/sandbox-core";
 import {
   SandboxRegistryError,
@@ -12,6 +16,7 @@ import {
   ensureSandboxProxyHealthy,
   finalizeSandboxRename,
   removeAliasesBestEffort,
+  loadSandboxEnvironmentOrThrow,
   resolveRepoRootFromGitPaths,
   selectSandboxRecord,
   waitForSandboxServicesReady,
@@ -473,6 +478,72 @@ describe("buildComposeFallbackEnvironmentOverrides()", () => {
       BETTER_AUTH_BASE_URL: "https://alpha.api.task-tracker.localhost:1355",
       SANDBOX_NAME: "alpha",
     });
+  }, 10_000);
+});
+
+describe("loadSandboxEnvironmentOrThrow()", () => {
+  it("preserves an explicit AUTH_EMAIL_FROM_NAME override from sandbox env files", async () => {
+    const repoRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "task-tracker-sandbox-env-")
+    );
+    const previousEnv = {
+      AUTH_EMAIL_FROM: process.env.AUTH_EMAIL_FROM,
+      AUTH_EMAIL_FROM_NAME: process.env.AUTH_EMAIL_FROM_NAME,
+      CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
+      CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN,
+    };
+
+    try {
+      await fs.writeFile(
+        path.join(repoRoot, ".env"),
+        [
+          "AUTH_EMAIL_FROM=auth@example.com",
+          "AUTH_EMAIL_FROM_NAME=Task Tracker Auth",
+          "CLOUDFLARE_ACCOUNT_ID=account_123",
+          "CLOUDFLARE_API_TOKEN=token_123",
+        ].join("\n")
+      );
+
+      process.env.AUTH_EMAIL_FROM = "auth@example.com";
+      delete process.env.AUTH_EMAIL_FROM_NAME;
+      process.env.CLOUDFLARE_ACCOUNT_ID = "account_123";
+      process.env.CLOUDFLARE_API_TOKEN = "token_123";
+
+      await expect(
+        Effect.runPromise(loadSandboxEnvironmentOrThrow(repoRoot))
+      ).resolves.toStrictEqual({
+        AUTH_EMAIL_FROM: "auth@example.com",
+        AUTH_EMAIL_FROM_NAME: "Task Tracker Auth",
+        CLOUDFLARE_ACCOUNT_ID: "account_123",
+        CLOUDFLARE_API_TOKEN: "token_123",
+      });
+    } finally {
+      if (previousEnv.AUTH_EMAIL_FROM === undefined) {
+        delete process.env.AUTH_EMAIL_FROM;
+      } else {
+        process.env.AUTH_EMAIL_FROM = previousEnv.AUTH_EMAIL_FROM;
+      }
+
+      if (previousEnv.AUTH_EMAIL_FROM_NAME === undefined) {
+        delete process.env.AUTH_EMAIL_FROM_NAME;
+      } else {
+        process.env.AUTH_EMAIL_FROM_NAME = previousEnv.AUTH_EMAIL_FROM_NAME;
+      }
+
+      if (previousEnv.CLOUDFLARE_ACCOUNT_ID === undefined) {
+        delete process.env.CLOUDFLARE_ACCOUNT_ID;
+      } else {
+        process.env.CLOUDFLARE_ACCOUNT_ID = previousEnv.CLOUDFLARE_ACCOUNT_ID;
+      }
+
+      if (previousEnv.CLOUDFLARE_API_TOKEN === undefined) {
+        delete process.env.CLOUDFLARE_API_TOKEN;
+      } else {
+        process.env.CLOUDFLARE_API_TOKEN = previousEnv.CLOUDFLARE_API_TOKEN;
+      }
+
+      await fs.rm(repoRoot, { recursive: true, force: true });
+    }
   }, 10_000);
 });
 
