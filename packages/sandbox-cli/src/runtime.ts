@@ -1,11 +1,11 @@
+/* oxlint-disable eslint/max-classes-per-file */
+
 import { createHash, randomBytes } from "node:crypto";
-import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import {
-  HealthPayload,
   buildSandboxUrls,
   reconcileSandboxRecord,
 } from "@task-tracker/sandbox-core";
@@ -21,24 +21,29 @@ import type {
 } from "@task-tracker/sandbox-core";
 import {
   loadSandboxSharedEnvironment,
+  SANDBOX_ENVIRONMENT_ERROR_TAG,
   SANDBOX_REGISTRY_ERROR_TAG,
-  SandboxEnvironmentError,
 } from "@task-tracker/sandbox-core/node";
 import type {
   SandboxRegistryError,
   SandboxRegistryRecord,
   SharedSandboxEnvironmentInput,
 } from "@task-tracker/sandbox-core/node";
-import { Effect, Schema } from "effect";
+import { Effect, Layer } from "effect";
 
 import {
   buildComposeCommandArgs,
   renderComposeEnvironmentFile,
 } from "./compose.js";
+import type { SandboxFileSystem } from "./filesystem.js";
+import { SandboxFileSystemService } from "./filesystem.js";
+import type { SandboxHttpHealth } from "./http-health.js";
+import { SandboxHttpHealthService } from "./http-health.js";
 import { bringSandboxUp } from "./lifecycle.js";
 import type { SandboxUpResult } from "./lifecycle.js";
 import { makePortlessAliasCommands } from "./portless.js";
-import { isPortAvailable, isPortOpen, runCommand } from "./process.js";
+import type { SandboxProcess } from "./process.js";
+import { SandboxProcessService } from "./process.js";
 import {
   ensureSandboxStateDir,
   getComposeEnvFilePath,
@@ -211,24 +216,144 @@ interface RegisteredAliases {
   readonly ports: SandboxPorts;
 }
 
-export function makeSandboxRuntime(): SandboxRuntime {
-  const worktreeResolver: WorktreeResolver = {
+export class SandboxWorktreeResolverService extends Effect.Service<SandboxWorktreeResolverService>()(
+  "@task-tracker/sandbox-cli/SandboxWorktreeResolverService",
+  {
+    accessors: true,
+    dependencies: [SandboxProcessService.Default],
+    effect: Effect.gen(function* () {
+      const sandboxProcess = yield* SandboxProcessService;
+      return makeWorktreeResolver(sandboxProcess);
+    }),
+  }
+) {}
+
+export class SandboxRegistryService extends Effect.Service<SandboxRegistryService>()(
+  "@task-tracker/sandbox-cli/SandboxRegistryService",
+  {
+    accessors: true,
+    effect: Effect.succeed(makeSandboxRegistryService()),
+  }
+) {}
+
+export class SandboxPortAllocatorService extends Effect.Service<SandboxPortAllocatorService>()(
+  "@task-tracker/sandbox-cli/SandboxPortAllocatorService",
+  {
+    accessors: true,
+    dependencies: [SandboxProcessService.Default],
+    effect: Effect.gen(function* () {
+      const sandboxProcess = yield* SandboxProcessService;
+      return makePortAllocator(sandboxProcess);
+    }),
+  }
+) {}
+
+export class SandboxComposeEngineService extends Effect.Service<SandboxComposeEngineService>()(
+  "@task-tracker/sandbox-cli/SandboxComposeEngineService",
+  {
+    accessors: true,
+    dependencies: [
+      SandboxProcessService.Default,
+      SandboxFileSystemService.Default,
+    ],
+    effect: Effect.gen(function* () {
+      const sandboxProcess = yield* SandboxProcessService;
+      const sandboxFileSystem = yield* SandboxFileSystemService;
+      return makeComposeEngine(sandboxProcess, sandboxFileSystem);
+    }),
+  }
+) {}
+
+export class SandboxPortlessService extends Effect.Service<SandboxPortlessService>()(
+  "@task-tracker/sandbox-cli/SandboxPortlessService",
+  {
+    accessors: true,
+    dependencies: [SandboxProcessService.Default],
+    effect: Effect.gen(function* () {
+      const sandboxProcess = yield* SandboxProcessService;
+      return makePortlessService(sandboxProcess);
+    }),
+  }
+) {}
+
+export class SandboxHealthCheckerService extends Effect.Service<SandboxHealthCheckerService>()(
+  "@task-tracker/sandbox-cli/SandboxHealthCheckerService",
+  {
+    accessors: true,
+    dependencies: [
+      SandboxProcessService.Default,
+      SandboxHttpHealthService.Default,
+    ],
+    effect: Effect.gen(function* () {
+      const sandboxProcess = yield* SandboxProcessService;
+      const sandboxHttpHealth = yield* SandboxHttpHealthService;
+      return makeHealthChecker(sandboxProcess, sandboxHttpHealth);
+    }),
+  }
+) {}
+
+export class SandboxLifecycleService extends Effect.Service<SandboxLifecycleService>()(
+  "@task-tracker/sandbox-cli/SandboxLifecycleService",
+  {
+    accessors: true,
+    dependencies: [
+      SandboxWorktreeResolverService.Default,
+      SandboxRegistryService.Default,
+      SandboxPortAllocatorService.Default,
+      SandboxComposeEngineService.Default,
+      SandboxPortlessService.Default,
+      SandboxHealthCheckerService.Default,
+    ],
+    effect: Effect.gen(function* () {
+      const sandboxProcess = yield* SandboxProcessService;
+      const worktreeResolver = yield* SandboxWorktreeResolverService;
+      const sandboxRegistry = yield* SandboxRegistryService;
+      const portAllocator = yield* SandboxPortAllocatorService;
+      const composeEngine = yield* SandboxComposeEngineService;
+      const portlessService = yield* SandboxPortlessService;
+      const healthChecker = yield* SandboxHealthCheckerService;
+
+      return makeSandboxLifecycle({
+        sandboxProcess,
+        worktreeResolver,
+        sandboxRegistry,
+        composeEngine,
+        portAllocator,
+        portlessService,
+        healthChecker,
+      });
+    }),
+  }
+) {}
+
+export const SandboxCliLive = Layer.mergeAll(
+  SandboxProcessService.Default,
+  SandboxFileSystemService.Default,
+  SandboxHttpHealthService.Default,
+  SandboxLifecycleService.Default
+);
+
+function makeWorktreeResolver(
+  sandboxProcess: SandboxProcess
+): WorktreeResolver {
+  return {
     resolveCurrent: Effect.fn("SandboxRuntime.resolveCurrent")(function* () {
+      const cwd = yield* sandboxProcess.cwd();
       const worktreeResult = yield* exec(
-        runCommand("git", ["rev-parse", "--show-toplevel"], {
-          cwd: process.cwd(),
+        sandboxProcess.runCommand("git", ["rev-parse", "--show-toplevel"], {
+          cwd,
         })
       );
       const commonDirResult = yield* exec(
-        runCommand("git", ["rev-parse", "--git-common-dir"], {
-          cwd: process.cwd(),
+        sandboxProcess.runCommand("git", ["rev-parse", "--git-common-dir"], {
+          cwd,
         })
       );
       const worktreePath = worktreeResult.stdout.trim();
       const gitCommonDir = commonDirResult.stdout.trim();
       const absoluteGitCommonDir = path.isAbsolute(gitCommonDir)
         ? gitCommonDir
-        : path.resolve(process.cwd(), gitCommonDir);
+        : path.resolve(cwd, gitCommonDir);
       const repoRoot = resolveRepoRootFromGitPaths(
         worktreePath,
         absoluteGitCommonDir
@@ -240,8 +365,10 @@ export function makeSandboxRuntime(): SandboxRuntime {
       };
     }),
   };
+}
 
-  const sandboxRegistry: SandboxRegistry = {
+function makeSandboxRegistryService(): SandboxRegistry {
+  return {
     list: () => readRegistry().pipe(Effect.map((records) => [...records])),
     findByWorktree: (worktreePath) =>
       Effect.gen(function* () {
@@ -271,25 +398,30 @@ export function makeSandboxRuntime(): SandboxRuntime {
         );
       }),
   };
+}
 
-  const portAllocator: PortAllocator = {
+function makePortAllocator(sandboxProcess: SandboxProcess): PortAllocator {
+  return {
     allocate: Effect.fn("SandboxRuntime.allocatePorts")(
       function* (existing, reservedPorts) {
         const allocated = new Set<number>();
         const app = yield* allocateRuntimePort(
           "app",
+          sandboxProcess,
           existing,
           reservedPorts,
           allocated
         );
         const api = yield* allocateRuntimePort(
           "api",
+          sandboxProcess,
           existing,
           reservedPorts,
           allocated
         );
         const postgres = yield* allocateRuntimePort(
           "postgres",
+          sandboxProcess,
           existing,
           reservedPorts,
           allocated
@@ -299,42 +431,62 @@ export function makeSandboxRuntime(): SandboxRuntime {
       }
     ),
   };
+}
 
-  const composeEngine: ComposeEngine = {
+function makeComposeEngine(
+  sandboxProcess: SandboxProcess,
+  sandboxFileSystem: SandboxFileSystem
+): ComposeEngine {
+  return {
     ensureAvailable: Effect.fn("SandboxRuntime.ensureComposeAvailable")(
       function* () {
-        yield* exec(runCommand("docker", ["info"]));
-        yield* exec(runCommand("docker", ["compose", "version"]));
+        yield* exec(sandboxProcess.runCommand("docker", ["info"]));
+        yield* exec(
+          sandboxProcess.runCommand("docker", ["compose", "version"])
+        );
       }
     ),
     startStack: Effect.fn("SandboxRuntime.startComposeStack")(
       function* (record) {
-        const imageReady = yield* ensureSandboxDevImage(record);
+        const imageReady = yield* ensureSandboxDevImage(
+          sandboxProcess,
+          sandboxFileSystem,
+          record
+        );
         yield* Effect.all(
           [
-            ensureSandboxSharedVolumes(record.runtimeAssets),
-            ensureComposeEnvironmentFile(record),
+            ensureSandboxSharedVolumes(
+              sandboxProcess,
+              sandboxFileSystem,
+              record.runtimeAssets
+            ),
+            ensureComposeEnvironmentFile(sandboxFileSystem, record),
           ],
           { concurrency: "unbounded" }
         );
         const startCompose = () =>
-          exec(runCommand("docker", composeArgs(record, ["up", "-d"])));
+          exec(
+            sandboxProcess.runCommand(
+              "docker",
+              composeArgs(record, ["up", "-d"])
+            )
+          );
 
         yield* startCompose().pipe(
           Effect.catchIf(
             (error) => imageReady === "marker" && isMissingImageError(error),
             () =>
-              ensureSandboxDevImage(record, { forceInspect: true }).pipe(
-                Effect.zipRight(startCompose())
-              )
+              ensureSandboxDevImage(sandboxProcess, sandboxFileSystem, record, {
+                forceInspect: true,
+              }).pipe(Effect.zipRight(startCompose()))
           )
         );
       }
     ),
     stopStack: Effect.fn("SandboxRuntime.stopComposeStack")(function* (record) {
-      yield* ensureComposeEnvironmentFile(record);
+      yield* ensureComposeEnvironmentFile(sandboxFileSystem, record);
       yield* exec(
-        runCommand(
+        sandboxProcess.runCommand(
           "docker",
           composeArgs(record, [
             "down",
@@ -344,20 +496,22 @@ export function makeSandboxRuntime(): SandboxRuntime {
           { allowNonZero: true }
         )
       );
-      yield* tryPromisePreflight(
-        `Failed to remove sandbox state for ${record.sandboxName}`,
-        () =>
-          fs.rm(path.dirname(getComposeEnvFilePath(record.sandboxName)), {
-            recursive: true,
-            force: true,
-          })
-      );
+      yield* sandboxFileSystem
+        .removeTree(path.dirname(getComposeEnvFilePath(record.sandboxName)))
+        .pipe(
+          Effect.mapError((error) =>
+            toPreflightError(
+              error,
+              `Failed to remove sandbox state for ${record.sandboxName}`
+            )
+          )
+        );
     }),
     runningServices: Effect.fn("SandboxRuntime.runningComposeServices")(
       function* (record) {
-        yield* ensureComposeEnvironmentFile(record);
+        yield* ensureComposeEnvironmentFile(sandboxFileSystem, record);
         const result = yield* exec(
-          runCommand(
+          sandboxProcess.runCommand(
             "docker",
             composeArgs(record, ["ps", "--services", "--status", "running"]),
             { allowNonZero: true }
@@ -377,9 +531,9 @@ export function makeSandboxRuntime(): SandboxRuntime {
     ),
     collectLogs: Effect.fn("SandboxRuntime.collectComposeLogs")(
       function* (record, service) {
-        yield* ensureComposeEnvironmentFile(record);
+        yield* ensureComposeEnvironmentFile(sandboxFileSystem, record);
         const result = yield* exec(
-          runCommand(
+          sandboxProcess.runCommand(
             "docker",
             composeArgs(record, [
               "logs",
@@ -397,12 +551,14 @@ export function makeSandboxRuntime(): SandboxRuntime {
       }
     ),
   };
+}
 
-  const portlessService: PortlessService = {
+function makePortlessService(sandboxProcess: SandboxProcess): PortlessService {
+  return {
     ensureProxyRunning: Effect.fn("SandboxRuntime.ensurePortlessProxy")(
       function* () {
         yield* exec(
-          runCommand("pnpm", [
+          sandboxProcess.runCommand("pnpm", [
             "exec",
             "portless",
             "proxy",
@@ -418,7 +574,8 @@ export function makeSandboxRuntime(): SandboxRuntime {
         const commands = makePortlessAliasCommands({ sandboxName, ports });
         yield* Effect.forEach(
           commands.add,
-          ([command, ...args]) => exec(runCommand(command, args)),
+          ([command, ...args]) =>
+            exec(sandboxProcess.runCommand(command, args)),
           {
             concurrency: "unbounded",
             discard: true,
@@ -432,7 +589,9 @@ export function makeSandboxRuntime(): SandboxRuntime {
         yield* Effect.forEach(
           commands.remove,
           ([command, ...args]) =>
-            exec(runCommand(command, args, { allowNonZero: true })),
+            exec(
+              sandboxProcess.runCommand(command, args, { allowNonZero: true })
+            ),
           {
             concurrency: "unbounded",
             discard: true,
@@ -441,8 +600,13 @@ export function makeSandboxRuntime(): SandboxRuntime {
       }
     ),
   };
+}
 
-  const healthChecker: HealthChecker = {
+function makeHealthChecker(
+  sandboxProcess: SandboxProcess,
+  sandboxHttpHealth: SandboxHttpHealth
+): HealthChecker {
+  return {
     waitForReady: Effect.fn("SandboxRuntime.waitForReady")(
       function* (record, listener) {
         yield* Effect.annotateCurrentSpan("sandboxName", record.sandboxName);
@@ -468,21 +632,42 @@ export function makeSandboxRuntime(): SandboxRuntime {
                 urls: buildRecordUrls(record),
               }).join("\n"),
             }),
-          checkPostgres: () => checkLocalPortOpen(record.ports.postgres),
+          checkPostgres: () =>
+            checkLocalPortOpen(sandboxProcess, record.ports.postgres),
           checkApi: () =>
-            checkHttpHealth(record.ports.api, "api", record.sandboxId),
+            sandboxHttpHealth.check(record.ports.api, "api", record.sandboxId),
           checkApp: () =>
-            checkHttpHealth(record.ports.app, "app", record.sandboxId),
+            sandboxHttpHealth.check(record.ports.app, "app", record.sandboxId),
         });
       }
     ),
   };
+}
+
+function makeSandboxLifecycle(input: {
+  readonly sandboxProcess: SandboxProcess;
+  readonly worktreeResolver: WorktreeResolver;
+  readonly sandboxRegistry: SandboxRegistry;
+  readonly composeEngine: ComposeEngine;
+  readonly portAllocator: PortAllocator;
+  readonly portlessService: PortlessService;
+  readonly healthChecker: HealthChecker;
+}): SandboxLifecycle {
+  const resolveSandboxRecord = (
+    options: SandboxCommandOptions
+  ): SandboxRuntimeEffect<SandboxRegistryRecord> =>
+    resolveSandboxRecordFromOptions({
+      options,
+      sandboxProcess: input.sandboxProcess,
+      sandboxRegistry: input.sandboxRegistry,
+      worktreeResolver: input.worktreeResolver,
+    });
 
   const lifecycle: SandboxLifecycle = {
     up: Effect.fn("SandboxRuntime.up")(function* (
       options: SandboxUpCommandOptions = {}
     ) {
-      const context = yield* worktreeResolver.resolveCurrent();
+      const context = yield* input.worktreeResolver.resolveCurrent();
       yield* Effect.annotateCurrentSpan("worktreePath", context.worktreePath);
       yield* Effect.annotateCurrentSpan("repoRoot", context.repoRoot);
       if (options.explicitSandboxName) {
@@ -491,7 +676,7 @@ export function makeSandboxRuntime(): SandboxRuntime {
           options.explicitSandboxName
         );
       }
-      const records = yield* sandboxRegistry.list();
+      const records = yield* input.sandboxRegistry.list();
       const conflictingNameRecord = options.explicitSandboxName
         ? records.find(
             (record) =>
@@ -535,19 +720,29 @@ export function makeSandboxRuntime(): SandboxRuntime {
       );
 
       const sharedEnvironment = yield* loadSandboxEnvironmentOrThrow(
+        input.sandboxProcess,
         context.repoRoot
       );
       const runtimeAssets = yield* resolveSandboxRuntimeAssets({
         repoRoot: context.repoRoot,
         worktreePath: context.worktreePath,
       });
-      yield* composeEngine.ensureAvailable();
+      yield* input.composeEngine.ensureAvailable();
       const proxyHealthy = yield* ensureSandboxProxyHealthy({
-        portlessService,
+        portlessService: input.portlessService,
       });
 
       let startedRecord: SandboxRecord | undefined;
       let registeredAliases: RegisteredAliases | undefined;
+      const handleUpFailure = <E extends SandboxRuntimeError>(error: E) =>
+        cleanupFailedSandboxUp({
+          error,
+          startedRecord,
+          registeredAliases,
+          composeEngine: input.composeEngine,
+          portlessService: input.portlessService,
+          sandboxRegistry: input.sandboxRegistry,
+        }).pipe(Effect.zipRight(Effect.fail(error)));
 
       return yield* bringSandboxUp({
         repoRoot: context.repoRoot,
@@ -560,11 +755,11 @@ export function makeSandboxRuntime(): SandboxRuntime {
         resolveRuntimeAssets: () => Effect.succeed(runtimeAssets),
         generateBetterAuthSecret: makeSandboxBetterAuthSecret,
         allocatePorts: () =>
-          portAllocator.allocate(existingRecord?.ports, reservedPorts),
+          input.portAllocator.allocate(existingRecord?.ports, reservedPorts),
         determineAliasesHealthy: ({ sandboxName, ports }) =>
           proxyHealthy === false
             ? Effect.succeed(false)
-            : portlessService.registerAliases(sandboxName, ports).pipe(
+            : input.portlessService.registerAliases(sandboxName, ports).pipe(
                 Effect.tap(() =>
                   Effect.sync(() => {
                     registeredAliases = { sandboxName, ports };
@@ -575,7 +770,7 @@ export function makeSandboxRuntime(): SandboxRuntime {
                   Effect.annotateCurrentSpan("aliasesHealthy", "true")
                 ),
                 Effect.tapError(() =>
-                  portlessService
+                  input.portlessService
                     .removeAliases(sandboxName, ports)
                     .pipe(Effect.ignore)
                 ),
@@ -586,15 +781,15 @@ export function makeSandboxRuntime(): SandboxRuntime {
           startedRecord = record;
           return Effect.gen(function* () {
             yield* writeComposeEnvironmentFileFromSpec(spec, context);
-            yield* composeEngine.startStack(record);
+            yield* input.composeEngine.startStack(record);
           });
         },
         waitForHealth: (spec, listener) =>
-          healthChecker.waitForReady(
+          input.healthChecker.waitForReady(
             toSandboxRecord(spec, context, existingRecord),
             listener
           ),
-        persist: (record) => sandboxRegistry.upsert(record),
+        persist: (record) => input.sandboxRegistry.upsert(record),
         reportProgress:
           options.reportProgress ?? noopSandboxStartupProgressReporter,
       }).pipe(
@@ -602,40 +797,16 @@ export function makeSandboxRuntime(): SandboxRuntime {
           isRenamingSandbox && existingRecord
             ? finalizeSandboxRename({
                 previousRecord: existingRecord,
-                composeEngine,
-                portlessService,
-                sandboxRegistry,
+                composeEngine: input.composeEngine,
+                portlessService: input.portlessService,
+                sandboxRegistry: input.sandboxRegistry,
               })
             : Effect.void
         ),
         Effect.catchTags({
-          [SANDBOX_NOT_FOUND_ERROR_TAG]: (error) =>
-            cleanupFailedSandboxUp({
-              error,
-              startedRecord,
-              registeredAliases,
-              composeEngine,
-              portlessService,
-              sandboxRegistry,
-            }).pipe(Effect.zipRight(Effect.fail(error))),
-          [SANDBOX_PREFLIGHT_ERROR_TAG]: (error) =>
-            cleanupFailedSandboxUp({
-              error,
-              startedRecord,
-              registeredAliases,
-              composeEngine,
-              portlessService,
-              sandboxRegistry,
-            }).pipe(Effect.zipRight(Effect.fail(error))),
-          [SANDBOX_REGISTRY_ERROR_TAG]: (error) =>
-            cleanupFailedSandboxUp({
-              error,
-              startedRecord,
-              registeredAliases,
-              composeEngine,
-              portlessService,
-              sandboxRegistry,
-            }).pipe(Effect.zipRight(Effect.fail(error))),
+          [SANDBOX_NOT_FOUND_ERROR_TAG]: handleUpFailure,
+          [SANDBOX_PREFLIGHT_ERROR_TAG]: handleUpFailure,
+          [SANDBOX_REGISTRY_ERROR_TAG]: handleUpFailure,
         })
       );
     }),
@@ -644,14 +815,14 @@ export function makeSandboxRuntime(): SandboxRuntime {
     ) {
       const record = yield* resolveSandboxRecord(options);
 
-      yield* composeEngine.stopStack(record);
+      yield* input.composeEngine.stopStack(record);
       yield* removeAliasesBestEffort({
         sandboxName: record.sandboxName,
         ports: record.ports,
-        portlessService,
+        portlessService: input.portlessService,
         operation: "sandbox shutdown",
       });
-      yield* sandboxRegistry.remove(record.sandboxName);
+      yield* input.sandboxRegistry.remove(record.sandboxName);
 
       return {
         ...record,
@@ -662,12 +833,13 @@ export function makeSandboxRuntime(): SandboxRuntime {
       options: SandboxCommandOptions = {}
     ) {
       const record = yield* resolveSandboxRecord(options);
-      const servicesPresent = yield* composeEngine.runningServices(record);
+      const servicesPresent =
+        yield* input.composeEngine.runningServices(record);
       const [appOpen, apiOpen, postgresOpen] = yield* Effect.all(
         [
-          checkLocalPortOpen(record.ports.app),
-          checkLocalPortOpen(record.ports.api),
-          checkLocalPortOpen(record.ports.postgres),
+          checkLocalPortOpen(input.sandboxProcess, record.ports.app),
+          checkLocalPortOpen(input.sandboxProcess, record.ports.api),
+          checkLocalPortOpen(input.sandboxProcess, record.ports.postgres),
         ],
         { concurrency: "unbounded" }
       );
@@ -688,7 +860,7 @@ export function makeSandboxRuntime(): SandboxRuntime {
         portsInUse,
         now: new Date().toISOString(),
       });
-      yield* sandboxRegistry.upsert(reconciled);
+      yield* input.sandboxRegistry.upsert(reconciled);
 
       return {
         record: reconciled,
@@ -696,7 +868,7 @@ export function makeSandboxRuntime(): SandboxRuntime {
       };
     }),
     list: Effect.fn("SandboxRuntime.list")(function* () {
-      const records = yield* sandboxRegistry.list();
+      const records = yield* input.sandboxRegistry.list();
       return {
         entries: records.map((record) => ({
           record,
@@ -709,46 +881,48 @@ export function makeSandboxRuntime(): SandboxRuntime {
     ) {
       const record = yield* resolveSandboxRecord(options);
       return {
-        content: yield* composeEngine.collectLogs(record, options.service),
+        content: yield* input.composeEngine.collectLogs(
+          record,
+          options.service
+        ),
       };
     }),
     url: (options = {}) => lifecycle.status(options),
   };
 
-  return {
-    worktreeResolver,
-    sandboxRegistry,
-    composeEngine,
-    portAllocator,
-    portlessService,
-    healthChecker,
-    lifecycle,
-  };
+  return lifecycle;
+}
 
-  function resolveSandboxRecord(
-    options: SandboxCommandOptions
-  ): SandboxRuntimeEffect<SandboxRegistryRecord> {
-    if (options.explicitSandboxName) {
-      return sandboxRegistry.list().pipe(
-        Effect.flatMap((records) =>
-          selectSandboxRecord({
-            explicitSandboxName: options.explicitSandboxName,
-            worktreePath: process.cwd(),
-            records,
-          })
+function resolveSandboxRecordFromOptions(input: {
+  readonly options: SandboxCommandOptions;
+  readonly sandboxProcess: SandboxProcess;
+  readonly sandboxRegistry: Pick<SandboxRegistry, "list">;
+  readonly worktreeResolver: Pick<WorktreeResolver, "resolveCurrent">;
+}): SandboxRuntimeEffect<SandboxRegistryRecord> {
+  if (input.options.explicitSandboxName) {
+    return input.sandboxProcess.cwd().pipe(
+      Effect.flatMap((cwd) =>
+        input.sandboxRegistry.list().pipe(
+          Effect.flatMap((records) =>
+            selectSandboxRecord({
+              explicitSandboxName: input.options.explicitSandboxName,
+              worktreePath: cwd,
+              records,
+            })
+          )
         )
-      );
-    }
-
-    return Effect.gen(function* () {
-      const context = yield* worktreeResolver.resolveCurrent();
-      return yield* selectSandboxRecord({
-        explicitSandboxName: options.explicitSandboxName,
-        worktreePath: context.worktreePath,
-        records: yield* sandboxRegistry.list(),
-      });
-    });
+      )
+    );
   }
+
+  return Effect.gen(function* () {
+    const context = yield* input.worktreeResolver.resolveCurrent();
+    return yield* selectSandboxRecord({
+      explicitSandboxName: input.options.explicitSandboxName,
+      worktreePath: context.worktreePath,
+      records: yield* input.sandboxRegistry.list(),
+    });
+  });
 }
 
 export function selectSandboxRecord(input: {
@@ -826,8 +1000,10 @@ export function cleanupFailedSandboxUp(input: {
       input.sandboxRegistry
         .remove(startedRecord.sandboxName)
         .pipe(
-          Effect.mapError((error) =>
-            toSandboxPreflightError(error, { preserveMessage: true })
+          Effect.catchTag(SANDBOX_REGISTRY_ERROR_TAG, (error) =>
+            Effect.fail(
+              toSandboxPreflightError(error, { preserveMessage: true })
+            )
           )
         )
     );
@@ -889,16 +1065,19 @@ function exec<A>(
 }
 
 function loadSandboxEnvironmentOrThrow(
+  sandboxProcess: SandboxProcess,
   repoRoot: string
 ): SandboxPreflightEffect<SharedSandboxEnvironmentInput> {
-  return loadSandboxSharedEnvironment({
-    repoRoot,
-    processEnv: process.env,
-  }).pipe(
-    Effect.mapError((error) =>
-      error instanceof SandboxEnvironmentError
-        ? toSandboxPreflightError(error, { preserveMessage: true })
-        : toPreflightError(error, "Sandbox shared environment is invalid")
+  return sandboxProcess.env().pipe(
+    Effect.flatMap((processEnv) =>
+      loadSandboxSharedEnvironment({
+        repoRoot,
+        processEnv,
+      }).pipe(
+        Effect.catchTag(SANDBOX_ENVIRONMENT_ERROR_TAG, (error) =>
+          Effect.fail(toSandboxPreflightError(error, { preserveMessage: true }))
+        )
+      )
     )
   );
 }
@@ -945,6 +1124,7 @@ export function removeAliasesBestEffort(input: {
 
 function allocateRuntimePort(
   service: keyof SandboxPorts,
+  sandboxProcess: SandboxProcess,
   existing: SandboxPorts | undefined,
   reservedPorts: ReadonlySet<number>,
   allocated: Set<number>
@@ -976,7 +1156,7 @@ function allocateRuntimePort(
       reservedPorts.has(port) ||
       protectedExistingPorts.has(port) ||
       allocated.has(port) ||
-      !(yield* checkLocalPortAvailable(port))
+      !(yield* checkLocalPortAvailable(sandboxProcess, port))
     ) {
       port += 1;
       if (port > DEFAULT_PORTS[service] + 100) {
@@ -1068,62 +1248,23 @@ export function resolveRepoRootFromGitPaths(
 }
 
 function checkLocalPortOpen(
+  sandboxProcess: SandboxProcess,
   port: number
 ): Effect.Effect<boolean, never, never> {
-  return Effect.tryPromise({
-    try: () => isPortOpen(port),
-    catch: () => false,
-  }).pipe(Effect.orElseSucceed(() => false));
+  return sandboxProcess.isPortOpen(port);
 }
 
 function checkLocalPortAvailable(
+  sandboxProcess: SandboxProcess,
   port: number
 ): SandboxPreflightEffect<boolean> {
-  return tryPromisePreflight(
-    `Failed to check whether port ${port} is available`,
-    () => isPortAvailable(port)
-  );
-}
-
-function checkHttpHealth(
-  port: number,
-  service: "app" | "api",
-  sandboxId: SandboxRecord["sandboxId"]
-): Effect.Effect<boolean, never, never> {
-  return Effect.tryPromise({
-    try: () =>
-      fetch(`http://127.0.0.1:${port}/health`, {
-        headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(2000),
-      }),
-    catch: (error) => error,
-  }).pipe(
-    Effect.catchAll(() => Effect.succeed<Response | false>(false)),
-    Effect.flatMap((responseOrFalse) => {
-      if (responseOrFalse === false || !responseOrFalse.ok) {
-        return Effect.succeed(false);
-      }
-
-      return Effect.tryPromise({
-        try: () => responseOrFalse.json(),
-        catch: () => false,
-      }).pipe(
-        Effect.flatMap((payloadOrFalse) =>
-          payloadOrFalse === false
-            ? Effect.succeed(false)
-            : Schema.decodeUnknown(HealthPayload)(payloadOrFalse).pipe(
-                Effect.map(
-                  (payload) =>
-                    payload.ok === true &&
-                    payload.service === service &&
-                    payload.sandboxId === sandboxId
-                ),
-                Effect.orElseSucceed(() => false)
-              )
-        )
-      );
-    }),
-    Effect.orElseSucceed(() => false)
+  return sandboxProcess.isPortAvailable(port).pipe(
+    Effect.mapError(
+      () =>
+        new SandboxPreflightError({
+          message: `Failed to check whether port ${port} is available`,
+        })
+    )
   );
 }
 
@@ -1169,13 +1310,11 @@ function composeArgs(
 }
 
 function ensureComposeEnvironmentFile(
+  sandboxFileSystem: SandboxFileSystem,
   record: SandboxRecord
 ): SandboxPreflightEffect<void> {
   const composeEnvFile = getComposeEnvFilePath(record.sandboxName);
-  return Effect.tryPromise({
-    try: () => fs.access(composeEnvFile),
-    catch: (error) => error,
-  }).pipe(
+  return sandboxFileSystem.access(composeEnvFile).pipe(
     Effect.catchAll((error) =>
       isMissingFileError(error)
         ? writeComposeEnvironmentFile(record, {
@@ -1300,6 +1439,8 @@ function buildRecordUrls(
 }
 
 function ensureSandboxDevImage(
+  sandboxProcess: SandboxProcess,
+  sandboxFileSystem: SandboxFileSystem,
   record: Pick<SandboxRecord, "runtimeAssets" | "worktreePath">,
   options: {
     readonly forceInspect?: boolean;
@@ -1319,7 +1460,7 @@ function ensureSandboxDevImage(
     );
 
     if (!options.forceInspect) {
-      const markerExists = yield* checkFileExists(markerPath);
+      const markerExists = yield* sandboxFileSystem.fileExists(markerPath);
 
       if (markerExists) {
         return "marker" as const;
@@ -1327,7 +1468,7 @@ function ensureSandboxDevImage(
     }
 
     const inspectResult = yield* exec(
-      runCommand(
+      sandboxProcess.runCommand(
         "docker",
         ["image", "inspect", record.runtimeAssets.devImage],
         {
@@ -1342,7 +1483,7 @@ function ensureSandboxDevImage(
     }
 
     yield* exec(
-      runCommand("docker", [
+      sandboxProcess.runCommand("docker", [
         "build",
         "--file",
         dockerfilePath,
@@ -1364,6 +1505,8 @@ function ensureSandboxDevImage(
 }
 
 function ensureSandboxSharedVolumes(
+  sandboxProcess: SandboxProcess,
+  sandboxFileSystem: SandboxFileSystem,
   runtimeAssets: Pick<
     SandboxRuntimeAssets,
     "nodeModulesVolume" | "pnpmStoreVolume"
@@ -1371,8 +1514,16 @@ function ensureSandboxSharedVolumes(
 ): SandboxPreflightEffect<void> {
   return Effect.all(
     [
-      ensureDockerVolume(runtimeAssets.nodeModulesVolume),
-      ensureDockerVolume(runtimeAssets.pnpmStoreVolume),
+      ensureDockerVolume(
+        sandboxProcess,
+        sandboxFileSystem,
+        runtimeAssets.nodeModulesVolume
+      ),
+      ensureDockerVolume(
+        sandboxProcess,
+        sandboxFileSystem,
+        runtimeAssets.pnpmStoreVolume
+      ),
     ],
     {
       concurrency: "unbounded",
@@ -1382,13 +1533,15 @@ function ensureSandboxSharedVolumes(
 }
 
 function ensureDockerVolume(
+  sandboxProcess: SandboxProcess,
+  _sandboxFileSystem: SandboxFileSystem,
   volumeName: SandboxDockerVolumeName
 ): SandboxPreflightEffect<void> {
   return Effect.gen(function* () {
     yield* Effect.annotateCurrentSpan("dockerVolume", volumeName);
 
     const inspectResult = yield* exec(
-      runCommand("docker", ["volume", "inspect", volumeName], {
+      sandboxProcess.runCommand("docker", ["volume", "inspect", volumeName], {
         allowNonZero: true,
       })
     );
@@ -1397,7 +1550,9 @@ function ensureDockerVolume(
       return;
     }
 
-    yield* exec(runCommand("docker", ["volume", "create", volumeName]));
+    yield* exec(
+      sandboxProcess.runCommand("docker", ["volume", "create", volumeName])
+    );
   });
 }
 
@@ -1420,18 +1575,6 @@ function rememberSandboxDevImage(
     Effect.mapError((error) =>
       toSandboxPreflightError(error, { preserveMessage: true })
     )
-  );
-}
-
-function checkFileExists(
-  filePath: string
-): Effect.Effect<boolean, never, never> {
-  return Effect.tryPromise({
-    try: () => fs.access(filePath),
-    catch: (error) => error,
-  }).pipe(
-    Effect.map(() => true),
-    Effect.catchAll(() => Effect.succeed(false))
   );
 }
 
