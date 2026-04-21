@@ -68,6 +68,9 @@ export type SharedSandboxEnvironment = Schema.Schema.Type<
 const BaseSandboxRuntimeOverrides = Schema.Struct({
   API_HOST_PORT: Schema.String,
   APP_HOST_PORT: Schema.String,
+  AUTH_APP_ORIGIN: SandboxHttpUrl,
+  AUTH_EMAIL_FROM: Schema.NonEmptyString,
+  AUTH_EMAIL_FROM_NAME: Schema.NonEmptyString,
   AUTH_ORIGIN: SandboxHttpUrl,
   BETTER_AUTH_BASE_URL: SandboxHttpUrl,
   BETTER_AUTH_SECRET: Schema.NonEmptyString,
@@ -109,8 +112,11 @@ export function buildSandboxRuntimeOverrides(input: {
   const baseOverrides = Schema.decodeUnknownSync(BaseSandboxRuntimeOverrides)({
     API_HOST_PORT: String(input.ports.api),
     APP_HOST_PORT: String(input.ports.app),
+    AUTH_APP_ORIGIN: input.urls.fallbackApp,
+    AUTH_EMAIL_FROM: input.sharedEnvironment.AUTH_EMAIL_FROM,
+    AUTH_EMAIL_FROM_NAME: input.sharedEnvironment.AUTH_EMAIL_FROM_NAME,
     AUTH_ORIGIN: `http://api:${input.ports.api}`,
-    BETTER_AUTH_BASE_URL: input.urls.api,
+    BETTER_AUTH_BASE_URL: input.urls.fallbackApi,
     BETTER_AUTH_SECRET: input.betterAuthSecret,
     DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/task_tracker",
     HOST: "0.0.0.0",
@@ -122,7 +128,7 @@ export function buildSandboxRuntimeOverrides(input: {
     SANDBOX_NAME: input.sandboxName,
     SANDBOX_PNPM_STORE_VOLUME: input.runtimeAssets.pnpmStoreVolume,
     TASK_TRACKER_SANDBOX: "1",
-    VITE_AUTH_ORIGIN: input.urls.api,
+    VITE_AUTH_ORIGIN: input.urls.fallbackApi,
   });
 
   return Schema.decodeUnknownSync(SandboxRuntimeOverrides)({

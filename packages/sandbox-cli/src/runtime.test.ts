@@ -475,7 +475,8 @@ describe("buildComposeFallbackEnvironmentOverrides()", () => {
       AUTH_EMAIL_FROM_NAME: "",
       CLOUDFLARE_ACCOUNT_ID: "",
       CLOUDFLARE_API_TOKEN: "",
-      BETTER_AUTH_BASE_URL: "https://alpha.api.task-tracker.localhost:1355",
+      AUTH_APP_ORIGIN: "http://127.0.0.1:4300",
+      BETTER_AUTH_BASE_URL: "http://127.0.0.1:4301",
       SANDBOX_NAME: "alpha",
     });
   }, 10_000);

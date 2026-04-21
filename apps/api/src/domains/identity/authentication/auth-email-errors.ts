@@ -49,3 +49,19 @@ export class PasswordResetEmailRequestError extends Schema.TaggedError<PasswordR
     message: Schema.String,
   }
 ) {}
+
+export class OrganizationInvitationDeliveryError extends Schema.TaggedError<OrganizationInvitationDeliveryError>()(
+  "OrganizationInvitationDeliveryError",
+  {
+    cause: Schema.optional(Schema.String),
+    message: Schema.String,
+  }
+) {}
+
+export class EmailVerificationDeliveryError extends Schema.TaggedError<EmailVerificationDeliveryError>()(
+  "EmailVerificationDeliveryError",
+  {
+    cause: Schema.optional(Schema.String),
+    message: Schema.String,
+  }
+) {}

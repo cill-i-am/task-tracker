@@ -59,6 +59,7 @@ const authenticationBaseUrlConfig = Config.string("BETTER_AUTH_BASE_URL").pipe(
 );
 
 export interface AuthenticationEnvironment {
+  readonly appOrigin?: string | undefined;
   readonly baseUrl: string;
   readonly portlessUrl?: string | undefined;
   readonly secret: string;
@@ -84,16 +85,26 @@ export interface AuthenticationConfig {
         readonly window: 60;
         readonly max: 3;
       };
+      readonly "/send-verification-email": {
+        readonly window: 60;
+        readonly max: 3;
+      };
     };
   };
   readonly emailAndPassword: {
     readonly enabled: true;
     readonly revokeSessionsOnPasswordReset: true;
   };
+  readonly emailVerification: {
+    readonly autoSignInAfterVerification: false;
+    readonly expiresIn: 3600;
+    readonly sendOnSignIn: false;
+    readonly sendOnSignUp: true;
+  };
 }
 
 export function makeAuthenticationTrustedOrigins(
-  environment: Pick<AuthenticationEnvironment, "portlessUrl">
+  environment: Pick<AuthenticationEnvironment, "appOrigin" | "portlessUrl">
 ): TrustedOriginPattern[] {
   const trustedOrigins = new Set<TrustedOriginPattern>([
     ...DEFAULT_LOCAL_APP_ORIGINS,
@@ -117,6 +128,16 @@ export function makeAuthenticationTrustedOrigins(
       trustedOrigins.add(makeTrustedOriginPattern(appUrl.origin));
     } catch {
       // Ignore malformed PORTLESS_URL values and keep the default trusted origins.
+    }
+  }
+
+  if (environment.appOrigin) {
+    try {
+      trustedOrigins.add(
+        makeTrustedOriginPattern(new URL(environment.appOrigin).origin)
+      );
+    } catch {
+      // Ignore malformed AUTH_APP_ORIGIN values and keep the default trusted origins.
     }
   }
 
@@ -145,11 +166,21 @@ export function makeAuthenticationConfig(
           window: 60,
           max: 3,
         },
+        "/send-verification-email": {
+          window: 60,
+          max: 3,
+        },
       },
     },
     emailAndPassword: {
       enabled: true,
       revokeSessionsOnPasswordReset: true,
+    },
+    emailVerification: {
+      autoSignInAfterVerification: false,
+      expiresIn: 3600,
+      sendOnSignIn: false,
+      sendOnSignUp: true,
     },
   };
 }
@@ -161,6 +192,10 @@ export const loadAuthenticationConfig = Effect.gen(
       Config.string("PORTLESS_URL"),
       Config.option
     );
+    const appOrigin = yield* pipe(
+      Config.string("AUTH_APP_ORIGIN"),
+      Config.option
+    );
     const secret = yield* Config.string("BETTER_AUTH_SECRET").pipe(
       Config.validate({
         message: "BETTER_AUTH_SECRET must be at least 32 characters long",
@@ -170,6 +205,7 @@ export const loadAuthenticationConfig = Effect.gen(
     const databaseUrl = yield* authenticationDatabaseUrlConfig;
 
     return makeAuthenticationConfig({
+      appOrigin: Option.getOrUndefined(appOrigin),
       baseUrl,
       portlessUrl: Option.getOrUndefined(portlessUrl),
       secret,

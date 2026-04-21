@@ -12,8 +12,10 @@ const runtimeAssets = Schema.decodeUnknownSync(SandboxRuntimeAssets)({
   pnpmStoreVolume: "tt-sbx-pnpm-store",
 });
 const sharedEnvironment = {
-  EMAIL_SENDER: "auth@example.com",
-  EMAIL_PROVIDER_TOKEN: "provider-token-live",
+  AUTH_EMAIL_FROM: "auth@example.com",
+  AUTH_EMAIL_FROM_NAME: "Task Tracker",
+  CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+  CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
 };
 
 describe("validateSandboxName()", () => {
@@ -64,10 +66,12 @@ describe("buildSandboxRuntimeSpec()", () => {
           "tt-sbx-node-modules-123456789abc-def456789abc",
         SANDBOX_PNPM_STORE_VOLUME: "tt-sbx-pnpm-store",
         TASK_TRACKER_SANDBOX: "1",
-        BETTER_AUTH_BASE_URL:
-          "https://agent-one.api.task-tracker.localhost:1355",
-        EMAIL_SENDER: "auth@example.com",
-        EMAIL_PROVIDER_TOKEN: "provider-token-live",
+        AUTH_APP_ORIGIN: "http://127.0.0.1:4300",
+        BETTER_AUTH_BASE_URL: "http://127.0.0.1:4301",
+        AUTH_EMAIL_FROM: "auth@example.com",
+        AUTH_EMAIL_FROM_NAME: "Task Tracker",
+        CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+        CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
       },
     });
   }, 10_000);

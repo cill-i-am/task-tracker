@@ -10,6 +10,7 @@ import { makeCloudflareAuthEmailTransport } from "./cloudflare-auth-email-transp
 function makeConfigProvider() {
   return ConfigProvider.fromMap(
     new Map([
+      ["AUTH_APP_ORIGIN", "https://app.task-tracker.localhost"],
       ["AUTH_EMAIL_FROM", "auth@task-tracker.localhost"],
       ["AUTH_EMAIL_FROM_NAME", "Task Tracker Auth"],
       ["CLOUDFLARE_ACCOUNT_ID", "account_123"],

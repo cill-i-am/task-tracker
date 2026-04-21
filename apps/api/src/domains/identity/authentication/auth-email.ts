@@ -7,13 +7,16 @@ import type {
   AuthEmailRequestError,
 } from "./auth-email-errors.js";
 import {
+  EmailVerificationDeliveryError,
   InvalidPasswordResetEmailInputError,
+  OrganizationInvitationDeliveryError,
   PasswordResetEmailRejectedError,
   PasswordResetEmailRequestError,
 } from "./auth-email-errors.js";
 
 const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_RESET_DELIVERY_KEY_PATTERN = /^password-reset\/[0-9a-f]{64}$/;
+const DELIVERY_KEY_MAX_LENGTH = 256;
 
 function isValidEmailAddress(value: string) {
   return EMAIL_ADDRESS_PATTERN.test(value);
@@ -49,11 +52,22 @@ const EmailAddress = Schema.String.pipe(
   })
 );
 
-const DeliveryKey = Schema.String.pipe(
+const PasswordResetDeliveryKey = Schema.String.pipe(
   Schema.filter((value) => PASSWORD_RESET_DELIVERY_KEY_PATTERN.test(value), {
     message: () =>
       "Expected a password reset delivery key in the format password-reset/<sha256>",
   })
+);
+
+const DeliveryKey = Schema.String.pipe(
+  Schema.filter(
+    (value) =>
+      value.trim().length > 0 && value.length <= DELIVERY_KEY_MAX_LENGTH,
+    {
+      message: () =>
+        `Expected a non-empty delivery key up to ${DELIVERY_KEY_MAX_LENGTH} characters`,
+    }
+  )
 );
 
 const ResetUrl = Schema.String.pipe(
@@ -61,9 +75,17 @@ const ResetUrl = Schema.String.pipe(
     message: () => "Expected a valid http or https URL without credentials",
   })
 );
+const InvitationUrl = ResetUrl;
+const InvitationRole = Schema.String.pipe(
+  Schema.filter((value) => value.trim().length > 0, {
+    message: () => "Expected a non-empty role",
+  })
+);
+
+export const VerificationUrl = ResetUrl;
 
 export const PasswordResetEmailInput = Schema.Struct({
-  deliveryKey: DeliveryKey,
+  deliveryKey: PasswordResetDeliveryKey,
   recipientEmail: EmailAddress,
   recipientName: Schema.String,
   resetUrl: ResetUrl,
@@ -75,6 +97,39 @@ export type PasswordResetEmailInput = Schema.Schema.Type<
 
 const decodePasswordResetEmailInput = Schema.decodeUnknown(
   PasswordResetEmailInput
+);
+
+export const OrganizationInvitationEmailInput = Schema.Struct({
+  deliveryKey: DeliveryKey,
+  recipientEmail: EmailAddress,
+  recipientName: Schema.String,
+  organizationName: Schema.String,
+  inviterEmail: EmailAddress,
+  invitationUrl: InvitationUrl,
+  role: InvitationRole,
+});
+
+export type OrganizationInvitationEmailInput = Schema.Schema.Type<
+  typeof OrganizationInvitationEmailInput
+>;
+
+const decodeOrganizationInvitationEmailInput = Schema.decodeUnknown(
+  OrganizationInvitationEmailInput
+);
+
+export const EmailVerificationEmailInput = Schema.Struct({
+  deliveryKey: DeliveryKey,
+  recipientEmail: EmailAddress,
+  recipientName: Schema.String,
+  verificationUrl: VerificationUrl,
+});
+
+export type EmailVerificationEmailInput = Schema.Schema.Type<
+  typeof EmailVerificationEmailInput
+>;
+
+const decodeEmailVerificationEmailInput = Schema.decodeUnknown(
+  EmailVerificationEmailInput
 );
 
 export interface TransportMessage {
@@ -164,7 +219,103 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
           );
       });
 
-      return { sendPasswordResetEmail };
+      const sendOrganizationInvitationEmail = Effect.fn(
+        "AuthEmailSender.sendOrganizationInvitationEmail"
+      )(function* sendOrganizationInvitationEmail(rawInput: unknown) {
+        const input = yield* decodeOrganizationInvitationEmailInput(
+          rawInput
+        ).pipe(
+          Effect.mapError(
+            (parseError) =>
+              new OrganizationInvitationDeliveryError({
+                message: "Invalid organization invitation email input",
+                cause: ParseResult.TreeFormatter.formatErrorSync(parseError),
+              })
+          )
+        );
+
+        const subject = `Join ${input.organizationName} on Task Tracker`;
+        const text = [
+          `Hello ${input.recipientName},`,
+          "",
+          `${input.inviterEmail} invited you to join ${input.organizationName} as a ${input.role}.`,
+          "",
+          input.invitationUrl,
+        ].join("\n");
+        const html = [
+          `<p>Hello ${escapeHtml(input.recipientName)},</p>`,
+          `<p>${escapeHtml(input.inviterEmail)} invited you to join ${escapeHtml(input.organizationName)} as a ${escapeHtml(input.role)}.</p>`,
+          `<p><a href="${escapeHtml(input.invitationUrl)}">Accept invitation</a></p>`,
+        ].join("");
+
+        yield* transport
+          .send({
+            deliveryKey: input.deliveryKey,
+            to: input.recipientEmail,
+            subject,
+            text,
+            html,
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new OrganizationInvitationDeliveryError({
+                  message: "Failed to deliver organization invitation email",
+                  cause: error.cause ?? error.message,
+                })
+            )
+          );
+      });
+
+      const sendEmailVerificationEmail = Effect.fn(
+        "AuthEmailSender.sendEmailVerificationEmail"
+      )(function* sendEmailVerificationEmail(rawInput: unknown) {
+        const input = yield* decodeEmailVerificationEmailInput(rawInput).pipe(
+          Effect.mapError(
+            (parseError) =>
+              new EmailVerificationDeliveryError({
+                message: "Invalid verification email input",
+                cause: ParseResult.TreeFormatter.formatErrorSync(parseError),
+              })
+          )
+        );
+
+        const subject = "Verify your email";
+        const text = [
+          `Hello ${input.recipientName},`,
+          "",
+          "Use this link to verify your email:",
+          input.verificationUrl,
+        ].join("\n");
+        const html = [
+          `<p>Hello ${escapeHtml(input.recipientName)},</p>`,
+          `<p><a href="${escapeHtml(input.verificationUrl)}">Verify your email</a></p>`,
+        ].join("");
+
+        yield* transport
+          .send({
+            deliveryKey: input.deliveryKey,
+            to: input.recipientEmail,
+            subject,
+            text,
+            html,
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new EmailVerificationDeliveryError({
+                  message: "Failed to deliver verification email",
+                  cause: error.cause ?? error.message,
+                })
+            )
+          );
+      });
+
+      return {
+        sendOrganizationInvitationEmail,
+        sendPasswordResetEmail,
+        sendEmailVerificationEmail,
+      };
     }),
   }
 ) {}

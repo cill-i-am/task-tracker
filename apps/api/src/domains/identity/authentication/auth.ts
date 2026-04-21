@@ -9,11 +9,16 @@ import { organization } from "better-auth/plugins/organization";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Effect, Layer, Runtime } from "effect";
 
+import { loadAuthEmailConfig } from "./auth-email-config.js";
 import {
-  PasswordResetEmailPromiseBridge,
-  PasswordResetEmailPromiseBridgeLive,
+  AuthEmailPromiseBridge,
+  AuthEmailPromiseBridgeLive,
 } from "./auth-email-promise-bridge.js";
-import type { PasswordResetEmailInput } from "./auth-email.js";
+import type {
+  EmailVerificationEmailInput,
+  OrganizationInvitationEmailInput,
+  PasswordResetEmailInput,
+} from "./auth-email.js";
 import { loadAuthenticationConfig } from "./config.js";
 import type { AuthenticationConfig } from "./config.js";
 import {
@@ -21,6 +26,11 @@ import {
   AuthenticationDatabaseLive,
 } from "./database.js";
 import { authSchema } from "./schema.js";
+
+const ORGANIZATION_INVITATION_EXPIRATION_SECONDS = 60 * 60 * 24 * 7;
+
+type AuthEmailFailureReporter = (error: unknown) => void;
+type AuthEmailPromiseSender<Input> = (input: Input) => Promise<void>;
 
 function makePasswordResetDeliveryKey(input: {
   readonly token: string;
@@ -33,16 +43,41 @@ function makePasswordResetDeliveryKey(input: {
   return `password-reset/${digest}`;
 }
 
+function makeEmailVerificationDeliveryKey(input: {
+  readonly token: string;
+  readonly userId: string;
+}) {
+  const digest = createHash("sha256")
+    .update(`email-verification:${input.userId}:${input.token}`)
+    .digest("hex");
+
+  return `email-verification/${digest}`;
+}
+
 export function createAuthentication(options: {
+  readonly appOrigin: string;
   readonly backgroundTaskHandler: (task: Promise<unknown>) => void;
   readonly config: AuthenticationConfig;
   readonly database: NodePgDatabase<typeof authSchema>;
   readonly reportPasswordResetEmailFailure: (error: unknown) => void;
+  readonly sendOrganizationInvitationEmail: (
+    input: OrganizationInvitationEmailInput
+  ) => Promise<void>;
+  readonly reportVerificationEmailFailure: (error: unknown) => void;
   readonly sendPasswordResetEmail: (
     input: PasswordResetEmailInput
   ) => Promise<void>;
+  readonly sendVerificationEmail: (
+    input: EmailVerificationEmailInput
+  ) => Promise<void>;
 }) {
-  const { config, database, sendPasswordResetEmail } = options;
+  const {
+    config,
+    database,
+    sendOrganizationInvitationEmail,
+    sendPasswordResetEmail,
+    sendVerificationEmail,
+  } = options;
   const { databaseUrl: _databaseUrl, ...authConfig } = config;
 
   return betterAuth({
@@ -58,6 +93,8 @@ export function createAuthentication(options: {
     }),
     plugins: [
       organization({
+        cancelPendingInvitationsOnReInvite: true,
+        invitationExpiresIn: ORGANIZATION_INVITATION_EXPIRATION_SECONDS,
         organizationHooks: {
           beforeCreateOrganization: ({ organization: nextOrganization }) => {
             let input;
@@ -81,13 +118,29 @@ export function createAuthentication(options: {
             });
           },
         },
+        sendInvitationEmail: async (invitation) => {
+          await sendOrganizationInvitationEmail({
+            deliveryKey: `organization-invitation/${invitation.id}`,
+            invitationUrl: new URL(
+              `/accept-invitation/${invitation.id}`,
+              options.appOrigin
+            ).toString(),
+            inviterEmail: invitation.inviter.user.email,
+            organizationName: invitation.organization.name,
+            recipientEmail: invitation.email,
+            recipientName: invitation.email,
+            role: invitation.role,
+          } as const satisfies OrganizationInvitationEmailInput);
+        },
       }),
     ],
     emailAndPassword: {
       ...authConfig.emailAndPassword,
       sendResetPassword: async ({ token, user, url }) => {
-        try {
-          await sendPasswordResetEmail({
+        await deliverAuthEmail({
+          reportFailure: options.reportPasswordResetEmailFailure,
+          send: sendPasswordResetEmail,
+          input: {
             deliveryKey: makePasswordResetDeliveryKey({
               token,
               userId: user.id,
@@ -95,11 +148,26 @@ export function createAuthentication(options: {
             recipientEmail: user.email,
             recipientName: user.name ?? user.email,
             resetUrl: url,
-          } as const satisfies PasswordResetEmailInput);
-        } catch (error) {
-          options.reportPasswordResetEmailFailure(error);
-          throw error;
-        }
+          } as const satisfies PasswordResetEmailInput,
+        });
+      },
+    },
+    emailVerification: {
+      ...authConfig.emailVerification,
+      sendVerificationEmail: async ({ user, token, url }) => {
+        await deliverAuthEmail({
+          reportFailure: options.reportVerificationEmailFailure,
+          send: sendVerificationEmail,
+          input: {
+            deliveryKey: makeEmailVerificationDeliveryKey({
+              token,
+              userId: user.id,
+            }),
+            recipientEmail: user.email,
+            recipientName: user.name ?? user.email,
+            verificationUrl: url,
+          } as const satisfies EmailVerificationEmailInput,
+        });
       },
     },
   });
@@ -117,14 +185,28 @@ function makeAuthenticationBackgroundTaskHandler() {
   };
 }
 
-function makePasswordResetEmailFailureReporter(
-  runtime: Runtime.Runtime<never>
+async function deliverAuthEmail<Input>(options: {
+  readonly input: Input;
+  readonly reportFailure: AuthEmailFailureReporter;
+  readonly send: AuthEmailPromiseSender<Input>;
+}) {
+  try {
+    await options.send(options.input);
+  } catch (error) {
+    options.reportFailure(error);
+    throw error;
+  }
+}
+
+function makeEmailFailureReporter(
+  runtime: Runtime.Runtime<never>,
+  label: string
 ) {
   const runFork = Runtime.runFork(runtime);
 
   return (error: unknown) => {
     runFork(
-      Effect.logError("Password reset email delivery failed", {
+      Effect.logError(label, {
         error: serializeBackgroundTaskError(error),
       })
     );
@@ -151,7 +233,7 @@ function serializeBackgroundTaskError(error: unknown) {
   };
 }
 
-function matchesTrustedOrigin(
+export function matchesTrustedOrigin(
   origin: string,
   trustedOrigins: readonly string[]
 ) {
@@ -161,9 +243,7 @@ function matchesTrustedOrigin(
     }
 
     const escapedPattern = pattern.replaceAll(/[.+^${}()|[\]\\]/g, "\\$&");
-    const matcher = escapedPattern
-      .replaceAll("\\*", ".*")
-      .replaceAll("\\?", ".");
+    const matcher = escapedPattern.replaceAll("*", ".*").replaceAll("?", ".");
 
     return new RegExp(`^${matcher}$`).test(origin);
   });
@@ -241,26 +321,35 @@ function withAuthenticationCors(
 export class Authentication extends Effect.Service<Authentication>()(
   "@task-tracker/domains/identity/authentication/Authentication",
   {
-    dependencies: [
-      AuthenticationDatabaseLive,
-      PasswordResetEmailPromiseBridgeLive,
-    ],
+    dependencies: [AuthenticationDatabaseLive, AuthEmailPromiseBridgeLive],
     effect: Effect.gen(function* AuthenticationLive() {
+      const authEmailConfig = yield* loadAuthEmailConfig;
       const config = yield* loadAuthenticationConfig;
       const { db } = yield* AuthenticationDatabase;
-      const passwordResetEmailPromiseBridge =
-        yield* PasswordResetEmailPromiseBridge;
+      const authEmailPromiseBridge = yield* AuthEmailPromiseBridge;
       const runtime = yield* Effect.runtime<never>();
       const backgroundTaskHandler = makeAuthenticationBackgroundTaskHandler();
-      const reportPasswordResetEmailFailure =
-        makePasswordResetEmailFailureReporter(runtime);
+      const reportPasswordResetEmailFailure = makeEmailFailureReporter(
+        runtime,
+        "Password reset email delivery failed"
+      );
+      const reportVerificationEmailFailure = makeEmailFailureReporter(
+        runtime,
+        "Verification email delivery failed"
+      );
 
       return createAuthentication({
+        appOrigin: authEmailConfig.appOrigin,
         backgroundTaskHandler,
         config,
         database: db,
         reportPasswordResetEmailFailure,
-        sendPasswordResetEmail: passwordResetEmailPromiseBridge.send,
+        sendOrganizationInvitationEmail:
+          authEmailPromiseBridge.sendOrganizationInvitationEmail,
+        reportVerificationEmailFailure,
+        sendPasswordResetEmail: authEmailPromiseBridge.send,
+        sendVerificationEmail:
+          authEmailPromiseBridge.sendEmailVerificationEmail,
       });
     }),
   }

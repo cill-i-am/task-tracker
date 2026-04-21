@@ -69,8 +69,24 @@ export function createTaskTrackerAuthClient(baseURL?: string | undefined) {
   });
 }
 
-export function buildPasswordResetRedirectTo(origin: string): string {
-  return new URL("/reset-password", origin).toString();
+export function buildPasswordResetRedirectTo(
+  origin: string,
+  invitationId?: string
+): string {
+  const url = new URL("/reset-password", origin);
+
+  if (invitationId) {
+    url.searchParams.set("invitation", invitationId);
+  }
+
+  return url.toString();
+}
+
+export function buildEmailVerificationRedirectTo(origin: string): string {
+  const redirectURL = new URL("/verify-email", origin);
+  redirectURL.searchParams.set("status", "success");
+
+  return redirectURL.toString();
 }
 
 function readConfiguredAuthOrigin(): string | undefined {
