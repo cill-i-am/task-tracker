@@ -1113,34 +1113,14 @@ function exec<A>(
 }
 
 export function loadSandboxEnvironmentOrThrow(
+  sandboxProcess: SandboxProcess,
   repoRoot: string
 ): SandboxPreflightEffect<AuthEmailSharedEnvironment>;
 export function loadSandboxEnvironmentOrThrow(
   sandboxProcess: SandboxProcess,
   repoRoot: string
-): SandboxPreflightEffect<AuthEmailSharedEnvironment>;
-export function loadSandboxEnvironmentOrThrow(
-  sandboxProcessOrRepoRoot: SandboxProcess | string,
-  maybeRepoRoot?: string
 ): SandboxPreflightEffect<AuthEmailSharedEnvironment> {
-  const repoRoot =
-    typeof sandboxProcessOrRepoRoot === "string"
-      ? sandboxProcessOrRepoRoot
-      : maybeRepoRoot;
-  const loadProcessEnv =
-    typeof sandboxProcessOrRepoRoot === "string"
-      ? Effect.succeed(process.env)
-      : sandboxProcessOrRepoRoot.env();
-
-  if (!repoRoot) {
-    return Effect.fail(
-      new SandboxPreflightError({
-        message: "Sandbox repo root is required to load shared environment",
-      })
-    );
-  }
-
-  return loadProcessEnv.pipe(
+  return sandboxProcess.env().pipe(
     Effect.flatMap((processEnv) =>
       loadSandboxSharedEnvironment({
         repoRoot,

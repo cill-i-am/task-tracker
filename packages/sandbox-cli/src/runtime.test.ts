@@ -9,6 +9,7 @@ import {
 } from "@task-tracker/sandbox-core/node";
 import { Effect, Either, Exit, Schema } from "effect";
 
+import type { SandboxProcess } from "./process.js";
 import {
   AuthEmailSharedEnvironment,
   buildComposeFallbackEnvironmentOverrides,
@@ -509,9 +510,20 @@ describe("loadSandboxEnvironmentOrThrow()", () => {
       delete process.env.AUTH_EMAIL_FROM_NAME;
       process.env.CLOUDFLARE_ACCOUNT_ID = "account_123";
       process.env.CLOUDFLARE_API_TOKEN = "token_123";
+      const sandboxProcess: SandboxProcess = {
+        argv: () => Effect.succeed([]),
+        cwd: () => Effect.succeed(repoRoot),
+        env: () => Effect.succeed(process.env),
+        isPortAvailable: () => Effect.succeed(true),
+        isPortOpen: () => Effect.succeed(false),
+        runCommand: () => Effect.die("not used"),
+        setExitCode: () => Effect.void,
+      };
 
       await expect(
-        Effect.runPromise(loadSandboxEnvironmentOrThrow(repoRoot))
+        Effect.runPromise(
+          loadSandboxEnvironmentOrThrow(sandboxProcess, repoRoot)
+        )
       ).resolves.toStrictEqual({
         AUTH_EMAIL_FROM: "auth@example.com",
         AUTH_EMAIL_FROM_NAME: "Task Tracker Auth",

@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Runtime } from "effect";
+import { Effect, Layer, Runtime } from "effect";
 
 import { AuthEmailSender } from "./auth-email.js";
 import type {
@@ -8,41 +8,28 @@ import type {
 } from "./auth-email.js";
 import { CloudflareAuthEmailTransportLive } from "./cloudflare-auth-email-transport.js";
 
-// The auth domain depends on the sender service; the concrete Cloudflare
-// transport stays injected at this infrastructure edge.
-const AuthenticationEmailSenderLive = Layer.provide(AuthEmailSender.Default, [
-  CloudflareAuthEmailTransportLive,
-]);
+const AuthenticationEmailSenderLive = AuthEmailSender.Default.pipe(
+  Layer.provideMerge(CloudflareAuthEmailTransportLive)
+);
 
-export class AuthEmailPromiseBridge extends Context.Tag(
-  "@task-tracker/domains/identity/authentication/AuthEmailPromiseBridge"
-)<
-  AuthEmailPromiseBridge,
+export class AuthEmailPromiseBridge extends Effect.Service<AuthEmailPromiseBridge>()(
+  "@task-tracker/domains/identity/authentication/AuthEmailPromiseBridge",
   {
-    readonly sendEmailVerificationEmail: (
-      input: EmailVerificationEmailInput
-    ) => Promise<void>;
-    readonly sendOrganizationInvitationEmail: (
-      input: OrganizationInvitationEmailInput
-    ) => Promise<void>;
-    readonly send: (input: PasswordResetEmailInput) => Promise<void>;
+    accessors: true,
+    dependencies: [AuthenticationEmailSenderLive],
+    effect: Effect.gen(function* AuthEmailPromiseBridgeLive() {
+      const runtime = yield* Effect.runtime<AuthEmailSender>();
+      const runPromise = Runtime.runPromise(runtime);
+
+      return {
+        sendEmailVerificationEmail: (input: EmailVerificationEmailInput) =>
+          runPromise(AuthEmailSender.sendEmailVerificationEmail(input)),
+        sendOrganizationInvitationEmail: (
+          input: OrganizationInvitationEmailInput
+        ) => runPromise(AuthEmailSender.sendOrganizationInvitationEmail(input)),
+        send: (input: PasswordResetEmailInput) =>
+          runPromise(AuthEmailSender.sendPasswordResetEmail(input)),
+      };
+    }),
   }
->() {}
-
-export const AuthEmailPromiseBridgeLive = Layer.effect(
-  AuthEmailPromiseBridge,
-  Effect.gen(function* AuthEmailPromiseBridgeLive() {
-    const runtime = yield* Effect.runtime<AuthEmailSender>();
-    const runPromise = Runtime.runPromise(runtime);
-
-    return {
-      sendEmailVerificationEmail: (input: EmailVerificationEmailInput) =>
-        runPromise(AuthEmailSender.sendEmailVerificationEmail(input)),
-      sendOrganizationInvitationEmail: (
-        input: OrganizationInvitationEmailInput
-      ) => runPromise(AuthEmailSender.sendOrganizationInvitationEmail(input)),
-      send: (input: PasswordResetEmailInput) =>
-        runPromise(AuthEmailSender.sendPasswordResetEmail(input)),
-    };
-  })
-).pipe(Layer.provide(AuthenticationEmailSenderLive));
+) {}

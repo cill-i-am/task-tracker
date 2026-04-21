@@ -10,10 +10,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Effect, Layer, Runtime } from "effect";
 
 import { loadAuthEmailConfig } from "./auth-email-config.js";
-import {
-  AuthEmailPromiseBridge,
-  AuthEmailPromiseBridgeLive,
-} from "./auth-email-promise-bridge.js";
+import { AuthEmailPromiseBridge } from "./auth-email-promise-bridge.js";
 import type {
   EmailVerificationEmailInput,
   OrganizationInvitationEmailInput,
@@ -332,7 +329,7 @@ function withAuthenticationCors(
 export class Authentication extends Effect.Service<Authentication>()(
   "@task-tracker/domains/identity/authentication/Authentication",
   {
-    dependencies: [AuthenticationDatabaseLive, AuthEmailPromiseBridgeLive],
+    dependencies: [AuthenticationDatabaseLive, AuthEmailPromiseBridge.Default],
     effect: Effect.gen(function* AuthenticationLive() {
       const authEmailConfig = yield* loadAuthEmailConfig;
       const config = yield* loadAuthenticationConfig;

@@ -7,9 +7,13 @@ import type {
   AuthEmailRequestError,
 } from "./auth-email-errors.js";
 import {
-  EmailVerificationDeliveryError,
+  EmailVerificationEmailRejectedError,
+  EmailVerificationEmailRequestError,
   InvalidPasswordResetEmailInputError,
-  OrganizationInvitationDeliveryError,
+  InvalidEmailVerificationEmailInputError,
+  InvalidOrganizationInvitationEmailInputError,
+  OrganizationInvitationEmailRejectedError,
+  OrganizationInvitationEmailRequestError,
   PasswordResetEmailRejectedError,
   PasswordResetEmailRequestError,
 } from "./auth-email-errors.js";
@@ -147,10 +151,18 @@ export interface TransportMessage {
 export type AuthEmailTransportError =
   | AuthEmailRejectedError
   | AuthEmailRequestError;
+export type OrganizationInvitationEmailError =
+  | InvalidOrganizationInvitationEmailInputError
+  | OrganizationInvitationEmailRejectedError
+  | OrganizationInvitationEmailRequestError;
 export type PasswordResetEmailError =
   | InvalidPasswordResetEmailInputError
   | PasswordResetEmailRejectedError
   | PasswordResetEmailRequestError;
+export type EmailVerificationEmailError =
+  | InvalidEmailVerificationEmailInputError
+  | EmailVerificationEmailRejectedError
+  | EmailVerificationEmailRequestError;
 
 export class AuthEmailTransport extends Context.Tag(
   "@task-tracker/domains/identity/authentication/AuthEmailTransport"
@@ -246,7 +258,7 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
           rawInput,
           decode: decodeOrganizationInvitationEmailInput,
           onInvalidInput: (cause) =>
-            new OrganizationInvitationDeliveryError({
+            new InvalidOrganizationInvitationEmailInputError({
               message: "Invalid organization invitation email input",
               cause,
             }),
@@ -275,13 +287,23 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
             html,
           })
           .pipe(
-            Effect.mapError(
-              (error) =>
-                new OrganizationInvitationDeliveryError({
-                  message: "Failed to deliver organization invitation email",
-                  cause: error.cause ?? error.message,
-                })
-            )
+            Effect.catchTags({
+              AuthEmailRejectedError: (error) =>
+                Effect.fail(
+                  new OrganizationInvitationEmailRejectedError({
+                    message:
+                      "Organization invitation email was rejected for delivery",
+                    cause: error.cause ?? error.message,
+                  })
+                ),
+              AuthEmailRequestError: (error) =>
+                Effect.fail(
+                  new OrganizationInvitationEmailRequestError({
+                    message: "Failed to deliver organization invitation email",
+                    cause: error.cause ?? error.message,
+                  })
+                ),
+            })
           );
       });
 
@@ -292,7 +314,7 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
           rawInput,
           decode: decodeEmailVerificationEmailInput,
           onInvalidInput: (cause) =>
-            new EmailVerificationDeliveryError({
+            new InvalidEmailVerificationEmailInputError({
               message: "Invalid verification email input",
               cause,
             }),
@@ -319,13 +341,22 @@ export class AuthEmailSender extends Effect.Service<AuthEmailSender>()(
             html,
           })
           .pipe(
-            Effect.mapError(
-              (error) =>
-                new EmailVerificationDeliveryError({
-                  message: "Failed to deliver verification email",
-                  cause: error.cause ?? error.message,
-                })
-            )
+            Effect.catchTags({
+              AuthEmailRejectedError: (error) =>
+                Effect.fail(
+                  new EmailVerificationEmailRejectedError({
+                    message: "Verification email was rejected for delivery",
+                    cause: error.cause ?? error.message,
+                  })
+                ),
+              AuthEmailRequestError: (error) =>
+                Effect.fail(
+                  new EmailVerificationEmailRequestError({
+                    message: "Failed to deliver verification email",
+                    cause: error.cause ?? error.message,
+                  })
+                ),
+            })
           );
       });
 
