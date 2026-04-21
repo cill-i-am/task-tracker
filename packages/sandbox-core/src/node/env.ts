@@ -24,6 +24,7 @@ export class SandboxEnvironmentError extends Schema.TaggedError<SandboxEnvironme
 export const loadSandboxSharedEnvironment = Effect.fn(
   "SandboxEnv.loadSharedEnvironment"
 )(function* (input: {
+  readonly optionalKeys?: readonly string[];
   readonly repoRoot: string;
   readonly requiredKeys: readonly string[];
   readonly processEnv?: Record<string, string | undefined>;
@@ -71,12 +72,19 @@ export const loadSandboxSharedEnvironment = Effect.fn(
     ),
   };
 
-  const requiredEnvironment = Object.fromEntries(
+  const selectedEnvironment = Object.fromEntries(
     input.requiredKeys.map((key) => [key, merged[key]])
   );
+  for (const key of input.optionalKeys ?? []) {
+    const value = merged[key];
+
+    if (typeof value === "string" && value.length > 0) {
+      selectedEnvironment[key] = value;
+    }
+  }
 
   return yield* Schema.decodeUnknown(SharedSandboxEnvironment)(
-    requiredEnvironment
+    selectedEnvironment
   ).pipe(
     Effect.mapError(() => {
       const missing = input.requiredKeys.filter((key) => {

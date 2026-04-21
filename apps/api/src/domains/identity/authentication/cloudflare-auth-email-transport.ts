@@ -203,19 +203,35 @@ export function makeCloudflareAuthEmailTransport(options?: {
 }) {
   return Effect.gen(function* makeCloudflareAuthEmailTransportEffect() {
     const config = yield* loadAuthEmailConfig;
-    const cloudflareClient = new CloudflareApi({
-      apiToken: config.cloudflareApiToken,
-      accountId: config.cloudflareAccountId,
-    });
-    const cloudflare = options?.cloudflare ?? cloudflareClient.emailSending;
+    const cloudflare =
+      options?.cloudflare ??
+      new CloudflareApi({
+        apiToken: config.cloudflareApiToken,
+        accountId: config.cloudflareAccountId,
+      }).emailSending;
     const deliveryKeyDedupeEntries = new Map<string, number>();
 
     return {
       send: (message: TransportMessage) => {
-        const sendEffect = Effect.log("Auth email transport send attempt", {
+        const logContext = {
           ...buildRecipientLogContext(message.to),
           provider: "cloudflare",
           deliveryKey: message.deliveryKey,
+        };
+        const logOutcome = (
+          outcomeBucket:
+            | "delivered"
+            | "queued"
+            | "permanent_bounces"
+            | "request_failed"
+            | "deduped"
+        ) =>
+          Effect.log("Auth email transport send outcome", {
+            ...logContext,
+            outcomeBucket,
+          });
+        const sendEffect = Effect.log("Auth email transport send attempt", {
+          ...logContext,
           outcomeBucket: "attempt",
         }).pipe(
           Effect.zipRight(
@@ -238,28 +254,17 @@ export function makeCloudflareAuthEmailTransport(options?: {
                     cause: `Cloudflare permanently bounced ${buildRedactedRecipientDescription(message.to)}`,
                   })
                 )
-              : Effect.log("Auth email transport send outcome", {
-                  ...buildRecipientLogContext(message.to),
-                  provider: "cloudflare",
-                  deliveryKey: message.deliveryKey,
-                  outcomeBucket,
-                })
+              : logOutcome(outcomeBucket)
           ),
           Effect.catchTags({
             AuthEmailRejectedError: (error) =>
-              Effect.log("Auth email transport send outcome", {
-                ...buildRecipientLogContext(message.to),
-                provider: "cloudflare",
-                deliveryKey: message.deliveryKey,
-                outcomeBucket: "permanent_bounces",
-              }).pipe(Effect.zipRight(Effect.fail(error))),
+              logOutcome("permanent_bounces").pipe(
+                Effect.zipRight(Effect.fail(error))
+              ),
             AuthEmailRequestError: (error) =>
-              Effect.log("Auth email transport send outcome", {
-                ...buildRecipientLogContext(message.to),
-                provider: "cloudflare",
-                deliveryKey: message.deliveryKey,
-                outcomeBucket: "request_failed",
-              }).pipe(Effect.zipRight(Effect.fail(error))),
+              logOutcome("request_failed").pipe(
+                Effect.zipRight(Effect.fail(error))
+              ),
           }),
           Effect.asVoid
         );
@@ -295,12 +300,7 @@ export function makeCloudflareAuthEmailTransport(options?: {
                       ).pipe(Effect.zipRight(Effect.fail(error))),
                   })
                 )
-              : Effect.log("Auth email transport send outcome", {
-                  ...buildRecipientLogContext(message.to),
-                  provider: "cloudflare",
-                  deliveryKey,
-                  outcomeBucket: "deduped",
-                }).pipe(Effect.asVoid)
+              : logOutcome("deduped").pipe(Effect.asVoid)
           )
         );
       },

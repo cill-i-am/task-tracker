@@ -6,6 +6,7 @@ import {
 } from "./env.js";
 
 const REQUIRED_SHARED_KEYS = ["EMAIL_SENDER", "EMAIL_PROVIDER_TOKEN"] as const;
+const OPTIONAL_SHARED_KEYS = ["EMAIL_SENDER_NAME"] as const;
 
 describe("loadSandboxSharedEnvironment()", () => {
   it("fails fast when required shared env is missing", async () => {
@@ -103,6 +104,60 @@ describe("loadSandboxSharedEnvironment()", () => {
     expect(result).toStrictEqual({
       EMAIL_SENDER: "auth@example.com",
       EMAIL_PROVIDER_TOKEN: "quoted-token",
+    });
+  }, 10_000);
+
+  it("includes optional keys when they are present", async () => {
+    const result = await Effect.runPromise(
+      loadSandboxSharedEnvironment({
+        repoRoot: "/repo",
+        optionalKeys: OPTIONAL_SHARED_KEYS,
+        requiredKeys: REQUIRED_SHARED_KEYS,
+        processEnv: {
+          EMAIL_SENDER: "auth@example.com",
+          EMAIL_PROVIDER_TOKEN: "live-token",
+        },
+        readFile: (filePath) => {
+          if (filePath.endsWith(".env")) {
+            return Effect.succeed('EMAIL_SENDER_NAME="Task Tracker Auth"');
+          }
+
+          return Effect.succeed("");
+        },
+      })
+    );
+
+    expect(result).toStrictEqual({
+      EMAIL_SENDER: "auth@example.com",
+      EMAIL_PROVIDER_TOKEN: "live-token",
+      EMAIL_SENDER_NAME: "Task Tracker Auth",
+    });
+  }, 10_000);
+
+  it("omits blank optional keys", async () => {
+    const result = await Effect.runPromise(
+      loadSandboxSharedEnvironment({
+        repoRoot: "/repo",
+        optionalKeys: OPTIONAL_SHARED_KEYS,
+        requiredKeys: REQUIRED_SHARED_KEYS,
+        processEnv: {
+          EMAIL_SENDER: "auth@example.com",
+          EMAIL_PROVIDER_TOKEN: "live-token",
+          EMAIL_SENDER_NAME: "",
+        },
+        readFile: (filePath) => {
+          if (filePath.endsWith(".env")) {
+            return Effect.succeed('EMAIL_SENDER_NAME="Task Tracker Auth"');
+          }
+
+          return Effect.succeed("");
+        },
+      })
+    );
+
+    expect(result).toStrictEqual({
+      EMAIL_SENDER: "auth@example.com",
+      EMAIL_PROVIDER_TOKEN: "live-token",
     });
   }, 10_000);
 

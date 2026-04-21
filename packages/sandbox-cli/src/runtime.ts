@@ -939,21 +939,12 @@ function exec<A>(
 export function loadSandboxEnvironmentOrThrow(
   repoRoot: string
 ): SandboxPreflightEffect<AuthEmailSharedEnvironment> {
-  const loadAuthEmailSharedEnvironment = (requiredKeys: readonly string[]) =>
-    loadSandboxSharedEnvironment({
-      repoRoot,
-      requiredKeys,
-      processEnv: process.env,
-    });
-
-  return loadAuthEmailSharedEnvironment(AUTH_EMAIL_SHARED_ENV_KEYS).pipe(
-    Effect.catchIf(
-      (error): error is SandboxEnvironmentError =>
-        error instanceof SandboxEnvironmentError &&
-        error.missing.length === 1 &&
-        error.missing[0] === "AUTH_EMAIL_FROM_NAME",
-      () => loadAuthEmailSharedEnvironment(AUTH_EMAIL_REQUIRED_ENV_KEYS)
-    ),
+  return loadSandboxSharedEnvironment({
+    repoRoot,
+    requiredKeys: AUTH_EMAIL_REQUIRED_ENV_KEYS,
+    optionalKeys: ["AUTH_EMAIL_FROM_NAME"],
+    processEnv: process.env,
+  }).pipe(
     Effect.mapError((error) =>
       error instanceof SandboxEnvironmentError
         ? toSandboxPreflightError(error, { preserveMessage: true })
