@@ -9,6 +9,7 @@ import {
   JobActivityJobCreatedPayloadSchema,
   JobListQuerySchema,
   JobPrioritySchema,
+  JobSiteOptionSchema,
   JobStatusSchema,
   JobsApi,
   JobsApiGroup,
@@ -39,6 +40,8 @@ describe("jobs-core", () => {
           input: {
             name: "  Example Site  ",
             town: "  Dublin  ",
+            latitude: 53.3498,
+            longitude: -6.2603,
           },
         },
         contact: {
@@ -54,6 +57,8 @@ describe("jobs-core", () => {
         input: {
           name: "Example Site",
           town: "Dublin",
+          latitude: 53.3498,
+          longitude: -6.2603,
         },
       },
       contact: {
@@ -69,6 +74,34 @@ describe("jobs-core", () => {
     ).toStrictEqual({
       body: "Confirmed on site",
     });
+  }, 5000);
+
+  it("requires site coordinates to be provided as a complete pair", () => {
+    expect(() =>
+      ParseResult.decodeUnknownSync(CreateJobInputSchema)({
+        title: "Replace boiler",
+        site: {
+          kind: "create",
+          input: {
+            name: "Docklands Campus",
+            latitude: 53.3498,
+          },
+        },
+      })
+    ).toThrow(/Site coordinates must include both latitude and longitude/);
+
+    expect(() =>
+      ParseResult.decodeUnknownSync(CreateJobInputSchema)({
+        title: "Replace boiler",
+        site: {
+          kind: "create",
+          input: {
+            name: "Docklands Campus",
+            longitude: -6.2603,
+          },
+        },
+      })
+    ).toThrow(/Site coordinates must include both latitude and longitude/);
   }, 5000);
 
   it("keeps list filters and patch payloads shapeable", () => {
@@ -155,11 +188,44 @@ describe("jobs-core", () => {
     });
   }, 5000);
 
+  it("keeps site options rich enough for maps and links", () => {
+    expect(
+      ParseResult.decodeUnknownSync(JobSiteOptionSchema)({
+        id: "550e8400-e29b-41d4-a716-446655440010",
+        name: "Docklands Campus",
+        addressLine1: "1 Custom House Quay",
+        addressLine2: "North Dock",
+        town: "Dublin",
+        county: "Dublin",
+        eircode: "D01 X2X2",
+        accessNotes: "Enter via reception",
+        latitude: 53.3498,
+        longitude: -6.2603,
+        regionId: "550e8400-e29b-41d4-a716-446655440011",
+        regionName: "Dublin",
+      })
+    ).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440010",
+      name: "Docklands Campus",
+      addressLine1: "1 Custom House Quay",
+      addressLine2: "North Dock",
+      town: "Dublin",
+      county: "Dublin",
+      eircode: "D01 X2X2",
+      accessNotes: "Enter via reception",
+      latitude: 53.3498,
+      longitude: -6.2603,
+      regionId: "550e8400-e29b-41d4-a716-446655440011",
+      regionName: "Dublin",
+    });
+  }, 5000);
+
   it("surfaces the jobs api contract with the expected paths", () => {
     const spec = OpenApi.fromApi(JobsApi);
 
     expect(Object.keys(spec.paths)).toStrictEqual([
       "/jobs",
+      "/jobs/options",
       "/jobs/{workItemId}",
       "/jobs/{workItemId}/transitions",
       "/jobs/{workItemId}/reopen",
@@ -169,6 +235,9 @@ describe("jobs-core", () => {
 
     expect(spec.paths["/jobs"]?.get?.operationId).toBe("jobs.listJobs");
     expect(spec.paths["/jobs"]?.post?.operationId).toBe("jobs.createJob");
+    expect(spec.paths["/jobs/options"]?.get?.operationId).toBe(
+      "jobs.getJobOptions"
+    );
     expect(
       spec.paths["/jobs/{workItemId}"]?.get?.responses["404"]
     ).toBeDefined();

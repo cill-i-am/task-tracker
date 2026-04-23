@@ -1,23 +1,31 @@
 /* oxlint-disable eslint/max-classes-per-file */
 
-import {
-  OrganizationId,
-  RegionId,
-  UserId,
-  WorkItemId,
-} from "@task-tracker/jobs-core";
+import { OrganizationId, UserId, WorkItemId } from "@task-tracker/jobs-core";
 import { Schema } from "effect";
 
-export class JobListCursorInvalidError extends Schema.TaggedError<JobListCursorInvalidError>()(
-  "@task-tracker/domains/jobs/JobListCursorInvalidError",
+export const JOBS_SESSION_REQUIRED_ERROR_TAG =
+  "@task-tracker/domains/jobs/JobsSessionRequiredError" as const;
+export class JobsSessionRequiredError extends Schema.TaggedError<JobsSessionRequiredError>()(
+  JOBS_SESSION_REQUIRED_ERROR_TAG,
   {
-    cursor: Schema.String,
     message: Schema.String,
   }
 ) {}
 
-export class OrganizationMemberNotFoundError extends Schema.TaggedError<OrganizationMemberNotFoundError>()(
-  "@task-tracker/domains/jobs/OrganizationMemberNotFoundError",
+export const JOBS_ACTIVE_ORGANIZATION_REQUIRED_ERROR_TAG =
+  "@task-tracker/domains/jobs/JobsActiveOrganizationRequiredError" as const;
+export class JobsActiveOrganizationRequiredError extends Schema.TaggedError<JobsActiveOrganizationRequiredError>()(
+  JOBS_ACTIVE_ORGANIZATION_REQUIRED_ERROR_TAG,
+  {
+    message: Schema.String,
+    userId: UserId,
+  }
+) {}
+
+export const JOBS_ACTOR_MEMBERSHIP_NOT_FOUND_ERROR_TAG =
+  "@task-tracker/domains/jobs/JobsActorMembershipNotFoundError" as const;
+export class JobsActorMembershipNotFoundError extends Schema.TaggedError<JobsActorMembershipNotFoundError>()(
+  JOBS_ACTOR_MEMBERSHIP_NOT_FOUND_ERROR_TAG,
   {
     message: Schema.String,
     organizationId: OrganizationId,
@@ -25,12 +33,15 @@ export class OrganizationMemberNotFoundError extends Schema.TaggedError<Organiza
   }
 ) {}
 
-export class RegionNotFoundError extends Schema.TaggedError<RegionNotFoundError>()(
-  "@task-tracker/domains/jobs/RegionNotFoundError",
+export const JOBS_ORGANIZATION_ROLE_NOT_SUPPORTED_ERROR_TAG =
+  "@task-tracker/domains/jobs/JobsOrganizationRoleNotSupportedError" as const;
+export class JobsOrganizationRoleNotSupportedError extends Schema.TaggedError<JobsOrganizationRoleNotSupportedError>()(
+  JOBS_ORGANIZATION_ROLE_NOT_SUPPORTED_ERROR_TAG,
   {
     message: Schema.String,
+    membershipRole: Schema.String,
     organizationId: OrganizationId,
-    regionId: RegionId,
+    userId: UserId,
   }
 ) {}
 

@@ -20,9 +20,11 @@ import type {
   OrganizationInvitationEmailInput,
   PasswordResetEmailInput,
 } from "./auth-email.js";
-import { loadAuthenticationConfig } from "./config.js";
+import { loadAuthenticationConfig, matchesTrustedOrigin } from "./config.js";
 import type { AuthenticationConfig } from "./config.js";
 import { authSchema } from "./schema.js";
+
+export { matchesTrustedOrigin } from "./config.js";
 
 const ORGANIZATION_INVITATION_EXPIRATION_SECONDS = 60 * 60 * 24 * 7;
 
@@ -239,22 +241,6 @@ function serializeBackgroundTaskError(error: unknown) {
   return {
     message: String(error),
   };
-}
-
-export function matchesTrustedOrigin(
-  origin: string,
-  trustedOrigins: readonly string[]
-) {
-  return trustedOrigins.some((pattern) => {
-    if (!pattern.includes("*") && !pattern.includes("?")) {
-      return pattern === origin;
-    }
-
-    const escapedPattern = pattern.replaceAll(/[.+^${}()|[\]\\]/g, "\\$&");
-    const matcher = escapedPattern.replaceAll("*", ".*").replaceAll("?", ".");
-
-    return new RegExp(`^${matcher}$`).test(origin);
-  });
 }
 
 function appendVaryHeader(headers: Headers, value: string) {

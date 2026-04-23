@@ -23,6 +23,22 @@ function makeTrustedOriginPattern(value: string): TrustedOriginPattern {
   return decodeTrustedOriginPattern(value);
 }
 
+export function matchesTrustedOrigin(
+  origin: string,
+  trustedOrigins: readonly string[]
+) {
+  return trustedOrigins.some((pattern) => {
+    if (!pattern.includes("*") && !pattern.includes("?")) {
+      return pattern === origin;
+    }
+
+    const escapedPattern = pattern.replaceAll(/[.+^${}()|[\]\\]/g, "\\$&");
+    const matcher = escapedPattern.replaceAll("*", ".*").replaceAll("?", ".");
+
+    return new RegExp(`^${matcher}$`).test(origin);
+  });
+}
+
 export const DEFAULT_SANDBOX_APP_ORIGIN_HTTP_PATTERN = makeTrustedOriginPattern(
   "http://*.app.task-tracker.localhost:1355"
 );

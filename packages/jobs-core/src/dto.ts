@@ -10,6 +10,8 @@ import {
   JobStatusSchema,
   JobTitleSchema,
   JobVisitNoteSchema,
+  SiteLatitudeSchema,
+  SiteLongitudeSchema,
 } from "./domain.js";
 import {
   ActivityId,
@@ -192,18 +194,31 @@ export type CreateJobSiteExistingInput = Schema.Schema.Type<
   typeof CreateJobSiteExistingInputSchema
 >;
 
+const CreateJobSiteInlineFieldsSchema = Schema.Struct({
+  name: Schema.Trim.pipe(Schema.minLength(1)),
+  regionId: Schema.optional(RegionId),
+  addressLine1: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
+  addressLine2: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
+  town: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
+  county: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
+  eircode: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
+  accessNotes: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
+  latitude: Schema.optional(SiteLatitudeSchema),
+  longitude: Schema.optional(SiteLongitudeSchema),
+}).pipe(
+  Schema.filter(
+    ({ latitude, longitude }) =>
+      (latitude === undefined && longitude === undefined) ||
+      (latitude !== undefined && longitude !== undefined)
+  ),
+  Schema.annotations({
+    message: () => "Site coordinates must include both latitude and longitude",
+  })
+);
+
 export const CreateJobSiteInlineInputSchema = Schema.Struct({
   kind: Schema.Literal("create"),
-  input: Schema.Struct({
-    name: Schema.Trim.pipe(Schema.minLength(1)),
-    regionId: Schema.optional(RegionId),
-    addressLine1: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-    addressLine2: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-    town: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-    county: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-    eircode: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-    accessNotes: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  }),
+  input: CreateJobSiteInlineFieldsSchema,
 });
 export type CreateJobSiteInlineInput = Schema.Schema.Type<
   typeof CreateJobSiteInlineInputSchema
@@ -331,6 +346,53 @@ export const JobListResponseSchema = Schema.Struct({
   nextCursor: Schema.optional(JobListCursor),
 });
 export type JobListResponse = Schema.Schema.Type<typeof JobListResponseSchema>;
+
+export const JobMemberOptionSchema = Schema.Struct({
+  id: UserId,
+  name: Schema.String,
+});
+export type JobMemberOption = Schema.Schema.Type<typeof JobMemberOptionSchema>;
+
+export const JobRegionOptionSchema = Schema.Struct({
+  id: RegionId,
+  name: Schema.String,
+});
+export type JobRegionOption = Schema.Schema.Type<typeof JobRegionOptionSchema>;
+
+export const JobSiteOptionSchema = Schema.Struct({
+  id: SiteId,
+  name: Schema.String,
+  regionId: Schema.optional(RegionId),
+  regionName: Schema.optional(Schema.String),
+  addressLine1: Schema.optional(Schema.String),
+  addressLine2: Schema.optional(Schema.String),
+  town: Schema.optional(Schema.String),
+  county: Schema.optional(Schema.String),
+  eircode: Schema.optional(Schema.String),
+  accessNotes: Schema.optional(Schema.String),
+  latitude: Schema.optional(Schema.Number),
+  longitude: Schema.optional(Schema.Number),
+});
+export type JobSiteOption = Schema.Schema.Type<typeof JobSiteOptionSchema>;
+
+export const JobContactOptionSchema = Schema.Struct({
+  id: ContactId,
+  name: Schema.String,
+  siteIds: Schema.Array(SiteId),
+});
+export type JobContactOption = Schema.Schema.Type<
+  typeof JobContactOptionSchema
+>;
+
+export const JobOptionsResponseSchema = Schema.Struct({
+  members: Schema.Array(JobMemberOptionSchema),
+  regions: Schema.Array(JobRegionOptionSchema),
+  sites: Schema.Array(JobSiteOptionSchema),
+  contacts: Schema.Array(JobContactOptionSchema),
+});
+export type JobOptionsResponse = Schema.Schema.Type<
+  typeof JobOptionsResponseSchema
+>;
 
 export const JobDetailResponseSchema = JobDetailSchema;
 export type JobDetailResponse = Schema.Schema.Type<

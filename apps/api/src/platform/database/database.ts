@@ -73,8 +73,15 @@ export const AppEffectDrizzleLive = Layer.effect(
   makeAppEffectDrizzle.pipe(Effect.map((db) => ({ db })))
 );
 
+export const AppEffectSqlRuntimeLive = AppEffectSqlLive.pipe(
+  Layer.provideMerge(AppDatabaseLive)
+);
+
+export const AppEffectDrizzleRuntimeLive = AppEffectDrizzleLive.pipe(
+  Layer.provide(AppEffectSqlRuntimeLive)
+);
+
 export const AppDatabaseRuntimeLive = Layer.mergeAll(
-  AppDatabaseLive,
-  AppEffectSqlLive,
-  AppEffectDrizzleLive
+  AppEffectSqlRuntimeLive,
+  AppEffectDrizzleRuntimeLive
 );

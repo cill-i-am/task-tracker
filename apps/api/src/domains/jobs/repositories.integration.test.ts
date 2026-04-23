@@ -10,6 +10,7 @@ import {
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Cause, ConfigProvider, Effect, Exit, Option, Schema } from "effect";
 
+import { AppEffectSqlRuntimeLive } from "../../platform/database/database.js";
 import {
   member,
   organization,
@@ -69,7 +70,19 @@ describe("jobs repositories integration", () => {
     const createdSiteId = await runJobsEffect(
       databaseUrl,
       SitesRepository.create({
+        accessNotes: "Use the south gate and reception desk.",
         name: "Docklands Campus",
+        organizationId: identity.organizationId,
+        regionId,
+        latitude: 53.3498,
+        longitude: -6.2603,
+        town: "Dublin",
+      })
+    );
+    const overflowSiteId = await runJobsEffect(
+      databaseUrl,
+      SitesRepository.create({
+        name: "Overflow Yard",
         organizationId: identity.organizationId,
         regionId,
         town: "Dublin",
@@ -90,7 +103,16 @@ describe("jobs repositories integration", () => {
       SitesRepository.linkContact({
         contactId: createdContactId,
         isPrimary: true,
+        organizationId: identity.organizationId,
         siteId: createdSiteId,
+      })
+    );
+    await runJobsEffect(
+      databaseUrl,
+      SitesRepository.linkContact({
+        contactId: createdContactId,
+        organizationId: identity.organizationId,
+        siteId: overflowSiteId,
       })
     );
 
@@ -156,15 +178,49 @@ describe("jobs repositories integration", () => {
     expect(detailValue.visits[0]?.visitDate).toBe("2026-04-21");
     expect(detailValue.visits[0]?.durationMinutes).toBe(120);
 
+    const siteOptions = await runJobsEffect(
+      databaseUrl,
+      SitesRepository.listOptions(identity.organizationId)
+    );
+    const createdSiteOption = siteOptions.find(
+      (siteOption) => siteOption.id === createdSiteId
+    );
+
+    expect(createdSiteOption).toBeDefined();
+    expect(createdSiteOption).toMatchObject({
+      accessNotes: "Use the south gate and reception desk.",
+      latitude: 53.3498,
+      longitude: -6.2603,
+      name: "Docklands Campus",
+      regionId,
+      town: "Dublin",
+    });
+    expect(createdSiteOption?.addressLine1).toBeUndefined();
+    expect(createdSiteOption?.addressLine2).toBeUndefined();
+    expect(createdSiteOption?.county).toBeUndefined();
+    expect(createdSiteOption?.eircode).toBeUndefined();
+
     const foundSiteId = await runJobsEffect(
       databaseUrl,
       SitesRepository.findById(identity.organizationId, createdSiteId)
+    );
+    const contactOptions = await runJobsEffect(
+      databaseUrl,
+      ContactsRepository.listOptions(identity.organizationId)
+    );
+    const createdContactOption = contactOptions.find(
+      (contactOption) => contactOption.id === createdContactId
     );
     const foundContactId = await runJobsEffect(
       databaseUrl,
       ContactsRepository.findById(identity.organizationId, createdContactId)
     );
 
+    expect(createdContactOption).toMatchObject({
+      id: createdContactId,
+      name: "Aoife Byrne",
+      siteIds: expect.arrayContaining([createdSiteId, overflowSiteId]),
+    });
     expect(Option.getOrUndefined(foundSiteId)).toBe(createdSiteId);
     expect(Option.getOrUndefined(foundContactId)).toBe(createdContactId);
   }, 30_000);
@@ -383,12 +439,29 @@ describe("jobs repositories integration", () => {
       primaryIdentity.organizationId,
       "Primary"
     );
+    const foreignRegionId = await insertRegion(
+      databaseUrl,
+      foreignIdentity.organizationId,
+      "Foreign"
+    );
     const primarySiteId = await runJobsEffect(
       databaseUrl,
       SitesRepository.create({
         name: "Primary Site",
         organizationId: primaryIdentity.organizationId,
         regionId: primaryRegionId,
+        latitude: 51.899,
+        longitude: -8.475,
+      })
+    );
+    const foreignSiteId = await runJobsEffect(
+      databaseUrl,
+      SitesRepository.create({
+        name: "Foreign Site",
+        organizationId: foreignIdentity.organizationId,
+        regionId: foreignRegionId,
+        latitude: 53.2734,
+        longitude: -9.0511,
       })
     );
     const foreignContactId = await runJobsEffect(
@@ -420,7 +493,16 @@ describe("jobs repositories integration", () => {
       databaseUrl,
       SitesRepository.linkContact({
         contactId: foreignContactId,
+        organizationId: primaryIdentity.organizationId,
         siteId: primarySiteId,
+      })
+    );
+    const linkForeignSiteExit = await runJobsEffectExit(
+      databaseUrl,
+      SitesRepository.linkContact({
+        contactId: foreignContactId,
+        organizationId: primaryIdentity.organizationId,
+        siteId: foreignSiteId,
       })
     );
     const commentFromForeignMemberExit = await runJobsEffectExit(
@@ -452,8 +534,12 @@ describe("jobs repositories integration", () => {
       "@task-tracker/jobs-core/ContactNotFoundError"
     );
     expectFailureTag(
+      linkForeignSiteExit,
+      "@task-tracker/jobs-core/SiteNotFoundError"
+    );
+    expectFailureTag(
       commentFromForeignMemberExit,
-      "@task-tracker/domains/jobs/OrganizationMemberNotFoundError"
+      "@task-tracker/jobs-core/OrganizationMemberNotFoundError"
     );
     expectFailureTag(
       visitWithForeignOrganizationExit,
@@ -504,7 +590,7 @@ describe("jobs repositories integration", () => {
       )
     );
 
-    expect(Exit.isFailure(exit)).toBe(true);
+    expect(exit._tag).toBe("Failure");
 
     const jobs = await runJobsEffect(
       databaseUrl,
@@ -548,6 +634,7 @@ function prepareJobsEffect<Value, Error, Requirements>(
 ) {
   return effect.pipe(
     Effect.provide(JobsRepositoriesLive),
+    Effect.provide(AppEffectSqlRuntimeLive),
     Effect.withConfigProvider(makeConfigProvider(databaseUrl))
   ) as Effect.Effect<Value, Error, never>;
 }

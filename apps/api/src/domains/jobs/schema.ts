@@ -14,6 +14,7 @@ import {
   index,
   integer,
   jsonb,
+  doublePrecision,
   pgTable,
   primaryKey,
   text,
@@ -89,6 +90,8 @@ export const site = pgTable(
     county: text("county"),
     eircode: text("eircode"),
     accessNotes: text("access_notes"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
     createdAt: jobsTimestamp("created_at"),
     updatedAt: jobsTimestamp("updated_at"),
     archivedAt: archivedAtColumn("archived_at"),
@@ -102,6 +105,18 @@ export const site = pgTable(
     index("sites_organization_region_idx").on(
       table.organizationId,
       table.regionId
+    ),
+    check(
+      "sites_coordinates_pair_check",
+      sql`(${table.latitude} is null and ${table.longitude} is null) or (${table.latitude} is not null and ${table.longitude} is not null)`
+    ),
+    check(
+      "sites_latitude_range_check",
+      sql`${table.latitude} is null or (${table.latitude} >= -90 and ${table.latitude} <= 90)`
+    ),
+    check(
+      "sites_longitude_range_check",
+      sql`${table.longitude} is null or (${table.longitude} >= -180 and ${table.longitude} <= 180)`
     ),
   ]
 );

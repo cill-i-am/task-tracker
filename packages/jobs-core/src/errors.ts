@@ -4,7 +4,15 @@ import { HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 
 import { JobStatusSchema } from "./domain.js";
-import { ContactId, SiteId, VisitId, WorkItemId } from "./ids.js";
+import {
+  ContactId,
+  OrganizationId,
+  RegionId,
+  SiteId,
+  UserId,
+  VisitId,
+  WorkItemId,
+} from "./ids.js";
 
 export const JOB_NOT_FOUND_ERROR_TAG =
   "@task-tracker/jobs-core/JobNotFoundError" as const;
@@ -26,6 +34,17 @@ export class JobAccessDeniedError extends Schema.TaggedError<JobAccessDeniedErro
     workItemId: Schema.optional(WorkItemId),
   },
   HttpApiSchema.annotations({ status: 403 })
+) {}
+
+export const JOB_LIST_CURSOR_INVALID_ERROR_TAG =
+  "@task-tracker/jobs-core/JobListCursorInvalidError" as const;
+export class JobListCursorInvalidError extends Schema.TaggedError<JobListCursorInvalidError>()(
+  JOB_LIST_CURSOR_INVALID_ERROR_TAG,
+  {
+    cursor: Schema.String,
+    message: Schema.String,
+  },
+  HttpApiSchema.annotations({ status: 400 })
 ) {}
 
 export const INVALID_JOB_TRANSITION_ERROR_TAG =
@@ -59,7 +78,7 @@ export class CoordinatorMatchesAssigneeError extends Schema.TaggedError<Coordina
   COORDINATOR_MATCHES_ASSIGNEE_ERROR_TAG,
   {
     message: Schema.String,
-    workItemId: WorkItemId,
+    workItemId: Schema.optional(WorkItemId),
   },
   HttpApiSchema.annotations({ status: 400 })
 ) {}
@@ -99,12 +118,39 @@ export class ContactNotFoundError extends Schema.TaggedError<ContactNotFoundErro
   HttpApiSchema.annotations({ status: 404 })
 ) {}
 
+export const ORGANIZATION_MEMBER_NOT_FOUND_ERROR_TAG =
+  "@task-tracker/jobs-core/OrganizationMemberNotFoundError" as const;
+export class OrganizationMemberNotFoundError extends Schema.TaggedError<OrganizationMemberNotFoundError>()(
+  ORGANIZATION_MEMBER_NOT_FOUND_ERROR_TAG,
+  {
+    message: Schema.String,
+    organizationId: OrganizationId,
+    userId: UserId,
+  },
+  HttpApiSchema.annotations({ status: 404 })
+) {}
+
+export const REGION_NOT_FOUND_ERROR_TAG =
+  "@task-tracker/jobs-core/RegionNotFoundError" as const;
+export class RegionNotFoundError extends Schema.TaggedError<RegionNotFoundError>()(
+  REGION_NOT_FOUND_ERROR_TAG,
+  {
+    message: Schema.String,
+    organizationId: OrganizationId,
+    regionId: RegionId,
+  },
+  HttpApiSchema.annotations({ status: 404 })
+) {}
+
 export type JobsError =
   | JobNotFoundError
   | JobAccessDeniedError
+  | JobListCursorInvalidError
   | InvalidJobTransitionError
   | BlockedReasonRequiredError
   | CoordinatorMatchesAssigneeError
   | VisitDurationIncrementError
   | SiteNotFoundError
-  | ContactNotFoundError;
+  | ContactNotFoundError
+  | OrganizationMemberNotFoundError
+  | RegionNotFoundError;

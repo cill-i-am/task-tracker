@@ -56,6 +56,18 @@ export const JOB_PRIORITIES = [
 export const JobPrioritySchema = Schema.Literal(...JOB_PRIORITIES);
 export type JobPriority = Schema.Schema.Type<typeof JobPrioritySchema>;
 
+export const SiteLatitudeSchema = Schema.Number.pipe(
+  Schema.greaterThanOrEqualTo(-90),
+  Schema.lessThanOrEqualTo(90)
+);
+export type SiteLatitude = Schema.Schema.Type<typeof SiteLatitudeSchema>;
+
+export const SiteLongitudeSchema = Schema.Number.pipe(
+  Schema.greaterThanOrEqualTo(-180),
+  Schema.lessThanOrEqualTo(180)
+);
+export type SiteLongitude = Schema.Schema.Type<typeof SiteLongitudeSchema>;
+
 export const JOB_ACTIVITY_EVENT_TYPES = [
   "job_created",
   "status_changed",

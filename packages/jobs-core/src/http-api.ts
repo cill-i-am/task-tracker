@@ -10,6 +10,7 @@ import {
   CreateJobResponseSchema,
   JobDetailResponseSchema,
   JobListQuerySchema,
+  JobOptionsResponseSchema,
   JobListResponseSchema,
   PatchJobInputSchema,
   PatchJobResponseSchema,
@@ -23,7 +24,10 @@ import {
   CoordinatorMatchesAssigneeError,
   InvalidJobTransitionError,
   JobAccessDeniedError,
+  JobListCursorInvalidError,
   JobNotFoundError,
+  OrganizationMemberNotFoundError,
+  RegionNotFoundError,
   SiteNotFoundError,
   VisitDurationIncrementError,
 } from "./errors.js";
@@ -34,6 +38,12 @@ const jobsGroup = HttpApiGroup.make("jobs")
     HttpApiEndpoint.get("listJobs", "/jobs")
       .setUrlParams(JobListQuerySchema)
       .addSuccess(JobListResponseSchema)
+      .addError(JobListCursorInvalidError)
+      .addError(JobAccessDeniedError)
+  )
+  .add(
+    HttpApiEndpoint.get("getJobOptions", "/jobs/options")
+      .addSuccess(JobOptionsResponseSchema)
       .addError(JobAccessDeniedError)
   )
   .add(
@@ -41,6 +51,7 @@ const jobsGroup = HttpApiGroup.make("jobs")
       .setPayload(CreateJobInputSchema)
       .addSuccess(CreateJobResponseSchema, { status: 201 })
       .addError(JobAccessDeniedError)
+      .addError(RegionNotFoundError)
       .addError(SiteNotFoundError)
       .addError(ContactNotFoundError)
   )
@@ -59,6 +70,7 @@ const jobsGroup = HttpApiGroup.make("jobs")
       .addError(JobNotFoundError)
       .addError(JobAccessDeniedError)
       .addError(CoordinatorMatchesAssigneeError)
+      .addError(OrganizationMemberNotFoundError)
       .addError(SiteNotFoundError)
       .addError(ContactNotFoundError)
   )
@@ -78,6 +90,7 @@ const jobsGroup = HttpApiGroup.make("jobs")
       .addSuccess(ReopenJobResponseSchema)
       .addError(JobNotFoundError)
       .addError(JobAccessDeniedError)
+      .addError(InvalidJobTransitionError)
   )
   .add(
     HttpApiEndpoint.post("addJobComment", "/jobs/:workItemId/comments")
