@@ -1,6 +1,7 @@
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useRouterState } from "@tanstack/react-router";
+import * as React from "react";
 
 import {
   Collapsible,
@@ -36,6 +37,9 @@ export function NavMain({
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
+  const [expandedItems, setExpandedItems] = React.useState<
+    Record<string, true | undefined>
+  >({});
 
   function isCurrentPath(url: string) {
     if (url === "/") {
@@ -49,59 +53,87 @@ export function NavMain({
     <SidebarGroup className="gap-2 pt-0">
       <SidebarGroupLabel>Workspace</SidebarGroupLabel>
       <SidebarMenu>
-        {items.map((item) => (
-          <Collapsible
-            key={item.title}
-            defaultOpen={
-              item.items?.length ? isCurrentPath(item.url) : undefined
-            }
-            render={<SidebarMenuItem />}
-          >
-            <SidebarMenuButton
-              isActive={isCurrentPath(item.url)}
-              size="sm"
-              className="rounded-[calc(var(--radius)*2.1)]"
-              tooltip={item.title}
-              render={
-                <Link to={item.url}>
-                  <span className="sr-only">{item.title}</span>
-                </Link>
+        {items.map((item) => {
+          const hasChildren = Boolean(item.items?.length);
+          const isActive = isCurrentPath(item.url);
+          const isOpen = isActive || expandedItems[item.title] === true;
+
+          return (
+            <Collapsible
+              key={item.title}
+              open={hasChildren ? isOpen : undefined}
+              onOpenChange={
+                hasChildren
+                  ? (open) => {
+                      setExpandedItems((current) => {
+                        if (open) {
+                          return {
+                            ...current,
+                            [item.title]: true,
+                          };
+                        }
+
+                        if (current[item.title] === undefined) {
+                          return current;
+                        }
+
+                        return Object.fromEntries(
+                          Object.entries(current).filter(
+                            ([key]) => key !== item.title
+                          )
+                        ) as Record<string, true | undefined>;
+                      });
+                    }
+                  : undefined
               }
+              render={<SidebarMenuItem />}
             >
-              {item.icon}
-              <span>{item.title}</span>
-            </SidebarMenuButton>
-            {item.items?.length ? (
-              <>
-                <SidebarMenuAction
-                  render={<CollapsibleTrigger />}
-                  className="aria-expanded:rotate-90"
-                >
-                  <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
-                  <span className="sr-only">Toggle</span>
-                </SidebarMenuAction>
-                <CollapsibleContent>
-                  <SidebarMenuSub>
-                    {item.items?.map((subItem) => (
-                      <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton
-                          isActive={isCurrentPath(subItem.url)}
-                          render={
-                            <Link to={subItem.url}>
-                              <span className="sr-only">{subItem.title}</span>
-                            </Link>
-                          }
-                        >
-                          <span>{subItem.title}</span>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ))}
-                  </SidebarMenuSub>
-                </CollapsibleContent>
-              </>
-            ) : null}
-          </Collapsible>
-        ))}
+              <SidebarMenuButton
+                isActive={isActive}
+                size="sm"
+                className="rounded-[calc(var(--radius)*2.1)]"
+                tooltip={item.title}
+                render={
+                  <Link to={item.url}>
+                    <span className="sr-only">{item.title}</span>
+                  </Link>
+                }
+              >
+                {item.icon}
+                <span>{item.title}</span>
+              </SidebarMenuButton>
+              {hasChildren ? (
+                <>
+                  <SidebarMenuAction
+                    render={<CollapsibleTrigger />}
+                    className="aria-expanded:rotate-90"
+                  >
+                    <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} />
+                    <span className="sr-only">Toggle</span>
+                  </SidebarMenuAction>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {item.items?.map((subItem) => (
+                        <SidebarMenuSubItem key={subItem.title}>
+                          <SidebarMenuSubButton
+                            isActive={isCurrentPath(subItem.url)}
+                            render={
+                              <Link to={subItem.url}>
+                                <span className="sr-only">{subItem.title}</span>
+                              </Link>
+                            }
+                          >
+                            <span>{subItem.title}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </>
+              ) : null}
+            </Collapsible>
+          );
+        })}
       </SidebarMenu>
     </SidebarGroup>
   );

@@ -22,9 +22,9 @@ export function AppLayout({ user }: AppLayoutProps) {
   return (
     <SidebarProvider className="[--header-height:calc(--spacing(15))]">
       <AppSidebar user={user} />
-      <SidebarInset className="min-h-svh overflow-hidden border border-border/60 bg-background/94 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] supports-[backdrop-filter]:bg-background/88">
+      <SidebarInset className="min-h-svh border border-border/60 bg-background/94 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] supports-[backdrop-filter]:bg-background/88">
         <SiteHeader />
-        <div className="flex flex-1 flex-col overflow-x-hidden">
+        <div className="flex flex-1 flex-col overflow-x-clip">
           {user && !user.emailVerified ? (
             <EmailVerificationBanner
               email={user.email}
