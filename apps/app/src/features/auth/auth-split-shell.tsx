@@ -23,7 +23,8 @@ export function AuthSplitShell(props: AuthSplitShellProps) {
     mode = "full",
   } = props;
 
-  const hasContext = context !== undefined && context !== null;
+  const hasContext =
+    context !== undefined && context !== null && typeof context !== "boolean";
 
   return (
     <div
@@ -35,6 +36,7 @@ export function AuthSplitShell(props: AuthSplitShellProps) {
       )}
     >
       <div
+        data-slot="auth-split-shell-grid"
         className={cn(
           "mx-auto grid w-full max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:gap-8 lg:px-8",
           mode === "full"

@@ -53,6 +53,35 @@ describe("auth split shell", () => {
     ).toBeInTheDocument();
   }, 10_000);
 
+  it("treats falsy boolean context as absent and collapses to a single-column layout", () => {
+    const { container } = render(
+      <AuthSplitShell context={false}>
+        <button type="button">Continue</button>
+      </AuthSplitShell>
+    );
+
+    const grid = container.querySelector<HTMLElement>(
+      '[data-slot="auth-split-shell-grid"]'
+    );
+    const actionColumn = container.querySelector<HTMLElement>(
+      '[data-slot="auth-split-shell-action"]'
+    );
+
+    expect(actionColumn).not.toBeNull();
+    expect(
+      container.querySelector('[data-slot="auth-split-shell-context"]')
+    ).not.toBeInTheDocument();
+
+    if (!grid) {
+      throw new Error("Expected auth split shell grid to render");
+    }
+
+    expect(grid.className).toContain("lg:grid-cols-[minmax(0,1fr)]");
+    expect(grid.className).not.toContain(
+      "lg:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)]"
+    );
+  }, 10_000);
+
   it("keeps the compatibility shell working without a support-card grid and with arbitrary context", () => {
     const { container, rerender } = render(
       <EntryShell
