@@ -1,6 +1,7 @@
 import { Briefcase01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useRouteContext } from "@tanstack/react-router";
+import { useState } from "react";
 
 import { AppPageHeader } from "#/components/app-page-header";
 import {
@@ -16,11 +17,21 @@ import {
 } from "#/components/app-status-strip";
 import { AppUtilityPanel } from "#/components/app-utility-panel";
 import { Badge } from "#/components/ui/badge";
-import { buttonVariants } from "#/components/ui/button";
+import { Button, buttonVariants } from "#/components/ui/button";
+import {
+  authClient,
+  buildEmailVerificationRedirectTo,
+} from "#/lib/auth-client";
+
+import { getEmailVerificationFailureMessage } from "./auth-form-errors";
 
 export function AuthenticatedShellHome() {
   const { session } = useRouteContext({ from: "/_app" });
   const { activeOrganization } = useRouteContext({ from: "/_app/_org" });
+  const [verificationFeedback, setVerificationFeedback] = useState<
+    string | null
+  >(null);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
   const verificationLabel = session.user.emailVerified
     ? "Email verified"
     : "Verification pending";
@@ -44,6 +55,31 @@ export function AuthenticatedShellHome() {
           "Use the latest verification email before the workspace expands.",
         title: "Finish account verification",
       };
+
+  async function handleResendVerificationEmail() {
+    setIsResendingVerification(true);
+    setVerificationFeedback(null);
+
+    try {
+      const result = await authClient.sendVerificationEmail({
+        email: session.user.email,
+        callbackURL: buildEmailVerificationRedirectTo(window.location.origin),
+      });
+
+      if (result.error) {
+        setVerificationFeedback(
+          getEmailVerificationFailureMessage(result.error)
+        );
+        return;
+      }
+
+      setVerificationFeedback("Another verification email has been requested.");
+    } catch (error) {
+      setVerificationFeedback(getEmailVerificationFailureMessage(error));
+    } finally {
+      setIsResendingVerification(false);
+    }
+  }
 
   return (
     <main
@@ -137,6 +173,27 @@ export function AuthenticatedShellHome() {
                 >
                   {verificationLabel}
                 </Badge>
+                {session.user.emailVerified ? null : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={isResendingVerification}
+                    onClick={() => void handleResendVerificationEmail()}
+                  >
+                    {isResendingVerification
+                      ? "Sending verification email..."
+                      : "Resend verification email"}
+                  </Button>
+                )}
+                {verificationFeedback ? (
+                  <span
+                    role="status"
+                    className="max-w-[22rem] text-left leading-5 sm:text-right"
+                  >
+                    {verificationFeedback}
+                  </span>
+                ) : null}
               </AppRowListMeta>
             </AppRowListItem>
             <AppRowListItem>
