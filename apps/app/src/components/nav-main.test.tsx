@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { isValidElement } from "react";
 import type { ComponentProps, ReactNode } from "react";
 
@@ -125,18 +125,30 @@ vi.mock(import("#/components/ui/sidebar"), () => ({
   SidebarMenuButton: ({
     children,
     isActive,
+    render: renderProp,
   }: {
     children?: ReactNode;
     isActive?: boolean;
-  }) => (
-    <button
-      type="button"
-      data-testid="menu-button"
-      data-active={String(isActive)}
-    >
-      {children}
-    </button>
-  ),
+    render?: unknown;
+  }) => {
+    const href = isValidElement<{ href?: string; to?: string }>(renderProp)
+      ? (renderProp.props.to ?? renderProp.props.href)
+      : undefined;
+
+    return href ? (
+      <a href={href} data-testid="menu-button" data-active={String(isActive)}>
+        {children}
+      </a>
+    ) : (
+      <button
+        type="button"
+        data-testid="menu-button"
+        data-active={String(isActive)}
+      >
+        {children}
+      </button>
+    );
+  },
   SidebarMenuAction: ({ children }: { children?: ReactNode }) => (
     <button type="button">{children}</button>
   ),
@@ -149,18 +161,34 @@ vi.mock(import("#/components/ui/sidebar"), () => ({
   SidebarMenuSubButton: ({
     children,
     isActive,
+    render: renderProp,
   }: {
     children?: ReactNode;
     isActive?: boolean;
-  }) => (
-    <button
-      type="button"
-      data-testid="submenu-button"
-      data-active={String(isActive)}
-    >
-      {children}
-    </button>
-  ),
+    render?: unknown;
+  }) => {
+    const href = isValidElement<{ href?: string; to?: string }>(renderProp)
+      ? (renderProp.props.to ?? renderProp.props.href)
+      : undefined;
+
+    return href ? (
+      <a
+        href={href}
+        data-testid="submenu-button"
+        data-active={String(isActive)}
+      >
+        {children}
+      </a>
+    ) : (
+      <button
+        type="button"
+        data-testid="submenu-button"
+        data-active={String(isActive)}
+      >
+        {children}
+      </button>
+    );
+  },
 }));
 
 describe("nav main", () => {
@@ -193,11 +221,12 @@ describe("nav main", () => {
       const [projectsSection] = screen.getAllByTestId("collapsible");
 
       expect(projectsSection).toHaveAttribute("data-open", "true");
-      expect(screen.getByRole("button", { name: /projects/i })).toHaveAttribute(
-        "data-active",
-        "true"
+      const projectsLink = screen.getByRole("link", { name: /projects/i });
+      expect(projectsLink).toHaveAttribute("data-active", "true");
+      expect(within(projectsLink).getByText("Projects")).not.toHaveClass(
+        "sr-only"
       );
-      expect(screen.getByRole("button", { name: /alpha/i })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: /alpha/i })).toHaveAttribute(
         "data-active",
         "true"
       );
@@ -210,15 +239,16 @@ describe("nav main", () => {
         "false"
       );
       expect(
-        screen.queryByRole("button", { name: /alpha/i })
+        screen.queryByRole("link", { name: /alpha/i })
       ).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /projects/i })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: /projects/i })).toHaveAttribute(
         "data-active",
         "false"
       );
-      expect(screen.getByRole("button", { name: /members/i })).toHaveAttribute(
-        "data-active",
-        "true"
+      const membersLink = screen.getByRole("link", { name: /members/i });
+      expect(membersLink).toHaveAttribute("data-active", "true");
+      expect(within(membersLink).getByText("Members")).not.toHaveClass(
+        "sr-only"
       );
     }
   );

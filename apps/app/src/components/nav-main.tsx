@@ -93,11 +93,7 @@ export function NavMain({
                 size="sm"
                 className="rounded-[calc(var(--radius)*2.1)]"
                 tooltip={item.title}
-                render={
-                  <Link to={item.url}>
-                    <span className="sr-only">{item.title}</span>
-                  </Link>
-                }
+                render={<Link to={item.url} />}
               >
                 {item.icon}
                 <span>{item.title}</span>
@@ -117,11 +113,7 @@ export function NavMain({
                         <SidebarMenuSubItem key={subItem.title}>
                           <SidebarMenuSubButton
                             isActive={isCurrentPath(subItem.url)}
-                            render={
-                              <Link to={subItem.url}>
-                                <span className="sr-only">{subItem.title}</span>
-                              </Link>
-                            }
+                            render={<Link to={subItem.url} />}
                           >
                             <span>{subItem.title}</span>
                           </SidebarMenuSubButton>
