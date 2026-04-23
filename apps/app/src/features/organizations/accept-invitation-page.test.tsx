@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 
@@ -161,7 +161,9 @@ describe("accept invitation page", () => {
     render(<AcceptInvitationPage invitationId="inv_123" />);
 
     await expect(
-      screen.findByText("Sign in or create an account to continue.")
+      screen.findByRole("heading", {
+        name: "Continue with the invited account.",
+      })
     ).resolves.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
@@ -196,10 +198,15 @@ describe("accept invitation page", () => {
         id: "inv_123",
       },
     });
+    const contextColumn = await screen.findByLabelText("Auth context column");
     expect(
-      screen.getByText(
-        "owner@example.com invited member@example.com as member."
-      )
+      within(contextColumn).getByText("owner@example.com")
+    ).toBeInTheDocument();
+    expect(
+      within(contextColumn).getByText("member@example.com")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("member@example.com will join Acme Field Ops as member.")
     ).toBeInTheDocument();
   }, 10_000);
 

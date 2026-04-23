@@ -15,13 +15,7 @@ import {
   getLoginNavigationTarget,
   getSignupNavigationTarget,
 } from "../auth/auth-navigation";
-import {
-  EntryHighlightGrid,
-  EntryShell,
-  EntrySurfaceCard,
-  EntrySupportPanel,
-  INVITATION_AUTH_HIGHLIGHTS,
-} from "../auth/entry-shell";
+import { EntryShell, EntrySurfaceCard } from "../auth/entry-shell";
 import { hardRedirectToLogin } from "../auth/hard-redirect-to-login";
 import { signOut } from "../auth/sign-out";
 
@@ -63,6 +57,154 @@ const INVITATION_LOOKUP_ERROR_MESSAGE =
   "This invitation is unavailable. Sign in with the invited email address or ask for a fresh invite.";
 const INVITATION_ACCEPT_ERROR_MESSAGE =
   "We couldn't accept this invitation. Please try again.";
+
+function getInvitationShellCopy(
+  state: InvitationPageState,
+  invitation?: InvitationDetails
+) {
+  if (invitation) {
+    return {
+      title: `Join ${invitation.organizationName}`,
+      description: `Continue with ${invitation.email} to join ${invitation.organizationName} as ${invitation.role}.`,
+    };
+  }
+
+  if (state.status === "signed-out") {
+    return {
+      title: "Continue with the invited account.",
+      description:
+        "Sign in or create an account to continue into the workspace with the correct email.",
+    };
+  }
+
+  return {
+    title: "Review your organization invitation.",
+    description:
+      "We'll check the invitation and help you continue with the right account.",
+  };
+}
+
+function getInvitationCardCopy(
+  state: InvitationPageState,
+  invitation?: InvitationDetails
+) {
+  if (state.status === "signed-out") {
+    return {
+      badge: "Sign in required",
+      title: "Sign in to continue",
+      description:
+        "Continue with the invited email address to review this workspace invitation.",
+    };
+  }
+
+  if (state.status === "loading") {
+    return {
+      badge: "Checking invitation",
+      title: "Checking invitation",
+      description: "We'll prepare the invitation details in a moment.",
+    };
+  }
+
+  if (invitation) {
+    return {
+      badge: "Ready to join",
+      title: "Accept invitation",
+      description: "Review the invitation details, then join the organization.",
+    };
+  }
+
+  return {
+    badge: "Invitation issue",
+    title: "Invitation issue",
+    description: "We couldn't prepare this invitation yet.",
+  };
+}
+
+function InvitationContextContent({
+  invitation,
+}: {
+  readonly invitation?: InvitationDetails;
+}) {
+  if (!invitation) {
+    return (
+      <div className="flex flex-col gap-8">
+        <div className="space-y-3">
+          <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            Continue the invitation
+          </p>
+          <p className="max-w-[48ch] text-sm/7 text-foreground/90">
+            Use the invited account to review this workspace invitation. If
+            you&rsquo;re in the wrong account, sign out and switch before you
+            continue.
+          </p>
+        </div>
+
+        <ol className="grid gap-4 text-sm/6 text-muted-foreground">
+          <li className="border-t border-border/60 pt-4">
+            1. Sign in or create the invited account.
+          </li>
+          <li className="border-t border-border/60 pt-4">
+            2. Return here and review the invitation details.
+          </li>
+          <li className="border-t border-border/60 pt-4">
+            3. Accept the invitation to enter the workspace.
+          </li>
+        </ol>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="space-y-3">
+        <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          Invitation details
+        </p>
+        <p className="max-w-[48ch] text-sm/7 text-foreground/90">
+          This invitation will add {invitation.email} to{" "}
+          {invitation.organizationName}. Accept it from the invited account to
+          keep the membership handoff clean.
+        </p>
+      </div>
+
+      <dl className="grid gap-5 sm:grid-cols-2">
+        <div className="space-y-1 border-t border-border/60 pt-4">
+          <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            Organization
+          </dt>
+          <dd className="text-sm/6 text-muted-foreground">
+            {invitation.organizationName}
+          </dd>
+        </div>
+
+        <div className="space-y-1 border-t border-border/60 pt-4">
+          <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            Invited email
+          </dt>
+          <dd className="text-sm/6 text-muted-foreground">
+            {invitation.email}
+          </dd>
+        </div>
+
+        <div className="space-y-1 border-t border-border/60 pt-4">
+          <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            Role
+          </dt>
+          <dd className="text-sm/6 text-muted-foreground">{invitation.role}</dd>
+        </div>
+
+        <div className="space-y-1 border-t border-border/60 pt-4">
+          <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            Invited by
+          </dt>
+          <dd className="text-sm/6 text-muted-foreground">
+            {invitation.inviterEmail}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
 
 export function AcceptInvitationPage({
   invitationId,
@@ -194,46 +336,21 @@ export function AcceptInvitationPage({
   }
 
   const invitation = "invitation" in state ? state.invitation : undefined;
-  let shellTitle = "Review your organization invitation.";
-  let shellDescription =
-    "We'll check the invitation and help you continue with the right account.";
-
-  if (invitation) {
-    shellTitle = `Join ${invitation.organizationName}`;
-    shellDescription = `Continue with ${invitation.email} to join ${invitation.organizationName} as ${invitation.role}.`;
-  } else if (state.status === "signed-out") {
-    shellTitle = "Continue with the invited account.";
-    shellDescription =
-      "Sign in or create an account to continue into the workspace with the correct email.";
-  }
-  const supportingContent = invitation ? (
-    <div className="grid gap-3 sm:grid-cols-3">
-      <EntrySupportPanel
-        title="Organization"
-        description={invitation.organizationName}
-      />
-      <EntrySupportPanel title="Invited email" description={invitation.email} />
-      <EntrySupportPanel title="Role" description={invitation.role} />
-    </div>
-  ) : (
-    <EntryHighlightGrid items={INVITATION_AUTH_HIGHLIGHTS} />
-  );
+  const shellCopy = getInvitationShellCopy(state, invitation);
+  const cardCopy = getInvitationCardCopy(state, invitation);
 
   return (
     <EntryShell
       badge="Invitation"
-      title={shellTitle}
-      description={shellDescription}
-      supportingContent={supportingContent}
+      title={shellCopy.title}
+      description={shellCopy.description}
+      supportingContent={<InvitationContextContent invitation={invitation} />}
     >
       <EntrySurfaceCard
-        badge={
-          state.status === "signed-out"
-            ? "Sign in required"
-            : "Organization invitation"
-        }
-        title="Organization invitation"
-        description="Review the invitation details and continue with the invited email address."
+        badge={cardCopy.badge}
+        className="max-w-lg"
+        title={cardCopy.title}
+        description={cardCopy.description}
         footer={
           invitation ? (
             <Button
@@ -256,43 +373,38 @@ export function AcceptInvitationPage({
             <EmptyHeader>
               <EmptyTitle>Loading your invitation...</EmptyTitle>
               <EmptyDescription>
-                We&apos;re checking the workspace details now.
+                We&rsquo;re checking the workspace details now.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : null}
 
         {state.status === "signed-out" ? (
-          <>
-            <p className="text-sm/6 text-muted-foreground">
-              Sign in or create an account to continue.
-            </p>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Link
-                {...getLoginNavigationTarget(invitationId)}
-                className={buttonVariants({
-                  className: "flex-1",
-                })}
-              >
-                Sign in
-              </Link>
-              <Link
-                {...getSignupNavigationTarget(invitationId)}
-                className={buttonVariants({
-                  className: "flex-1",
-                  variant: "outline",
-                })}
-              >
-                Create account
-              </Link>
-            </div>
-          </>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link
+              {...getLoginNavigationTarget(invitationId)}
+              className={buttonVariants({
+                className: "flex-1",
+              })}
+            >
+              Sign in
+            </Link>
+            <Link
+              {...getSignupNavigationTarget(invitationId)}
+              className={buttonVariants({
+                className: "flex-1",
+                variant: "outline",
+              })}
+            >
+              Create account
+            </Link>
+          </div>
         ) : null}
 
         {invitation ? (
-          <Alert className="bg-muted/40">
+          <Alert className="bg-muted/35">
             <AlertDescription>
-              {invitation.inviterEmail} invited {invitation.email} as{" "}
+              {invitation.email} will join {invitation.organizationName} as{" "}
               {invitation.role}.
             </AlertDescription>
           </Alert>

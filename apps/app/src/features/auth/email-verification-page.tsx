@@ -10,12 +10,7 @@ import {
 
 import { getLoginNavigationTarget } from "./auth-navigation";
 import type { EmailVerificationSearch } from "./email-verification-search";
-import {
-  DEFAULT_AUTH_HIGHLIGHTS,
-  EntryHighlightGrid,
-  EntryShell,
-  EntrySurfaceCard,
-} from "./entry-shell";
+import { EntryShell, EntrySurfaceCard } from "./entry-shell";
 
 interface EmailVerificationPageProps {
   search?: EmailVerificationSearch;
@@ -33,24 +28,61 @@ export function EmailVerificationPage({ search }: EmailVerificationPageProps) {
       badge="Account status"
       title={
         isInvalidToken
-          ? "This verification link can't be used anymore."
-          : "Your account is verified and ready to go."
+          ? "This verification link can't be used."
+          : "Your email is verified."
       }
       description={
         isInvalidToken
-          ? "Head back into the app and request a new verification email when you're ready."
-          : "Verified accounts keep invitations, sign-in recovery, and member setup running smoothly."
+          ? "Open the app and request a fresh verification email when you're ready."
+          : "Your account is ready to continue into the app."
       }
-      supportingContent={<EntryHighlightGrid items={DEFAULT_AUTH_HIGHLIGHTS} />}
+      supportingContent={
+        <div className="flex flex-col gap-8">
+          <div className="space-y-3">
+            <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+              Status checkpoint
+            </p>
+            <p className="max-w-[48ch] text-sm/7 text-foreground/90">
+              {isInvalidToken
+                ? "Verification links expire. Request the newest email from inside the app before you try again."
+                : "Verified accounts keep sign-in recovery, invitations, and teammate setup moving without extra friction."}
+            </p>
+          </div>
+
+          <ol className="grid gap-4 text-sm/6 text-muted-foreground">
+            <li className="border-t border-border/60 pt-4">
+              1. {isInvalidToken ? "Open the app." : "Continue into the app."}
+            </li>
+            <li className="border-t border-border/60 pt-4">
+              2.{" "}
+              {isInvalidToken
+                ? "Request a fresh verification email."
+                : "Sign in again if you need a fresh session."}
+            </li>
+          </ol>
+        </div>
+      }
     >
       <EntrySurfaceCard
         badge={isInvalidToken ? "Verification issue" : "Verified"}
+        className="max-w-lg"
         title={title}
         description={description}
         footer={
-          <Link to="/" className={buttonVariants({ className: "w-full" })}>
-            Go to the app
-          </Link>
+          <div className="flex flex-col gap-3">
+            <Link to="/" className={buttonVariants({ className: "w-full" })}>
+              Go to the app
+            </Link>
+            <Link
+              {...getLoginNavigationTarget()}
+              className={buttonVariants({
+                className: "w-full",
+                variant: "outline",
+              })}
+            >
+              Back to login
+            </Link>
+          </div>
         }
       >
         <Empty className="min-h-0 bg-muted/20 px-6 py-8">
@@ -67,15 +99,6 @@ export function EmailVerificationPage({ search }: EmailVerificationPageProps) {
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-        <Link
-          {...getLoginNavigationTarget()}
-          className={buttonVariants({
-            className: "w-full",
-            variant: "outline",
-          })}
-        >
-          Back to login
-        </Link>
       </EntrySurfaceCard>
     </EntryShell>
   );

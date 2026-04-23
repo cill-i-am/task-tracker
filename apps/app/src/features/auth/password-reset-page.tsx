@@ -25,13 +25,7 @@ import {
   getLoginNavigationTarget,
 } from "./auth-navigation";
 import { decodePasswordResetInput, passwordResetSchema } from "./auth-schemas";
-import {
-  DEFAULT_AUTH_HIGHLIGHTS,
-  EntryHighlightGrid,
-  EntryShell,
-  EntrySurfaceCard,
-  INVITATION_AUTH_HIGHLIGHTS,
-} from "./entry-shell";
+import { EntryShell, EntrySurfaceCard } from "./entry-shell";
 import { decodePasswordResetSearch } from "./password-reset-search";
 import type { PasswordResetSearch } from "./password-reset-search";
 
@@ -101,29 +95,49 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
     return (
       <EntryShell
         badge={isInvitationFlow ? "Invitation support" : "Password reset"}
-        title="This reset link has expired or is no longer valid."
-        description="Request a fresh link, then continue back into the workspace with a new password."
+        title="This reset link isn't valid anymore."
+        description="Request a fresh link, then come back with a new password."
         supportingContent={
-          <EntryHighlightGrid
-            items={
-              isInvitationFlow
-                ? INVITATION_AUTH_HIGHLIGHTS
-                : DEFAULT_AUTH_HIGHLIGHTS
-            }
-          />
+          <div className="flex flex-col gap-8">
+            <div className="space-y-3">
+              <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                Recovery checkpoint
+              </p>
+              <p className="max-w-[48ch] text-sm/7 text-foreground/90">
+                {isInvitationFlow
+                  ? "A fresh reset link will send you back through the invited account flow once you set a new password."
+                  : "Reset links expire. Request a new one to get back into the app safely."}
+              </p>
+            </div>
+
+            <ol className="grid gap-4 text-sm/6 text-muted-foreground">
+              <li className="border-t border-border/60 pt-4">
+                1. Request the newest reset email.
+              </li>
+              <li className="border-t border-border/60 pt-4">
+                2. Open the fresh link instead of an older email.
+              </li>
+              <li className="border-t border-border/60 pt-4">
+                3.{" "}
+                {isInvitationFlow
+                  ? "Continue back to the invitation."
+                  : "Sign in with the new password."}
+              </li>
+            </ol>
+          </div>
         }
       >
         <EntrySurfaceCard
-          badge="Link expired"
-          title="Reset password"
+          badge="Expired link"
+          className="max-w-lg"
+          title="Reset link expired"
           description="This password reset link is invalid or has expired."
           footer={
-            <>
+            <div className="flex flex-col gap-3">
               <Link
                 {...getForgotPasswordNavigationTarget(invitation)}
                 className={buttonVariants({
-                  variant: "link",
-                  className: "h-auto justify-start p-0",
+                  className: "w-full",
                 })}
               >
                 Request a new reset link
@@ -131,13 +145,13 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
               <Link
                 {...getLoginNavigationTarget(invitation)}
                 className={buttonVariants({
-                  variant: "link",
-                  className: "h-auto justify-start p-0",
+                  variant: "outline",
+                  className: "w-full",
                 })}
               >
                 Back to login
               </Link>
-            </>
+            </div>
           }
         >
           <Empty className="min-h-0 bg-muted/20 px-6 py-8">
@@ -156,22 +170,65 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
   return (
     <EntryShell
       badge={isInvitationFlow ? "Invitation support" : "Password reset"}
-      title="Choose a new password and get back into the workspace."
-      description="Once you save a new password, you can continue into the app or finish the invitation flow."
+      title="Choose a new password."
+      description={
+        isInvitationFlow
+          ? "Save a new password, then continue back into the invitation flow."
+          : "Save a new password, then sign back into the app."
+      }
       supportingContent={
-        <EntryHighlightGrid
-          items={
-            isInvitationFlow
-              ? INVITATION_AUTH_HIGHLIGHTS
-              : DEFAULT_AUTH_HIGHLIGHTS
-          }
-        />
+        <div className="flex flex-col gap-8">
+          <div className="space-y-3">
+            <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+              Finish recovery
+            </p>
+            <p className="max-w-[48ch] text-sm/7 text-foreground/90">
+              {isInvitationFlow
+                ? "Use a new password for the invited account, then continue right back to the workspace invitation."
+                : "Choose a password you can reuse confidently the next time you sign in."}
+            </p>
+          </div>
+
+          <dl className="grid gap-5 sm:grid-cols-2">
+            <div className="space-y-1 border-t border-border/60 pt-4">
+              <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                Password rule
+              </dt>
+              <dd className="text-sm/6 text-muted-foreground">
+                Use at least 8 characters.
+              </dd>
+            </div>
+
+            <div className="space-y-1 border-t border-border/60 pt-4">
+              <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                After save
+              </dt>
+              <dd className="text-sm/6 text-muted-foreground">
+                {isInvitationFlow
+                  ? "You'll return to sign in and continue the invitation."
+                  : "You'll return to sign in with the new password."}
+              </dd>
+            </div>
+          </dl>
+        </div>
       }
     >
       <EntrySurfaceCard
         badge="Choose a new password"
+        className="max-w-lg"
         title="Reset password"
         description="Choose a new password to finish signing in."
+        footer={
+          <Link
+            {...getLoginNavigationTarget(invitation)}
+            className={buttonVariants({
+              variant: "link",
+              className: "h-auto justify-start p-0 text-muted-foreground",
+            })}
+          >
+            Back to login
+          </Link>
+        }
       >
         <form
           className="flex flex-col gap-6"
