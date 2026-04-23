@@ -71,7 +71,7 @@ describe("authenticated shell home", () => {
   });
 
   it(
-    "shows the active organization overview and quick links",
+    "shows the active organization overview, status strip, and next actions",
     {
       timeout: 10_000,
     },
@@ -81,7 +81,16 @@ describe("authenticated shell home", () => {
       expect(
         screen.getByRole("heading", { name: "Acme Field Ops" })
       ).toBeInTheDocument();
-      expect(screen.getByText(/@acme-field-ops/i)).toBeInTheDocument();
+      expect(screen.getByText(/@acme-field-ops is live/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("region", { name: /workspace status/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: /next actions/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: /operating context/i })
+      ).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /open jobs/i })).toHaveAttribute(
         "href",
         "/jobs"
@@ -92,6 +101,9 @@ describe("authenticated shell home", () => {
       expect(
         screen.getByRole("link", { name: /check system health/i })
       ).toHaveAttribute("href", "/health");
+      expect(
+        screen.getByRole("link", { name: /verify email/i })
+      ).toHaveAttribute("href", "/verify-email");
       expect(screen.getAllByText(/verification pending/i)).not.toHaveLength(0);
     }
   );

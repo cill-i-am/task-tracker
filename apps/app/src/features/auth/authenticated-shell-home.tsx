@@ -2,16 +2,21 @@ import { Briefcase01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useRouteContext } from "@tanstack/react-router";
 
+import { AppPageHeader } from "#/components/app-page-header";
+import {
+  AppRowList,
+  AppRowListBody,
+  AppRowListItem,
+  AppRowListLeading,
+  AppRowListMeta,
+} from "#/components/app-row-list";
+import {
+  AppStatusStrip,
+  AppStatusStripItem,
+} from "#/components/app-status-strip";
+import { AppUtilityPanel } from "#/components/app-utility-panel";
 import { Badge } from "#/components/ui/badge";
 import { buttonVariants } from "#/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "#/components/ui/card";
-import { Separator } from "#/components/ui/separator";
 
 export function AuthenticatedShellHome() {
   const { session } = useRouteContext({ from: "/_app" });
@@ -19,143 +24,182 @@ export function AuthenticatedShellHome() {
   const verificationLabel = session.user.emailVerified
     ? "Email verified"
     : "Verification pending";
+  const accessAction = session.user.emailVerified
+    ? {
+        href: "/members" as const,
+        label: "Open members",
+        status: "Ready",
+        title: "Invite the first teammate",
+      }
+    : {
+        href: "/verify-email" as const,
+        label: "Verify email",
+        status: "Pending",
+        title: "Finish account verification",
+      };
 
   return (
     <main
       aria-label="Workspace home"
-      className="mx-auto flex w-full max-w-5xl flex-1 px-4 py-10 sm:py-14"
+      className="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8"
     >
-      <div className="flex w-full flex-col gap-6">
-        <Card className="w-full">
-          <CardHeader className="gap-4">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary" className="w-fit">
-                Workspace ready
-              </Badge>
-              <Badge
-                variant={session.user.emailVerified ? "secondary" : "outline"}
-                className="w-fit"
-              >
-                {verificationLabel}
-              </Badge>
-            </div>
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex flex-col gap-2">
-                <h1 className="font-heading text-3xl font-medium tracking-tight sm:text-4xl">
-                  {activeOrganization.name}
-                </h1>
-                <CardDescription className="max-w-2xl text-base leading-relaxed">
-                  @{activeOrganization.slug} is ready for the team. Keep this
-                  workspace lean: invite the crew, confirm account access, and
-                  build the daily job flow from one clear starting point.
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <Link to="/members" className={buttonVariants()}>
-                  Invite teammates
+      <AppPageHeader
+        eyebrow="Workspace"
+        title={activeOrganization.name}
+        description={`@${activeOrganization.slug} is live. Keep access tight, make the next move obvious, and leave the noise out.`}
+        actions={
+          <>
+            <Link to="/members" className={buttonVariants({ size: "sm" })}>
+              Invite teammates
+            </Link>
+            <Link
+              to="/health"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Check system health
+            </Link>
+          </>
+        }
+      />
+
+      <AppStatusStrip label="Workspace status">
+        <AppStatusStripItem
+          label="Organization"
+          value={activeOrganization.name}
+          meta={`@${activeOrganization.slug}`}
+        />
+        <AppStatusStripItem
+          label="Account"
+          value={verificationLabel}
+          meta={session.user.email}
+        />
+        <AppStatusStripItem
+          label="Next step"
+          value={accessAction.title}
+          meta={accessAction.status}
+        />
+        <AppStatusStripItem
+          label="System"
+          value="Health checks ready"
+          meta="/health"
+        />
+      </AppStatusStrip>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.12fr)_minmax(18rem,0.88fr)]">
+        <section
+          aria-labelledby="workspace-next-actions-heading"
+          className="flex flex-col gap-4"
+        >
+          <div className="flex flex-col gap-1">
+            <h2
+              id="workspace-next-actions-heading"
+              className="font-heading text-lg font-medium tracking-tight"
+            >
+              Next actions
+            </h2>
+            <p className="text-sm/6 text-muted-foreground">
+              Keep the first steps short and operational.
+            </p>
+          </div>
+          <AppRowList>
+            <AppRowListItem>
+              <AppRowListLeading aria-hidden="true">01</AppRowListLeading>
+              <AppRowListBody
+                title="Invite the first teammate"
+                description="Open members and send the first access invite."
+              />
+              <AppRowListMeta>
+                <Badge variant="secondary">Members</Badge>
+                <Link
+                  to="/members"
+                  className={buttonVariants({ variant: "ghost", size: "sm" })}
+                >
+                  Open
                 </Link>
+              </AppRowListMeta>
+            </AppRowListItem>
+            <AppRowListItem>
+              <AppRowListLeading aria-hidden="true">02</AppRowListLeading>
+              <AppRowListBody
+                title={accessAction.title}
+                description="Keep account trust in place before the workspace expands."
+              />
+              <AppRowListMeta>
+                <Badge
+                  variant={session.user.emailVerified ? "secondary" : "outline"}
+                >
+                  {verificationLabel}
+                </Badge>
+                {session.user.emailVerified ? null : (
+                  <Link
+                    to={accessAction.href}
+                    className={buttonVariants({
+                      variant: "ghost",
+                      size: "sm",
+                    })}
+                  >
+                    {accessAction.label}
+                  </Link>
+                )}
+              </AppRowListMeta>
+            </AppRowListItem>
+            <AppRowListItem>
+              <AppRowListLeading aria-hidden="true">03</AppRowListLeading>
+              <AppRowListBody
+                title="Check system health"
+                description="Use the health view when something feels off in the shell."
+              />
+              <AppRowListMeta>
+                <Badge variant="outline">Operational</Badge>
                 <Link
                   to="/health"
-                  className={buttonVariants({ variant: "outline" })}
+                  className={buttonVariants({ variant: "ghost", size: "sm" })}
                 >
-                  Check system health
+                  Open
                 </Link>
-              </div>
+              </AppRowListMeta>
+            </AppRowListItem>
+          </AppRowList>
+        </section>
+
+        <AppUtilityPanel
+          title="Operating context"
+          description="This page stays lean on purpose. Access, verification, and health should be one move away."
+        >
+          <dl className="grid gap-3 text-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+              <dt className="text-muted-foreground">Current workspace</dt>
+              <dd className="truncate font-medium">
+                @{activeOrganization.slug}
+              </dd>
             </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-6">
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <div className="flex flex-col gap-1 rounded-3xl border bg-muted/30 p-4">
-                <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Organization
-                </dt>
-                <dd className="font-medium">{activeOrganization.name}</dd>
-              </div>
-              <div className="flex flex-col gap-1 rounded-3xl border bg-muted/30 p-4">
-                <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Access
-                </dt>
-                <dd className="font-medium">{verificationLabel}</dd>
-              </div>
-            </dl>
-
-            <Separator />
-
-            <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1">
-                  <CardTitle>Next up</CardTitle>
-                  <CardDescription>
-                    The fastest path to a useful workspace is keeping the setup
-                    simple and operational.
-                  </CardDescription>
-                </div>
-                <ol className="flex flex-col gap-4">
-                  <li className="flex gap-3">
-                    <Badge variant="outline" className="mt-0.5 w-fit">
-                      01
-                    </Badge>
-                    <div className="flex flex-col gap-1">
-                      <p className="font-medium">
-                        Invite the people doing the work
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Send member and admin invites so the workspace reflects
-                        the real crew, not just the owner account.
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex gap-3">
-                    <Badge variant="outline" className="mt-0.5 w-fit">
-                      02
-                    </Badge>
-                    <div className="flex flex-col gap-1">
-                      <p className="font-medium">Lock in account trust</p>
-                      <p className="text-sm text-muted-foreground">
-                        Keep verification visible until the account is ready for
-                        live work and invitation follow-through.
-                      </p>
-                    </div>
-                  </li>
-                  <li className="flex gap-3">
-                    <Badge variant="outline" className="mt-0.5 w-fit">
-                      03
-                    </Badge>
-                    <div className="flex flex-col gap-1">
-                      <p className="font-medium">Keep the shell clean</p>
-                      <p className="text-sm text-muted-foreground">
-                        This home should stay quick to scan so future jobs,
-                        snags, and crew updates have a calm place to land.
-                      </p>
-                    </div>
-                  </li>
-                </ol>
-              </div>
-
-              <div className="rounded-3xl border bg-muted/20 p-5">
-                <div className="flex flex-col gap-2">
-                  <CardTitle>Workspace note</CardTitle>
-                  <CardDescription className="max-w-none">
-                    The product is still early, so this page stays deliberately
-                    light. It should orient the team, not bury them in a demo
-                    dashboard. Jobs is now ready as the first operational slice.
-                  </CardDescription>
-                </div>
-                <Link
-                  to="/jobs"
-                  className={buttonVariants({ size: "sm", variant: "outline" })}
-                >
-                  <HugeiconsIcon
-                    icon={Briefcase01Icon}
-                    strokeWidth={2}
-                    data-icon="inline-start"
-                  />
-                  Open Jobs
-                </Link>
-              </div>
-            </section>
-          </CardContent>
-        </Card>
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-3">
+              <dt className="text-muted-foreground">Session owner</dt>
+              <dd className="truncate font-medium">{session.user.email}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted-foreground">Recommended next move</dt>
+              <dd className="font-medium">{accessAction.title}</dd>
+            </div>
+          </dl>
+          <div className="flex flex-col gap-3 border-t border-border/60 pt-4">
+            <p className="text-sm/6 text-muted-foreground">
+              Jobs is ready as the first operational slice, so the team can
+              move from setup into live work without hunting for the route.
+            </p>
+            <Link
+              to="/jobs"
+              className={buttonVariants({ size: "sm", variant: "outline" })}
+            >
+              <HugeiconsIcon
+                icon={Briefcase01Icon}
+                strokeWidth={2}
+                data-icon="inline-start"
+              />
+              Open jobs
+            </Link>
+          </div>
+        </AppUtilityPanel>
       </div>
     </main>
   );
