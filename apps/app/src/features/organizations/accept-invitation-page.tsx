@@ -368,6 +368,12 @@ export function AcceptInvitationPage({
   const invitation = "invitation" in state ? state.invitation : undefined;
   const shellCopy = getInvitationShellCopy(state, invitation);
   const cardCopy = getInvitationCardCopy(state, invitation);
+  const isAcceptingInvitation = state.status === "submitting";
+  const showsAcceptInvitationCta =
+    (state.status === "ready" ||
+      state.status === "error" ||
+      state.status === "submitting") &&
+    invitation !== undefined;
 
   return (
     <EntryShell
@@ -387,16 +393,16 @@ export function AcceptInvitationPage({
         title={cardCopy.title}
         description={cardCopy.description}
         footer={
-          invitation ? (
+          showsAcceptInvitationCta ? (
             <Button
               className="w-full"
               size="lg"
-              disabled={state.status === "submitting"}
+              disabled={isAcceptingInvitation}
               onClick={() => {
                 void handleAcceptInvitation();
               }}
             >
-              {state.status === "submitting"
+              {isAcceptingInvitation
                 ? "Accepting invitation..."
                 : "Accept invitation"}
             </Button>

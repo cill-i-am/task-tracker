@@ -194,6 +194,9 @@ describe("accept invitation page", () => {
     expect(
       screen.getByRole("link", { name: "Create account" })
     ).toHaveAttribute("href", "/signup?invitation=inv_123");
+    expect(
+      screen.queryByRole("button", { name: "Accept invitation" })
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("owner@example.com")).not.toBeInTheDocument();
   }, 10_000);
 

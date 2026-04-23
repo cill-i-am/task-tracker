@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 
 import { HttpApiBuilder, HttpApp } from "@effect/platform";
-import { decodeCreateOrganizationInput } from "@task-tracker/identity-core";
+import {
+  decodeCreateOrganizationInput,
+  decodePublicInvitationPreview,
+} from "@task-tracker/identity-core";
+import type { PublicInvitationPreview } from "@task-tracker/identity-core";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
@@ -41,12 +45,6 @@ const PUBLIC_INVITATION_PREVIEW_PATH_PATTERN =
 
 type AuthEmailFailureReporter = (error: unknown) => void;
 type AuthEmailPromiseSender<Input> = (input: Input) => Promise<void>;
-
-export interface PublicInvitationPreview {
-  readonly email: string;
-  readonly organizationName: string;
-  readonly role: string;
-}
 
 export function maskInvitationEmail(email: string) {
   const [localPart, domainPart] = email.split("@");
@@ -125,7 +123,9 @@ function makePublicInvitationPreviewHandler(
       invitationId: decodeURIComponent(invitationId),
     });
 
-    return Response.json(preview);
+    return Response.json(
+      preview === null ? null : decodePublicInvitationPreview(preview)
+    );
   };
 }
 

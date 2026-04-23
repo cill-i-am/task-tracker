@@ -1,3 +1,5 @@
+import { decodePublicInvitationPreview } from "@task-tracker/identity-core";
+import type { PublicInvitationPreview } from "@task-tracker/identity-core";
 import { organizationClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
@@ -78,17 +80,10 @@ function createUnavailableAuthClient(
   >;
 }
 
-export interface PublicInvitationPreview {
-  readonly email: string;
-  readonly organizationName: string;
-  readonly role: string;
-}
-
 const defaultApiBaseURL =
   typeof window === "undefined"
     ? undefined
     : resolveApiBaseURL(window.location.origin, configuredApiOrigin);
-
 export async function getPublicInvitationPreview(
   invitationId: string,
   baseURL = defaultApiBaseURL
@@ -113,7 +108,17 @@ export async function getPublicInvitationPreview(
     return null;
   }
 
-  return (await response.json()) as PublicInvitationPreview | null;
+  const payload = await response.json();
+
+  if (payload === null) {
+    return null;
+  }
+
+  try {
+    return decodePublicInvitationPreview(payload);
+  } catch {
+    return null;
+  }
 }
 
 export function createBrowserTaskTrackerAuthClient(
