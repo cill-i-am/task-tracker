@@ -149,7 +149,7 @@ export class JobDetailSheet {
     this.root = page.getByRole("dialog");
     this.commentItems = this.root.locator("li");
     this.visitItems = this.root.locator("li");
-    this.statusSelect = this.root.getByLabel("Next status");
+    this.statusSelect = this.root.locator("#job-transition-status");
     this.blockedReason = this.root.getByLabel("Why is it blocked?");
     this.applyStatusChange = this.root.getByRole("button", {
       name: "Apply status change",
