@@ -110,7 +110,7 @@ test.describe("jobs flow", () => {
     ).not.toBeVisible();
 
     await detailSheet.visitDate.fill("2026-04-24");
-    await detailSheet.visitDuration.selectOption("120");
+    await detailSheet.chooseVisitDurationOption("2 hours");
     await detailSheet.visitNote.fill(visitNote);
     await detailSheet.logVisit.click();
     await expect(detailSheet.visitItem(visitNote)).toBeVisible();

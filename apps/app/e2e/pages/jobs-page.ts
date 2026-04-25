@@ -157,7 +157,7 @@ export class JobDetailSheet {
     this.commentBody = this.root.getByLabel("Add a comment");
     this.addComment = this.root.getByRole("button", { name: "Add comment" });
     this.visitDate = this.root.getByLabel("Visit date");
-    this.visitDuration = this.root.getByLabel("Duration");
+    this.visitDuration = this.root.locator("#job-visit-duration");
     this.visitNote = this.root.getByLabel("Visit note");
     this.logVisit = this.root.getByRole("button", { name: "Log visit" });
     this.reopenJob = this.root.getByRole("button", { name: "Reopen job" });
@@ -187,5 +187,15 @@ export class JobDetailSheet {
       })
       .click();
     await expect(this.statusSelect).toContainText(optionLabel);
+  }
+
+  async chooseVisitDurationOption(optionLabel: string) {
+    await this.visitDuration.click();
+    await this.page
+      .locator('[data-slot="command-item"], [data-slot="combobox-item"]', {
+        hasText: optionLabel,
+      })
+      .click();
+    await expect(this.visitDuration).toContainText(optionLabel);
   }
 }
