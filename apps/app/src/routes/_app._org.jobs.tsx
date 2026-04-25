@@ -2,13 +2,16 @@ import { RegistryProvider } from "@effect-atom/atom-react";
 import {
   Outlet,
   createFileRoute,
+  useLocation,
   useRouteContext,
 } from "@tanstack/react-router";
 import type {
   JobListResponse,
   JobOptionsResponse,
 } from "@task-tracker/jobs-core";
+import * as React from "react";
 
+import { JobsCreateSheet } from "#/features/jobs/jobs-create-sheet";
 import { JobsPage } from "#/features/jobs/jobs-page";
 import {
   getCurrentServerJobOptions,
@@ -21,6 +24,7 @@ import {
   seedJobsOptionsState,
 } from "#/features/jobs/jobs-state";
 import type { JobsViewer } from "#/features/jobs/jobs-viewer";
+import { hasJobsElevatedAccess } from "#/features/jobs/jobs-viewer";
 import type { ActiveOrganizationSync } from "#/features/organizations/organization-access";
 import {
   ensureActiveOrganizationId,
@@ -92,6 +96,12 @@ export async function loadJobsRouteData(
 }
 
 export const Route = createFileRoute("/_app/_org/jobs")({
+  staticData: {
+    breadcrumb: {
+      label: "Jobs",
+      to: "/jobs",
+    },
+  },
   loader: ({ context }) => loadJobsRouteData(context),
   component: JobsRoute,
 });
@@ -133,7 +143,11 @@ function JobsRoute() {
   const { activeOrganization, activeOrganizationId } = useRouteContext({
     from: "/_app/_org",
   });
+  const location = useLocation();
+  const browserPathname = useBrowserPathname(location.pathname);
   const { list, options, viewer } = Route.useLoaderData();
+  const isCreateJobRoute =
+    location.pathname === "/jobs/new" || browserPathname === "/jobs/new";
 
   return (
     <JobsRouteContent
@@ -143,9 +157,33 @@ function JobsRoute() {
       options={options}
       viewer={viewer}
     >
-      <Outlet />
+      {isCreateJobRoute && hasJobsElevatedAccess(viewer.role) ? (
+        <JobsCreateSheet />
+      ) : (
+        <Outlet />
+      )}
     </JobsRouteContent>
   );
+}
+
+function useBrowserPathname(routePathname: string) {
+  const [pathname, setPathname] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setPathname(window.location.pathname);
+
+    function handleNavigation() {
+      setPathname(window.location.pathname);
+    }
+
+    window.addEventListener("popstate", handleNavigation);
+
+    return () => {
+      window.removeEventListener("popstate", handleNavigation);
+    };
+  }, [routePathname]);
+
+  return pathname;
 }
 
 function normalizeJobsViewerRole(role: string): JobsViewer["role"] {

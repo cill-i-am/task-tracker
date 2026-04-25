@@ -1,47 +1,24 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-
-import type * as AuthClientModule from "#/lib/auth-client";
 
 import { AuthenticatedShellHome } from "./authenticated-shell-home";
 
-const { mockedSendVerificationEmail, mockedUseRouteContext } = vi.hoisted(
-  () => ({
-    mockedSendVerificationEmail: vi.fn<
-      (input: { email: string; callbackURL: string }) => Promise<{
-        data: unknown;
-        error: { status: number; message: string; statusText: string } | null;
-      }>
-    >(),
-    mockedUseRouteContext: vi.fn<
-      (options: { from: string }) => {
-        activeOrganization?: {
-          name: string;
-          slug: string;
+const { mockedUseRouteContext } = vi.hoisted(() => ({
+  mockedUseRouteContext: vi.fn<
+    (options: { from: string }) => {
+      activeOrganization?: {
+        name: string;
+        slug: string;
+      };
+      session?: {
+        user: {
+          email: string;
+          emailVerified: boolean;
         };
-        session?: {
-          user: {
-            email: string;
-            emailVerified: boolean;
-          };
-        };
-      }
-    >(),
-  })
-);
-
-vi.mock(import("#/lib/auth-client"), async () => {
-  const actual =
-    await vi.importActual<typeof AuthClientModule>("#/lib/auth-client");
-
-  return {
-    authClient: {
-      sendVerificationEmail: mockedSendVerificationEmail,
-    } as unknown as typeof AuthClientModule.authClient,
-    buildEmailVerificationRedirectTo: actual.buildEmailVerificationRedirectTo,
-  };
-});
+      };
+    }
+  >(),
+}));
 
 vi.mock(import("@tanstack/react-router"), async (importActual) => {
   const actual = await importActual();
@@ -69,10 +46,6 @@ vi.mock(import("@tanstack/react-router"), async (importActual) => {
 describe("authenticated shell home", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "http://localhost:3000/tasks");
-    mockedSendVerificationEmail.mockResolvedValue({
-      data: { ok: true },
-      error: null,
-    });
     mockedUseRouteContext.mockImplementation(({ from }) => {
       if (from === "/_app/_org") {
         return {
@@ -99,69 +72,73 @@ describe("authenticated shell home", () => {
   });
 
   it(
-    "shows the active organization overview, status strip, and next actions",
+    "shows a quiet organization overview and a single next action",
     {
       timeout: 10_000,
     },
-    async () => {
-      const user = userEvent.setup();
-
+    () => {
       render(<AuthenticatedShellHome />);
 
       expect(
         screen.getByRole("heading", { name: "Acme Field Ops" })
       ).toBeInTheDocument();
-      expect(screen.getByText(/@acme-field-ops is live/i)).toBeInTheDocument();
-      expect(
-        screen.getByRole("region", { name: /workspace status/i })
-      ).toBeInTheDocument();
       expect(
         screen.getByRole("heading", { name: /next actions/i })
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("heading", { name: /operating context/i })
       ).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /open jobs/i })).toHaveAttribute(
         "href",
         "/jobs"
       );
       expect(
-        screen.getByRole("link", { name: /invite teammates/i })
-      ).toHaveAttribute("href", "/members");
+        screen.queryByRole("link", { name: /invite teammates/i })
+      ).not.toBeInTheDocument();
       expect(
-        screen.getByRole("link", { name: /check system health/i })
-      ).toHaveAttribute("href", "/health");
+        screen.queryByRole("link", { name: /check system health/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: /workspace status/i })
+      ).not.toBeInTheDocument();
+
       const nextActions = screen
         .getByRole("heading", { name: /next actions/i })
         .closest("section");
       expect(nextActions).not.toBeNull();
-      const resendButton = within(nextActions as HTMLElement).getByRole(
-        "button",
-        { name: /resend verification email/i }
-      );
       expect(
         within(nextActions as HTMLElement).getByText(
-          /finish account verification/i
+          /invite the first teammate/i
         )
       ).toBeInTheDocument();
-      expect(screen.getAllByText(/verification pending/i)).not.toHaveLength(0);
-
-      await user.click(resendButton);
-
-      await waitFor(() => {
-        expect(mockedSendVerificationEmail).toHaveBeenCalledWith({
-          email: "taylor@example.com",
-          callbackURL: "http://localhost:3000/verify-email?status=success",
-        });
-      });
-      await expect(
-        screen.findByText("Another verification email has been requested.")
-      ).resolves.toBeInTheDocument();
+      expect(
+        within(nextActions as HTMLElement).getByRole("link", { name: /open/i })
+      ).toHaveAttribute("href", "/members");
+      expect(
+        within(nextActions as HTMLElement).getAllByRole("listitem")
+      ).toHaveLength(1);
+      expect(
+        within(nextActions as HTMLElement).queryByText(
+          /finish account verification/i
+        )
+      ).not.toBeInTheDocument();
+      expect(
+        within(nextActions as HTMLElement).queryByText(/check system health/i)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/verification pending/i)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/resend verification email/i)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/health checks ready/i)
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("/health")).not.toBeInTheDocument();
+      expect(screen.queryByText("taylor@example.com")).not.toBeInTheDocument();
+      expect(screen.queryByText("@acme-field-ops")).not.toBeInTheDocument();
     }
   );
 
   it(
-    "shows a verified account badge when the session email is verified",
+    "keeps verified account state out of the home action list",
     {
       timeout: 10_000,
     },
@@ -188,22 +165,25 @@ describe("authenticated shell home", () => {
 
       render(<AuthenticatedShellHome />);
 
-      expect(screen.getAllByText(/email verified/i)).not.toHaveLength(0);
-      expect(
-        screen.getByText(/account trust is in place/i)
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: /resend verification email/i })
-      ).not.toBeInTheDocument();
       const nextActions = screen
         .getByRole("heading", { name: /next actions/i })
         .closest("section");
       expect(nextActions).not.toBeNull();
       expect(
         within(nextActions as HTMLElement).getByText(
-          /account trust is in place/i
+          /invite the first teammate/i
         )
       ).toBeInTheDocument();
+      expect(
+        within(nextActions as HTMLElement).getAllByRole("listitem")
+      ).toHaveLength(1);
+      expect(screen.queryByText(/email verified/i)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/account trust is in place/i)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /resend verification email/i })
+      ).not.toBeInTheDocument();
     }
   );
 });

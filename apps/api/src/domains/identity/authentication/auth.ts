@@ -28,10 +28,6 @@ import type {
 import { loadAuthenticationConfig, matchesTrustedOrigin } from "./config.js";
 import type { AuthenticationConfig } from "./config.js";
 import {
-  AuthenticationDatabase,
-  AuthenticationDatabaseLive,
-} from "./database.js";
-import {
   authSchema,
   invitation as invitationTable,
   organization as organizationTable,
@@ -180,6 +176,7 @@ export function createAuthentication(options: {
   return betterAuth({
     ...authConfig,
     advanced: {
+      ...authConfig.advanced,
       backgroundTasks: {
         handler: options.backgroundTaskHandler,
       },
@@ -450,7 +447,7 @@ export class Authentication extends Effect.Service<Authentication>()(
 export const AuthenticationHttpLive = HttpApiBuilder.Router.use((router) =>
   Effect.gen(function* mountAuthenticationHttp() {
     const auth = yield* Authentication;
-    const { db } = yield* AuthenticationDatabase;
+    const { authDb } = yield* AppDatabase;
     const config = yield* loadAuthenticationConfig;
 
     // Effect strips mount prefixes by default. Better Auth expects to receive
@@ -469,7 +466,7 @@ export const AuthenticationHttpLive = HttpApiBuilder.Router.use((router) =>
       "/api/public",
       HttpApp.fromWebHandler(
         withAuthenticationCors(
-          makePublicInvitationPreviewHandler(db),
+          makePublicInvitationPreviewHandler(authDb),
           config.trustedOrigins
         )
       ),
@@ -478,7 +475,4 @@ export const AuthenticationHttpLive = HttpApiBuilder.Router.use((router) =>
       }
     );
   })
-).pipe(
-  Layer.provide(Authentication.Default),
-  Layer.provide(AuthenticationDatabaseLive)
-);
+).pipe(Layer.provide(Authentication.Default), Layer.provide(AppDatabaseLive));

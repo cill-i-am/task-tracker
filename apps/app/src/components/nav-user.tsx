@@ -85,7 +85,7 @@ export function NavUser({
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <SidebarMenuButton className="rounded-[calc(var(--radius)*2.2)] border border-transparent bg-sidebar/40 px-2.5 py-2 aria-expanded:bg-sidebar-accent aria-expanded:text-sidebar-accent-foreground" />
+              <SidebarMenuButton className="overflow-visible rounded-[calc(var(--radius)*2.2)] border border-transparent bg-sidebar/40 px-2.5 py-2 aria-expanded:bg-sidebar-accent aria-expanded:text-sidebar-accent-foreground" />
             }
           >
             <Avatar className="size-9 rounded-[calc(var(--radius)*2)] border border-sidebar-border/70">

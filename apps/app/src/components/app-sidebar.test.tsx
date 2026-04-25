@@ -192,6 +192,12 @@ describe("app sidebar", () => {
       expect(screen.getByTestId("nav-user")).toHaveTextContent(
         "Taylor Example person@example.com"
       );
+      const brandLink = screen.getByRole("link", { name: /task tracker/i });
+
+      expect(brandLink).toHaveAttribute("href", "/");
+      expect(within(brandLink).getByText("Task Tracker")).not.toHaveClass(
+        "sr-only"
+      );
       expect(screen.getByRole("link", { name: /jobs/i })).toHaveAttribute(
         "href",
         "/jobs"

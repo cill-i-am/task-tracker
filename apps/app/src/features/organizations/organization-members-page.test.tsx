@@ -5,6 +5,8 @@ import type { authClient as AuthClient } from "#/lib/auth-client";
 
 import { OrganizationMembersPage } from "./organization-members-page";
 
+type ListInvitationsResult = Awaited<ReturnType<typeof mockedListInvitations>>;
+
 const { mockedInviteMember, mockedListInvitations } = vi.hoisted(() => ({
   mockedInviteMember: vi.fn<
     (input: {
@@ -49,6 +51,29 @@ vi.mock(import("#/lib/auth-client"), () => ({
     },
   } as unknown as typeof AuthClient,
 }));
+
+async function chooseCommandOption(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  optionLabel: string
+) {
+  await user.click(screen.getByLabelText(label));
+  await user.click(screen.getByRole("option", { name: optionLabel }));
+}
+
+function createDeferredListInvitationsResult() {
+  const { promise, resolve } = (
+    Promise as unknown as {
+      withResolvers: <Value>() => {
+        promise: Promise<Value>;
+        reject: (reason?: unknown) => void;
+        resolve: (value: Value) => void;
+      };
+    }
+  ).withResolvers<ListInvitationsResult>();
+
+  return { promise, resolve };
+}
 
 describe("organization members page", () => {
   beforeEach(() => {
@@ -100,12 +125,12 @@ describe("organization members page", () => {
     render(<OrganizationMembersPage activeOrganizationId="org_123" />);
 
     expect(screen.getByRole("heading", { name: "Members" })).toBeVisible();
-    expect(
-      screen.getByRole("heading", { name: "Pending invitations" })
-    ).toBeVisible();
+    await expect(
+      screen.findByRole("heading", { name: "Pending invitations" })
+    ).resolves.toBeVisible();
     await expect(screen.findByTitle(longEmail)).resolves.toBeVisible();
     expect(screen.queryByText("accepted@example.com")).not.toBeInTheDocument();
-    expect(screen.getAllByText("1 open")).toHaveLength(2);
+    expect(screen.getAllByText("1 open")).toHaveLength(1);
     expect(mockedListInvitations).toHaveBeenCalledWith({
       query: {
         organizationId: "org_123",
@@ -149,10 +174,10 @@ describe("organization members page", () => {
     render(<OrganizationMembersPage activeOrganizationId="org_123" />);
 
     await expect(screen.findByText("ops@example.com")).resolves.toBeVisible();
-    expect(screen.getAllByText("1 open")).toHaveLength(2);
+    expect(screen.getAllByText("1 open")).toHaveLength(1);
 
     await user.type(screen.getByLabelText("Email"), "member@example.com");
-    await user.selectOptions(screen.getByLabelText("Role"), "admin");
+    await chooseCommandOption(user, "Role", "Admin");
     await user.click(screen.getByRole("button", { name: "Send invite" }));
 
     await waitFor(() => {
@@ -181,7 +206,7 @@ describe("organization members page", () => {
     await expect(
       screen.findByTitle("member@example.com")
     ).resolves.toBeVisible();
-    expect(screen.getAllByText("2 open")).toHaveLength(2);
+    expect(screen.getAllByText("2 open")).toHaveLength(1);
   }, 10_000);
 
   it("shows a safe error when an invite fails", async () => {
@@ -230,7 +255,55 @@ describe("organization members page", () => {
     ).not.toBeInTheDocument();
   }, 10_000);
 
-  it("shows the redesigned empty state and zero counts when there are no pending invitations", async () => {
+  it("clears stale pending invitations while another organization loads", async () => {
+    const orgTwoInvitations = createDeferredListInvitationsResult();
+
+    mockedListInvitations
+      .mockResolvedValueOnce({
+        data: [
+          {
+            email: "old-org@example.com",
+            id: "inv_old",
+            role: "member",
+            status: "pending",
+          },
+        ],
+        error: null,
+      })
+      .mockReturnValueOnce(orgTwoInvitations.promise);
+
+    const { rerender } = render(
+      <OrganizationMembersPage activeOrganizationId="org_1" />
+    );
+
+    await expect(
+      screen.findByText("old-org@example.com")
+    ).resolves.toBeVisible();
+
+    rerender(<OrganizationMembersPage activeOrganizationId="org_2" />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("old-org@example.com")).not.toBeInTheDocument();
+    });
+
+    orgTwoInvitations.resolve({
+      data: [
+        {
+          email: "new-org@example.com",
+          id: "inv_new",
+          role: "admin",
+          status: "pending",
+        },
+      ],
+      error: null,
+    });
+
+    await expect(
+      screen.findByText("new-org@example.com")
+    ).resolves.toBeVisible();
+  }, 10_000);
+
+  it("hides the pending invitations section when there are no pending invitations", async () => {
     mockedListInvitations.mockResolvedValue({
       data: [
         {
@@ -245,14 +318,20 @@ describe("organization members page", () => {
 
     render(<OrganizationMembersPage activeOrganizationId="org_123" />);
 
-    await expect(
-      screen.findByText("No pending invitations yet.")
-    ).resolves.toBeVisible();
+    await waitFor(() => {
+      expect(mockedListInvitations).toHaveBeenCalledOnce();
+    });
     expect(
-      screen.getByText(
+      screen.queryByRole("heading", { name: "Pending invitations" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("No pending invitations yet.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
         "Send the first invite when you're ready to add someone."
       )
-    ).toBeVisible();
-    expect(screen.getAllByText("0 open")).toHaveLength(2);
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("0 open")).not.toBeInTheDocument();
   }, 10_000);
 });

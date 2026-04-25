@@ -63,14 +63,10 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="rounded-[calc(var(--radius)*2.4)] px-2.5 py-2.5"
-              render={
-                <Link to="/">
-                  <span className="sr-only">Task Tracker</span>
-                </Link>
-              }
+              className="rounded-xl px-2.5 py-2.5"
+              render={<Link to="/" />}
             >
-              <div className="flex aspect-square size-9 items-center justify-center rounded-[calc(var(--radius)*2.1)] bg-sidebar-primary text-sidebar-primary-foreground shadow-[inset_0_1px_0_color-mix(in_oklab,var(--sidebar-primary-foreground)_30%,transparent)]">
+              <div className="flex aspect-square size-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shadow-[inset_0_1px_0_color-mix(in_oklab,var(--sidebar-primary-foreground)_30%,transparent)]">
                 <HugeiconsIcon
                   icon={CommandIcon}
                   strokeWidth={2}
@@ -78,9 +74,6 @@ export function AppSidebar({
                 />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate text-[0.68rem] font-medium tracking-[0.18em] text-sidebar-foreground/55 uppercase">
-                  Workspace
-                </span>
                 <span className="truncate font-medium">Task Tracker</span>
               </div>
             </SidebarMenuButton>

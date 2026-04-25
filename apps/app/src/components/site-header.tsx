@@ -1,8 +1,8 @@
 "use client";
 
-import { Link } from "@tanstack/react-router";
+import { Link, useMatches } from "@tanstack/react-router";
+import * as React from "react";
 
-import { SearchForm } from "#/components/search-form";
 import ThemeToggle from "#/components/ThemeToggle";
 import {
   Breadcrumb,
@@ -15,34 +15,52 @@ import {
 import { SidebarTrigger } from "#/components/ui/sidebar";
 
 export function SiteHeader() {
+  const breadcrumbs = useMatches({
+    select: (matches) =>
+      matches
+        .map((match) => match.staticData.breadcrumb)
+        .filter((breadcrumb) => breadcrumb !== undefined),
+  });
+
   return (
     <header className="sticky top-0 z-40 flex w-full items-center border-b border-border/60 bg-background/90 backdrop-blur">
       <div className="flex min-h-(--header-height) w-full flex-wrap items-center gap-3 px-3 py-3 sm:px-5">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <SidebarTrigger
-            className="size-10 rounded-[calc(var(--radius)*2.2)] border border-border/70 bg-background/80 sm:size-8"
+            className="size-10 rounded-lg border border-border/70 bg-background/80 sm:size-8 sm:rounded-md"
             aria-label="Toggle navigation"
           />
           <div className="min-w-0">
-            <p className="text-[0.68rem] font-medium tracking-[0.18em] text-muted-foreground uppercase">
-              Workspace
-            </p>
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
-                  <BreadcrumbLink render={<Link to="/" />}>
-                    Task Tracker
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>Your work</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            {breadcrumbs.length > 0 ? (
+              <Breadcrumb>
+                <BreadcrumbList>
+                  {breadcrumbs.map((breadcrumb, index) => {
+                    const isCurrent = index === breadcrumbs.length - 1;
+
+                    return (
+                      <React.Fragment
+                        key={breadcrumb.to ?? `current-${breadcrumb.label}`}
+                      >
+                        {index > 0 ? <BreadcrumbSeparator /> : null}
+                        <BreadcrumbItem>
+                          {isCurrent || breadcrumb.to === undefined ? (
+                            <BreadcrumbPage>{breadcrumb.label}</BreadcrumbPage>
+                          ) : (
+                            <BreadcrumbLink
+                              render={<Link to={breadcrumb.to} />}
+                            >
+                              {breadcrumb.label}
+                            </BreadcrumbLink>
+                          )}
+                        </BreadcrumbItem>
+                      </React.Fragment>
+                    );
+                  })}
+                </BreadcrumbList>
+              </Breadcrumb>
+            ) : null}
           </div>
         </div>
-        <SearchForm className="order-last min-w-0 basis-full md:order-none md:ml-auto md:w-[min(100%,17rem)] md:basis-auto" />
         <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
           <ThemeToggle />
         </div>

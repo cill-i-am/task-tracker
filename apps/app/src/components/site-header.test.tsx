@@ -3,6 +3,11 @@ import type { ComponentProps } from "react";
 
 import { SiteHeader } from "./site-header";
 
+const { mockedUseMatches } = vi.hoisted(() => ({
+  mockedUseMatches:
+    vi.fn<(input: { select: (matches: unknown[]) => unknown }) => unknown>(),
+}));
+
 vi.mock(import("@tanstack/react-router"), async (importActual) => {
   const actual = await importActual();
 
@@ -17,14 +22,9 @@ vi.mock(import("@tanstack/react-router"), async (importActual) => {
         {children}
       </a>
     )) as typeof actual.Link,
+    useMatches: mockedUseMatches as typeof actual.useMatches,
   };
 });
-
-vi.mock(import("#/components/search-form"), () => ({
-  SearchForm: ({ className }: ComponentProps<"form">) => (
-    <form role="search" data-testid="search-form" data-class-name={className} />
-  ),
-}));
 
 vi.mock(import("#/components/ThemeToggle"), () => ({
   default: () => <button type="button">Theme mode</button>,
@@ -50,8 +50,30 @@ vi.mock(import("#/components/ui/sidebar"), async (importActual) => {
 });
 
 describe("site header", () => {
+  beforeEach(() => {
+    mockedUseMatches.mockImplementation(({ select }) =>
+      select([
+        { id: "__root__", staticData: {} },
+        { id: "/_app", staticData: {} },
+        {
+          id: "/_app/_org/jobs",
+          staticData: {
+            breadcrumb: {
+              label: "Jobs",
+              to: "/jobs",
+            },
+          },
+        },
+      ])
+    );
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   it(
-    "keeps search available in the shared header without hiding it on mobile",
+    "keeps navigation, route breadcrumbs, and theme controls available",
     {
       timeout: 10_000,
     },
@@ -61,16 +83,14 @@ describe("site header", () => {
       expect(
         screen.getByRole("button", { name: /toggle navigation/i })
       ).toBeInTheDocument();
-      expect(screen.getByRole("search")).toBeInTheDocument();
+      expect(screen.queryByRole("search")).not.toBeInTheDocument();
+      expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
+      expect(screen.getByText("Jobs")).toBeInTheDocument();
+      expect(screen.queryByText("Task Tracker")).not.toBeInTheDocument();
+      expect(screen.queryByText("Your work")).not.toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: /theme mode/i })
       ).toBeInTheDocument();
-
-      const searchForm = screen.getByTestId("search-form");
-      const className = searchForm.dataset.className ?? "";
-
-      expect(className).toContain("basis-full");
-      expect(className).not.toContain("hidden");
     }
   );
 });

@@ -51,7 +51,7 @@ export function NavMain({
 
   return (
     <SidebarGroup className="gap-2 pt-0">
-      <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+      <SidebarGroupLabel className="sr-only">Navigation</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => {
           const hasChildren = Boolean(item.items?.length);

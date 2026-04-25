@@ -132,7 +132,7 @@ describe("app layout", () => {
         "Taylor Example"
       );
       expect(mockedSidebarInset).toHaveBeenCalledOnce();
-      expect(mockedSidebarInset.mock.calls[0]?.[0].className).not.toContain(
+      expect(mockedSidebarInset.mock.calls[0]?.[0].className).toContain(
         "overflow-hidden"
       );
       expect(screen.getByTestId("sidebar-inset")).toContainElement(

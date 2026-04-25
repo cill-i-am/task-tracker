@@ -24,6 +24,7 @@ import {
   loadAuthenticationConfig,
   makeAuthenticationConfig,
   makeAuthenticationTrustedOrigins,
+  resolveCrossSubDomainCookieDomain,
 } from "./config.js";
 import * as schemaModule from "./schema.js";
 import {
@@ -115,6 +116,37 @@ describe("makeAuthenticationConfig()", () => {
     ).toContain("https://task-tracker.app.task-tracker.localhost:1355");
   }, 10_000);
 
+  it("shares auth cookies across task-tracker.localhost subdomains", () => {
+    const config = makeAuthenticationConfig({
+      appOrigin: "https://linear-ui-refresh.app.task-tracker.localhost:1355",
+      baseUrl: "https://linear-ui-refresh.api.task-tracker.localhost:1355",
+      portlessUrl: "https://linear-ui-refresh.api.task-tracker.localhost:1355",
+      secret: "super-secret-value",
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
+    });
+
+    expect(config.advanced?.crossSubDomainCookies).toStrictEqual({
+      enabled: true,
+      domain: "task-tracker.localhost",
+    });
+    if (config.advanced?.trustedProxyHeaders !== true) {
+      throw new Error("Expected trusted proxy headers to be enabled.");
+    }
+  }, 10_000);
+
+  it("keeps auth cookies host-scoped for plain localhost development", () => {
+    const config = makeAuthenticationConfig({
+      appOrigin: "http://127.0.0.1:4173",
+      baseUrl: "http://127.0.0.1:3001",
+      secret: "super-secret-value",
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
+    });
+
+    expect(config.advanced).toStrictEqual({
+      trustedProxyHeaders: true,
+    });
+  }, 10_000);
+
   it("adds the explicit app origin to the trusted origin allowlist", () => {
     expect(
       makeAuthenticationTrustedOrigins({
@@ -159,6 +191,24 @@ describe("makeAuthenticationConfig()", () => {
         expect(config.trustedOrigins).toContain("http://127.0.0.1:4304");
       }
     );
+  }, 10_000);
+
+  it("derives the shared cookie domain from task-tracker.localhost hosts", () => {
+    expect(
+      resolveCrossSubDomainCookieDomain({
+        appOrigin: "https://linear-ui-refresh.app.task-tracker.localhost:1355",
+        baseUrl: "https://linear-ui-refresh.api.task-tracker.localhost:1355",
+        portlessUrl:
+          "https://linear-ui-refresh.api.task-tracker.localhost:1355",
+      })
+    ).toBe("task-tracker.localhost");
+
+    expect(
+      resolveCrossSubDomainCookieDomain({
+        appOrigin: "http://127.0.0.1:4173",
+        baseUrl: "http://127.0.0.1:3001",
+      })
+    ).toBeUndefined();
   }, 10_000);
 });
 
