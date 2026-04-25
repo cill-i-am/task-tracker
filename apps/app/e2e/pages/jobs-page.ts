@@ -16,7 +16,9 @@ export class JobsPage {
       level: 1,
       name: "Jobs",
     });
-    this.newJobButton = page.getByRole("link", { name: "New job" });
+    this.newJobButton = page
+      .getByRole("banner")
+      .getByRole("link", { name: "New job" });
   }
 
   async openFromHome() {
