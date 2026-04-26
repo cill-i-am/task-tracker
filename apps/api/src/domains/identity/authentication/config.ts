@@ -126,6 +126,11 @@ export interface AuthenticationConfig {
     readonly sendOnSignIn: false;
     readonly sendOnSignUp: true;
   };
+  readonly user: {
+    readonly changeEmail: {
+      readonly enabled: true;
+    };
+  };
 }
 
 export class AuthenticationConfigService extends Effect.Service<AuthenticationConfigService>()(
@@ -265,6 +270,11 @@ export function makeAuthenticationConfig(
       expiresIn: 3600,
       sendOnSignIn: false,
       sendOnSignUp: true,
+    },
+    user: {
+      changeEmail: {
+        enabled: true,
+      },
     },
   };
 }

@@ -88,6 +88,11 @@ describe("makeAuthenticationConfig()", () => {
         sendOnSignIn: false,
         sendOnSignUp: true,
       },
+      user: {
+        changeEmail: {
+          enabled: true,
+        },
+      },
     });
 
     expect(config).not.toHaveProperty("socialProviders");
@@ -105,6 +110,18 @@ describe("makeAuthenticationConfig()", () => {
     ).toStrictEqual({
       window: 60,
       max: 3,
+    });
+  }, 10_000);
+
+  it("enables Better Auth's verified email change flow", () => {
+    const config = makeAuthenticationConfig({
+      baseUrl: "http://127.0.0.1:3001",
+      secret: "super-secret-value",
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
+    });
+
+    expect(config.user.changeEmail).toStrictEqual({
+      enabled: true,
     });
   }, 10_000);
 
