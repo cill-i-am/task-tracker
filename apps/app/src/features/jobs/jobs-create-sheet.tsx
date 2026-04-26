@@ -6,10 +6,12 @@ import {
   AlertSquareIcon,
   ArrowDown01Icon,
   Briefcase01Icon,
-  ChartNoAxesColumnIncreasingIcon,
   Flag01Icon,
   Location01Icon,
   MinusSignIcon,
+  SignalFull02Icon,
+  SignalLow02Icon,
+  SignalMedium02Icon,
   UserIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -82,19 +84,19 @@ const PRIORITY_OPTIONS: readonly {
   { icon: MinusSignIcon, label: "None", shortcut: "0", value: "none" },
   { icon: AlertSquareIcon, label: "Urgent", shortcut: "1", value: "urgent" },
   {
-    icon: ChartNoAxesColumnIncreasingIcon,
+    icon: SignalFull02Icon,
     label: "High",
     shortcut: "2",
     value: "high",
   },
   {
-    icon: ChartNoAxesColumnIncreasingIcon,
+    icon: SignalMedium02Icon,
     label: "Medium",
     shortcut: "3",
     value: "medium",
   },
   {
-    icon: ChartNoAxesColumnIncreasingIcon,
+    icon: SignalLow02Icon,
     label: "Low",
     shortcut: "4",
     value: "low",
@@ -176,6 +178,8 @@ export function JobsCreateSheet() {
   );
   const siteSelectionGroups = buildSiteSelectionGroups(options.sites);
   const contactSelectionGroups = buildContactSelectionGroups(contactGroups);
+  const showInlineSiteSummary =
+    values.siteSelection === INLINE_CREATE_VALUE && hasInlineSiteDraft(values);
 
   React.useEffect(() => {
     if (values.siteSelection !== INLINE_CREATE_VALUE) {
@@ -419,7 +423,7 @@ export function JobsCreateSheet() {
           </div>
 
           <FieldGroup>
-            {values.siteSelection === INLINE_CREATE_VALUE ? (
+            {showInlineSiteSummary ? (
               <div className="flex items-center justify-between gap-3 border-y py-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -428,7 +432,7 @@ export function JobsCreateSheet() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium">New site</p>
                     <p className="truncate text-sm text-muted-foreground">
-                      {values.siteName.trim() || "Name, region, and location"}
+                      {values.siteName.trim()}
                     </p>
                   </div>
                 </div>
@@ -996,7 +1000,7 @@ function ResponsiveCreateOverlay({
 }) {
   return (
     <ResponsiveDrawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[92vh] w-full p-0 data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:max-h-none data-[vaul-drawer-direction=right]:sm:max-w-3xl">
+      <DrawerContent className="max-h-[92vh] w-full p-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:sm:top-1/2 data-[vaul-drawer-direction=right]:sm:right-auto data-[vaul-drawer-direction=right]:sm:bottom-auto data-[vaul-drawer-direction=right]:sm:left-1/2 data-[vaul-drawer-direction=right]:sm:h-auto data-[vaul-drawer-direction=right]:sm:max-h-[calc(100vh-6rem)] data-[vaul-drawer-direction=right]:sm:max-w-[min(56rem,calc(100vw-6rem))] data-[vaul-drawer-direction=right]:sm:-translate-x-1/2 data-[vaul-drawer-direction=right]:sm:-translate-y-1/2 data-[vaul-drawer-direction=right]:sm:animate-none!">
         <DrawerHeader className="border-b px-5 py-4 text-left md:px-6 md:py-5">
           <DrawerTitle>New job</DrawerTitle>
         </DrawerHeader>
@@ -1131,6 +1135,10 @@ function validate(values: JobsCreateFormState): JobsCreateFieldErrors {
         ? "Give the job a clear title before you create it."
         : undefined,
   };
+}
+
+function hasInlineSiteDraft(values: JobsCreateFormState) {
+  return values.siteName.trim().length > 0;
 }
 
 function hasFieldErrors(errors: JobsCreateFieldErrors) {

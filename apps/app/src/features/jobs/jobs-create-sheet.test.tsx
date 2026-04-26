@@ -458,6 +458,27 @@ describe("jobs create sheet", () => {
     }
   );
 
+  it(
+    "shows the inline site summary only after site details are drafted",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+      render(<JobsCreateSheet />);
+
+      await choosePickerOption(user, "Site", "Create a new site");
+
+      expect(
+        screen.queryByText("Name, region, and location")
+      ).not.toBeInTheDocument();
+
+      await user.type(screen.getByLabelText("Site name"), "Warehouse");
+
+      expect(screen.getByText("Warehouse")).toBeInTheDocument();
+    }
+  );
+
   it("hides empty existing groups and no-contact clearing actions", async () => {
     mockedUseAtomValue.mockImplementation((atom: unknown) => {
       if (atom === createJobMutationAtom) {
