@@ -5,7 +5,7 @@ import type {
   SiteIdType,
 } from "@task-tracker/jobs-core";
 import { SITE_NOT_FOUND_ERROR_TAG } from "@task-tracker/jobs-core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Exit } from "effect";
 import type { ComponentProps, ReactNode } from "react";
@@ -211,21 +211,47 @@ vi.mock("#/components/ui/select", () => ({
   Select: (props: ComponentProps<"select">) => <select {...props} />,
 }));
 
-vi.mock("#/components/ui/sheet", () => ({
-  Sheet: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SheetContent: ({ children }: { children?: ReactNode }) => (
+vi.mock("#/components/ui/responsive-drawer", () => ({
+  ResponsiveDrawer: ({
+    children,
+    open = true,
+  }: {
+    children?: ReactNode;
+    open?: boolean;
+  }) =>
+    open ? (
+      <div data-testid="responsive-drawer" data-nested="false">
+        {children}
+      </div>
+    ) : null,
+  ResponsiveNestedDrawer: ({
+    children,
+    open = true,
+  }: {
+    children?: ReactNode;
+    open?: boolean;
+  }) =>
+    open ? (
+      <div data-testid="responsive-drawer" data-nested="true">
+        {children}
+      </div>
+    ) : null,
+}));
+
+vi.mock("#/components/ui/drawer", () => ({
+  DrawerContent: ({ children }: { children?: ReactNode }) => (
     <section>{children}</section>
   ),
-  SheetDescription: ({ children }: { children?: ReactNode }) => (
+  DrawerDescription: ({ children }: { children?: ReactNode }) => (
     <p>{children}</p>
   ),
-  SheetFooter: ({ children }: { children?: ReactNode }) => (
+  DrawerFooter: ({ children }: { children?: ReactNode }) => (
     <footer>{children}</footer>
   ),
-  SheetHeader: ({ children }: { children?: ReactNode }) => (
+  DrawerHeader: ({ children }: { children?: ReactNode }) => (
     <header>{children}</header>
   ),
-  SheetTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
+  DrawerTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
 }));
 
 vi.mock("#/features/auth/auth-form-field", () => ({
@@ -271,6 +297,15 @@ async function createInlineContact(
       name: `Create new contact: "${contactName}"`,
     })
   );
+}
+
+function getResponsiveDrawerForHeading(name: string) {
+  const heading = screen.getByRole("heading", { name });
+  const drawer = heading.closest('[data-testid="responsive-drawer"]');
+
+  expect(drawer).not.toBeNull();
+
+  return drawer as HTMLElement;
 }
 
 describe("jobs create sheet", () => {
@@ -409,6 +444,51 @@ describe("jobs create sheet", () => {
     }
   );
 
+  it(
+    "renders inline site and location overlays as nested drawers",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+      render(<JobsCreateSheet />);
+
+      await choosePickerOption(user, "Site", "Create a new site");
+
+      const siteDrawer = getResponsiveDrawerForHeading("New site");
+      expect(siteDrawer).toHaveAttribute("data-nested", "true");
+
+      await user.click(
+        within(siteDrawer).getByRole("button", { name: /edit location/i })
+      );
+
+      const locationDrawer = getResponsiveDrawerForHeading("Site location");
+      expect(locationDrawer).toHaveAttribute("data-nested", "true");
+      expect(siteDrawer).toContainElement(locationDrawer);
+    }
+  );
+
+  it(
+    "shows the inline site summary only after site details are drafted",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+      render(<JobsCreateSheet />);
+
+      await choosePickerOption(user, "Site", "Create a new site");
+
+      expect(
+        screen.queryByText("Name, region, and location")
+      ).not.toBeInTheDocument();
+
+      await user.type(screen.getByLabelText("Site name"), "Warehouse");
+
+      expect(screen.getByText("Warehouse")).toBeInTheDocument();
+    }
+  );
+
   it("hides empty existing groups and no-contact clearing actions", async () => {
     mockedUseAtomValue.mockImplementation((atom: unknown) => {
       if (atom === createJobMutationAtom) {
@@ -495,8 +575,17 @@ describe("jobs create sheet", () => {
       );
       await user.type(screen.getByLabelText("Latitude"), "53.3498");
       await user.type(screen.getByLabelText("Longitude"), "-6.2603");
-      await user.click(screen.getByRole("button", { name: "Done" }));
-      await user.click(screen.getByRole("button", { name: "Done" }));
+      await user.click(
+        within(getResponsiveDrawerForHeading("Site location")).getByRole(
+          "button",
+          { name: "Done" }
+        )
+      );
+      await user.click(
+        within(getResponsiveDrawerForHeading("New site")).getByRole("button", {
+          name: "Done",
+        })
+      );
       await user.click(screen.getByRole("button", { name: /create job/i }));
 
       expect(mockedCreateJob).toHaveBeenCalledWith({
