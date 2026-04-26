@@ -1,7 +1,12 @@
 "use client";
 
-import { UnfoldMoreIcon, LogoutIcon } from "@hugeicons/core-free-icons";
+import {
+  LogoutIcon,
+  Settings02Icon,
+  UnfoldMoreIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Link } from "@tanstack/react-router";
 import * as React from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
@@ -129,6 +134,13 @@ export function NavUser({
                   </div>
                 </div>
               </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem render={<Link to="/settings" />}>
+                <HugeiconsIcon icon={Settings02Icon} strokeWidth={2} />
+                Settings
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>

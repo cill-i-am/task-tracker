@@ -21,7 +21,7 @@ declare module "@tanstack/react-router" {
   interface StaticDataRouteOption {
     breadcrumb?: {
       readonly label: string;
-      readonly to?: "/" | "/jobs" | "/jobs/new" | "/members";
+      readonly to?: "/" | "/jobs" | "/jobs/new" | "/members" | "/settings";
     };
   }
 }

@@ -20,6 +20,7 @@ import { Route as AcceptInvitationInvitationIdRouteImport } from './routes/accep
 import { Route as AppCreateOrganizationRouteImport } from './routes/_app.create-organization'
 import { Route as AppOrgRouteImport } from './routes/_app._org'
 import { Route as AppOrgIndexRouteImport } from './routes/_app._org.index'
+import { Route as AppOrgSettingsRouteImport } from './routes/_app._org.settings'
 import { Route as AppOrgMembersRouteImport } from './routes/_app._org.members'
 import { Route as AppOrgJobsRouteImport } from './routes/_app._org.jobs'
 import { Route as AppOrgJobsNewRouteImport } from './routes/_app._org.jobs.new'
@@ -79,6 +80,11 @@ const AppOrgIndexRoute = AppOrgIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppOrgRoute,
 } as any)
+const AppOrgSettingsRoute = AppOrgSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppOrgRoute,
+} as any)
 const AppOrgMembersRoute = AppOrgMembersRouteImport.update({
   id: '/members',
   path: '/members',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/accept-invitation/$invitationId': typeof AcceptInvitationInvitationIdRoute
   '/jobs': typeof AppOrgJobsRouteWithChildren
   '/members': typeof AppOrgMembersRoute
+  '/settings': typeof AppOrgSettingsRoute
   '/jobs/$jobId': typeof AppOrgJobsJobIdRoute
   '/jobs/new': typeof AppOrgJobsNewRoute
 }
@@ -127,6 +134,7 @@ export interface FileRoutesByTo {
   '/accept-invitation/$invitationId': typeof AcceptInvitationInvitationIdRoute
   '/jobs': typeof AppOrgJobsRouteWithChildren
   '/members': typeof AppOrgMembersRoute
+  '/settings': typeof AppOrgSettingsRoute
   '/jobs/$jobId': typeof AppOrgJobsJobIdRoute
   '/jobs/new': typeof AppOrgJobsNewRoute
 }
@@ -144,6 +152,7 @@ export interface FileRoutesById {
   '/accept-invitation/$invitationId': typeof AcceptInvitationInvitationIdRoute
   '/_app/_org/jobs': typeof AppOrgJobsRouteWithChildren
   '/_app/_org/members': typeof AppOrgMembersRoute
+  '/_app/_org/settings': typeof AppOrgSettingsRoute
   '/_app/_org/': typeof AppOrgIndexRoute
   '/_app/_org/jobs/$jobId': typeof AppOrgJobsJobIdRoute
   '/_app/_org/jobs/new': typeof AppOrgJobsNewRoute
@@ -162,6 +171,7 @@ export interface FileRouteTypes {
     | '/accept-invitation/$invitationId'
     | '/jobs'
     | '/members'
+    | '/settings'
     | '/jobs/$jobId'
     | '/jobs/new'
   fileRoutesByTo: FileRoutesByTo
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/accept-invitation/$invitationId'
     | '/jobs'
     | '/members'
+    | '/settings'
     | '/jobs/$jobId'
     | '/jobs/new'
   id:
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/accept-invitation/$invitationId'
     | '/_app/_org/jobs'
     | '/_app/_org/members'
+    | '/_app/_org/settings'
     | '/_app/_org/'
     | '/_app/_org/jobs/$jobId'
     | '/_app/_org/jobs/new'
@@ -288,6 +300,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOrgIndexRouteImport
       parentRoute: typeof AppOrgRoute
     }
+    '/_app/_org/settings': {
+      id: '/_app/_org/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppOrgSettingsRouteImport
+      parentRoute: typeof AppOrgRoute
+    }
     '/_app/_org/members': {
       id: '/_app/_org/members'
       path: '/members'
@@ -336,12 +355,14 @@ const AppOrgJobsRouteWithChildren = AppOrgJobsRoute._addFileChildren(
 interface AppOrgRouteChildren {
   AppOrgJobsRoute: typeof AppOrgJobsRouteWithChildren
   AppOrgMembersRoute: typeof AppOrgMembersRoute
+  AppOrgSettingsRoute: typeof AppOrgSettingsRoute
   AppOrgIndexRoute: typeof AppOrgIndexRoute
 }
 
 const AppOrgRouteChildren: AppOrgRouteChildren = {
   AppOrgJobsRoute: AppOrgJobsRouteWithChildren,
   AppOrgMembersRoute: AppOrgMembersRoute,
+  AppOrgSettingsRoute: AppOrgSettingsRoute,
   AppOrgIndexRoute: AppOrgIndexRoute,
 }
 

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { MouseEventHandler, ReactNode } from "react";
+import { isValidElement } from "react";
+import type { ComponentProps, MouseEventHandler, ReactNode } from "react";
 
 import type { NavUserNavigate } from "./nav-user";
 import { NavUser } from "./nav-user";
@@ -56,6 +57,23 @@ vi.mock(
     };
   }
 );
+
+vi.mock(import("@tanstack/react-router"), async (importActual) => {
+  const actual = await importActual();
+
+  return {
+    ...actual,
+    Link: (({
+      children,
+      to,
+      ...props
+    }: ComponentProps<"a"> & { to?: string }) => (
+      <a href={to} {...props}>
+        {children}
+      </a>
+    )) as typeof actual.Link,
+  };
+});
 
 vi.mock(import("#/components/ui/sidebar"), async (importActual) => {
   const actual = await importActual();
@@ -114,26 +132,40 @@ vi.mock(import("#/components/ui/dropdown-menu"), async (importActual) => {
     DropdownMenuItem: (({
       children,
       onSelect,
+      render: renderSlot,
       ...props
     }: {
       children?: ReactNode;
       onSelect?: (event: Event) => void | Promise<void>;
+      render?: ReactNode;
       disabled?: boolean;
-    }) => (
-      <button
-        type="button"
-        {...props}
-        onClick={() => {
-          const event = new Event("select", {
-            cancelable: true,
-          });
+    }) => {
+      if (isValidElement<{ href?: string; to?: string }>(renderSlot)) {
+        const href = renderSlot.props.to ?? renderSlot.props.href;
 
-          void onSelect?.(event);
-        }}
-      >
-        {children}
-      </button>
-    )) as typeof actual.DropdownMenuItem,
+        return (
+          <a href={href} {...props}>
+            {children}
+          </a>
+        );
+      }
+
+      return (
+        <button
+          type="button"
+          {...props}
+          onClick={() => {
+            const event = new Event("select", {
+              cancelable: true,
+            });
+
+            void onSelect?.(event);
+          }}
+        >
+          {children}
+        </button>
+      );
+    }) as typeof actual.DropdownMenuItem,
     DropdownMenuLabel: (({ children }: { children?: ReactNode }) => (
       <div>{children}</div>
     )) as typeof actual.DropdownMenuLabel,
@@ -204,6 +236,15 @@ describe("nav user", () => {
   function renderNavUser() {
     return render(<NavUser user={user} navigate={mockedNavigate} />);
   }
+
+  it("links to organization settings from the account menu", () => {
+    renderNavUser();
+
+    expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute(
+      "href",
+      "/settings"
+    );
+  }, 10_000);
 
   it(
     "shows a pending label and blocks repeat clicks while sign-out is in flight",
