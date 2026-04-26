@@ -32,6 +32,13 @@ import {
 import { CommandSelect } from "#/components/ui/command-select";
 import type { CommandSelectGroup } from "#/components/ui/command-select";
 import {
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "#/components/ui/drawer";
+import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -46,15 +53,8 @@ import {
   FieldLabel,
 } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { ResponsiveDrawer } from "#/components/ui/responsive-drawer";
 import { Separator } from "#/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "#/components/ui/sheet";
 import { Textarea } from "#/components/ui/textarea";
 
 import { JobsDetailLocation } from "./jobs-detail-location";
@@ -396,7 +396,7 @@ export function JobsDetailSheet({
   }
 
   return (
-    <Sheet
+    <ResponsiveDrawer
       open
       onOpenChange={(open) => {
         if (!open) {
@@ -404,8 +404,8 @@ export function JobsDetailSheet({
         }
       }}
     >
-      <SheetContent side="right" className="w-full sm:max-w-2xl">
-        <SheetHeader className="gap-3 border-b">
+      <DrawerContent className="max-h-[92vh] w-full p-0 data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:max-h-none data-[vaul-drawer-direction=right]:sm:max-w-2xl">
+        <DrawerHeader className="gap-3 border-b">
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant={
@@ -421,11 +421,11 @@ export function JobsDetailSheet({
             </Badge>
           </div>
           <div className="flex flex-col gap-1.5">
-            <SheetTitle>{detail.job.title}</SheetTitle>
-            <SheetDescription>
+            <DrawerTitle>{detail.job.title}</DrawerTitle>
+            <DrawerDescription>
               Keep the queue in view while you move the status forward, add
               context, and log the site visits that matter.
-            </SheetDescription>
+            </DrawerDescription>
           </div>
           <div className="grid gap-2 pt-1 sm:grid-cols-2">
             <HeaderMetaCard
@@ -457,7 +457,7 @@ export function JobsDetailSheet({
               supporting={`Created ${formatDate(detail.job.createdAt)}`}
             />
           </div>
-        </SheetHeader>
+        </DrawerHeader>
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">
@@ -785,7 +785,7 @@ export function JobsDetailSheet({
             </Card>
           </div>
 
-          <SheetFooter className="border-t">
+          <DrawerFooter className="border-t">
             <Button
               type="button"
               variant="ghost"
@@ -794,10 +794,10 @@ export function JobsDetailSheet({
             >
               Close
             </Button>
-          </SheetFooter>
+          </DrawerFooter>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DrawerContent>
+    </ResponsiveDrawer>
   );
 }
 
