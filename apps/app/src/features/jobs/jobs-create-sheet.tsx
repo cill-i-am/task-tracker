@@ -60,7 +60,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "#/components/ui/popover";
-import { ResponsiveDrawer } from "#/components/ui/responsive-drawer";
+import {
+  ResponsiveDrawer,
+  ResponsiveNestedDrawer,
+} from "#/components/ui/responsive-drawer";
 import { Textarea } from "#/components/ui/textarea";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { cn } from "#/lib/utils";
@@ -468,8 +471,7 @@ export function JobsCreateSheet() {
         </DrawerFooter>
       </form>
 
-      <ResponsiveDrawer
-        nested
+      <ResponsiveNestedDrawer
         open={siteDrawerOpen}
         onOpenChange={(nextOpen) => {
           setSiteDrawerOpen(nextOpen);
@@ -560,8 +562,7 @@ export function JobsCreateSheet() {
             </Button>
           </DrawerFooter>
 
-          <ResponsiveDrawer
-            nested
+          <ResponsiveNestedDrawer
             open={locationDrawerOpen}
             onOpenChange={setLocationDrawerOpen}
           >
@@ -779,9 +780,9 @@ export function JobsCreateSheet() {
                 </Button>
               </DrawerFooter>
             </DrawerContent>
-          </ResponsiveDrawer>
+          </ResponsiveNestedDrawer>
         </DrawerContent>
-      </ResponsiveDrawer>
+      </ResponsiveNestedDrawer>
     </ResponsiveCreateOverlay>
   );
 }

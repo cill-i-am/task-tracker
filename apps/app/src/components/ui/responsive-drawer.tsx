@@ -8,30 +8,58 @@ const RESPONSIVE_DRAWER_DESKTOP_MIN_WIDTH = 768;
 
 type DrawerDirection = "top" | "bottom" | "left" | "right";
 type DrawerRootProps = React.ComponentProps<typeof Drawer>;
+type DrawerNestedRootProps = React.ComponentProps<typeof DrawerNestedRoot>;
 type DistributiveOmit<T, K extends keyof T> = T extends unknown
   ? Omit<T, K>
   : never;
 
-type ResponsiveDrawerProps = DistributiveOmit<DrawerRootProps, "direction"> & {
+interface ResponsiveDrawerDirectionOptions {
   readonly desktopDirection?: Extract<DrawerDirection, "left" | "right">;
   readonly mobileDirection?: Extract<DrawerDirection, "top" | "bottom">;
-  readonly nested?: boolean;
-};
+}
+
+type ResponsiveDrawerProps = DistributiveOmit<DrawerRootProps, "direction"> &
+  ResponsiveDrawerDirectionOptions;
 
 function ResponsiveDrawer({
   desktopDirection = "right",
   mobileDirection = "bottom",
-  nested = false,
   ...props
 }: ResponsiveDrawerProps) {
-  const isDesktop = useResponsiveDrawerDesktop();
-  const direction = isDesktop ? desktopDirection : mobileDirection;
-
-  if (nested) {
-    return <DrawerNestedRoot {...props} direction={direction} />;
-  }
+  const direction = useResponsiveDrawerDirection({
+    desktopDirection,
+    mobileDirection,
+  });
 
   return <Drawer {...props} direction={direction} />;
+}
+
+type ResponsiveNestedDrawerProps = DistributiveOmit<
+  DrawerNestedRootProps,
+  "direction"
+> &
+  ResponsiveDrawerDirectionOptions;
+
+function ResponsiveNestedDrawer({
+  desktopDirection = "right",
+  mobileDirection = "bottom",
+  ...props
+}: ResponsiveNestedDrawerProps) {
+  const direction = useResponsiveDrawerDirection({
+    desktopDirection,
+    mobileDirection,
+  });
+
+  return <DrawerNestedRoot {...props} direction={direction} />;
+}
+
+function useResponsiveDrawerDirection({
+  desktopDirection,
+  mobileDirection,
+}: Required<ResponsiveDrawerDirectionOptions>) {
+  const isDesktop = useResponsiveDrawerDesktop();
+
+  return isDesktop ? desktopDirection : mobileDirection;
 }
 
 function useResponsiveDrawerDesktop() {
@@ -62,4 +90,4 @@ function getResponsiveDrawerViewportSnapshot() {
   return window.innerWidth >= RESPONSIVE_DRAWER_DESKTOP_MIN_WIDTH;
 }
 
-export { ResponsiveDrawer, useResponsiveDrawerDesktop };
+export { ResponsiveDrawer, ResponsiveNestedDrawer, useResponsiveDrawerDesktop };

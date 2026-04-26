@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 
-import { ResponsiveDrawer } from "./responsive-drawer";
+import { ResponsiveDrawer, ResponsiveNestedDrawer } from "./responsive-drawer";
 
 interface DrawerRootMockProps {
   readonly children?: ReactNode;
@@ -72,13 +72,13 @@ describe("responsive drawer", () => {
     );
   }, 1000);
 
-  it("uses the nested Vaul root when nested", () => {
+  it("uses the nested Vaul root for nested drawers", () => {
     setViewportWidth(1024);
 
     render(
-      <ResponsiveDrawer nested open>
+      <ResponsiveNestedDrawer open>
         <p>Nested body</p>
-      </ResponsiveDrawer>
+      </ResponsiveNestedDrawer>
     );
 
     expect(screen.getByTestId("drawer-root")).toHaveAttribute(

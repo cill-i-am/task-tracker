@@ -63,15 +63,25 @@ vi.mock("@hugeicons/react", () => ({
 vi.mock("#/components/ui/responsive-drawer", () => ({
   ResponsiveDrawer: ({
     children,
-    nested = false,
     open = true,
   }: {
     children?: ReactNode;
-    nested?: boolean;
     open?: boolean;
   }) =>
     open ? (
-      <div data-testid="responsive-drawer" data-nested={String(nested)}>
+      <div data-testid="responsive-drawer" data-nested="false">
+        {children}
+      </div>
+    ) : null,
+  ResponsiveNestedDrawer: ({
+    children,
+    open = true,
+  }: {
+    children?: ReactNode;
+    open?: boolean;
+  }) =>
+    open ? (
+      <div data-testid="responsive-drawer" data-nested="true">
         {children}
       </div>
     ) : null,

@@ -27,7 +27,7 @@ function PopoverTrigger({
   ref,
   ...props
 }: PopoverPrimitive.Trigger.Props & React.RefAttributes<HTMLElement>) {
-  const triggerElementContext = React.useContext(PopoverTriggerElementContext);
+  const triggerElementContext = React.use(PopoverTriggerElementContext);
   const composedRef = React.useCallback(
     (element: HTMLElement | null) => {
       if (triggerElementContext) {
@@ -59,7 +59,7 @@ function PopoverContent({
     PopoverPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
-  const triggerElementContext = React.useContext(PopoverTriggerElementContext);
+  const triggerElementContext = React.use(PopoverTriggerElementContext);
   const portalContainer =
     triggerElementContext?.triggerElementRef.current?.closest<HTMLElement>(
       '[data-slot="drawer-content"], [data-slot="dialog-content"]'
