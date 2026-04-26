@@ -404,7 +404,7 @@ export function JobsDetailSheet({
         }
       }}
     >
-      <DrawerContent className="max-h-[92vh] w-full p-0 data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:max-h-none data-[vaul-drawer-direction=right]:sm:max-w-2xl">
+      <DrawerContent className="max-h-[92vh] w-full p-2 data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:max-h-none data-[vaul-drawer-direction=right]:sm:max-w-2xl">
         <DrawerHeader className="gap-3 border-b">
           <div className="flex flex-wrap items-center gap-2">
             <Badge
