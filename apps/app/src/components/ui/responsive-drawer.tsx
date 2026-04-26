@@ -28,10 +28,10 @@ function ResponsiveDrawer({
   const direction = isDesktop ? desktopDirection : mobileDirection;
 
   if (nested) {
-    return <DrawerNestedRoot direction={direction} {...props} />;
+    return <DrawerNestedRoot {...props} direction={direction} />;
   }
 
-  return <Drawer direction={direction} {...props} />;
+  return <Drawer {...props} direction={direction} />;
 }
 
 function useResponsiveDrawerDesktop() {

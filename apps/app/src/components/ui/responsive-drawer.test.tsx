@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { ResponsiveDrawer } from "./responsive-drawer";
 
@@ -7,6 +7,10 @@ interface DrawerRootMockProps {
   readonly children?: ReactNode;
   readonly direction?: string;
 }
+
+type ResponsiveDrawerRuntimeProps = ComponentProps<typeof ResponsiveDrawer> & {
+  readonly direction?: string;
+};
 
 vi.mock(import("#/components/ui/drawer"), () => ({
   Drawer: ({ children, direction }: DrawerRootMockProps) => (
@@ -24,8 +28,6 @@ vi.mock(import("#/components/ui/drawer"), () => ({
     </div>
   ),
 }));
-
-vi.setConfig({ testTimeout: 1000 });
 
 function setViewportWidth(width: number) {
   Object.defineProperty(window, "innerWidth", {
@@ -53,7 +55,7 @@ describe("responsive drawer", () => {
       "data-kind",
       "root"
     );
-  });
+  }, 1000);
 
   it("uses a bottom drawer on mobile", () => {
     setViewportWidth(390);
@@ -68,7 +70,7 @@ describe("responsive drawer", () => {
       "data-direction",
       "bottom"
     );
-  });
+  }, 1000);
 
   it("uses the nested Vaul root when nested", () => {
     setViewportWidth(1024);
@@ -87,5 +89,52 @@ describe("responsive drawer", () => {
       "data-direction",
       "right"
     );
-  });
+  }, 1000);
+
+  it("uses custom responsive directions", () => {
+    setViewportWidth(1024);
+
+    const { unmount } = render(
+      <ResponsiveDrawer desktopDirection="left" mobileDirection="top" open>
+        <p>Custom body</p>
+      </ResponsiveDrawer>
+    );
+
+    expect(screen.getByTestId("drawer-root")).toHaveAttribute(
+      "data-direction",
+      "left"
+    );
+
+    unmount();
+    setViewportWidth(390);
+
+    render(
+      <ResponsiveDrawer desktopDirection="left" mobileDirection="top" open>
+        <p>Custom body</p>
+      </ResponsiveDrawer>
+    );
+
+    expect(screen.getByTestId("drawer-root")).toHaveAttribute(
+      "data-direction",
+      "top"
+    );
+  }, 1000);
+
+  it("keeps the computed direction ahead of passthrough direction props", () => {
+    setViewportWidth(1024);
+
+    render(
+      <ResponsiveDrawer
+        {...({ direction: "bottom" } as ResponsiveDrawerRuntimeProps)}
+        open
+      >
+        <p>Drawer body</p>
+      </ResponsiveDrawer>
+    );
+
+    expect(screen.getByTestId("drawer-root")).toHaveAttribute(
+      "data-direction",
+      "right"
+    );
+  }, 1000);
 });
