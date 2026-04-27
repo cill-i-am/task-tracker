@@ -120,12 +120,14 @@ const STATUS_LABELS = {
 
 export function JobsPage({
   children,
+  listHotkeysEnabled = true,
   onViewModeChange,
   viewMode: controlledViewMode,
   viewer,
 }: {
   readonly activeOrganizationName: string;
   readonly children?: React.ReactNode;
+  readonly listHotkeysEnabled?: boolean;
   readonly onViewModeChange?: (value: JobsViewMode) => void;
   readonly viewMode?: JobsViewMode;
   readonly viewer: JobsViewer;
@@ -146,7 +148,6 @@ export function JobsPage({
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
   const activeFilters = buildActiveFilterBadges(filters, lookup);
   const hasCustomFilters = activeFilters.length > 0;
-  const listHotkeysEnabled = children === undefined || children === null;
 
   function patchFilters(patch: Partial<JobsListFilters>) {
     setFilters((current) => ({

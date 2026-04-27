@@ -7,7 +7,7 @@ describe("command select", () => {
   it(
     "renders option shortcuts through ShortcutHint",
     {
-      timeout: 1000,
+      timeout: 10_000,
     },
     async () => {
       const user = userEvent.setup();

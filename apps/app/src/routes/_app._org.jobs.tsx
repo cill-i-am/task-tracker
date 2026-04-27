@@ -3,6 +3,7 @@ import {
   createFileRoute,
   useNavigate,
   useRouteContext,
+  useRouterState,
 } from "@tanstack/react-router";
 import type { OrganizationId } from "@task-tracker/identity-core";
 import type {
@@ -55,7 +56,7 @@ const JobsSearch = Schema.transform(
         return { view: "map" as const };
       }
 
-      return {};
+      return { view: undefined };
     },
     encode: (search) => search,
   }
@@ -63,7 +64,7 @@ const JobsSearch = Schema.transform(
 
 type JobsSearch = typeof JobsSearch.Type;
 
-function decodeJobsSearch(input: unknown): JobsSearch {
+export function decodeJobsSearch(input: unknown): JobsSearch {
   return ParseResult.decodeUnknownSync(JobsSearch)(input);
 }
 
@@ -138,11 +139,15 @@ function JobsRoute() {
   const { list, options, viewer } = Route.useLoaderData();
   const navigate = useNavigate({ from: "/jobs" });
   const search = Route.useSearch();
+  const listHotkeysEnabled = useRouterState({
+    select: (state) => state.location.pathname === "/jobs",
+  });
 
   return (
     <JobsRouteContent
       activeOrganizationName={activeOrganization.name}
       activeOrganizationId={activeOrganizationId}
+      listHotkeysEnabled={listHotkeysEnabled}
       list={list}
       onViewModeChange={(viewMode) => {
         navigate({

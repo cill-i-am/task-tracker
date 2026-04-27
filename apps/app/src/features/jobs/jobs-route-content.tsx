@@ -22,6 +22,7 @@ export function JobsRouteContent({
   activeOrganizationId,
   activeOrganizationName,
   children,
+  listHotkeysEnabled,
   list,
   onViewModeChange,
   options,
@@ -31,6 +32,9 @@ export function JobsRouteContent({
   readonly activeOrganizationId: OrganizationId;
   readonly activeOrganizationName: string;
   readonly children?: ReactNode;
+  readonly listHotkeysEnabled?: ComponentProps<
+    typeof JobsPage
+  >["listHotkeysEnabled"];
   readonly list: JobListResponse;
   readonly onViewModeChange?: ComponentProps<
     typeof JobsPage
@@ -52,6 +56,7 @@ export function JobsRouteContent({
     >
       <JobsPage
         activeOrganizationName={activeOrganizationName}
+        listHotkeysEnabled={listHotkeysEnabled}
         onViewModeChange={onViewModeChange}
         viewMode={viewMode}
         viewer={viewer}
