@@ -10,6 +10,8 @@ import {
   JobStatusSchema,
   JobTitleSchema,
   JobVisitNoteSchema,
+  SiteCountrySchema,
+  SiteGeocodingProviderSchema,
   SiteLatitudeSchema,
   SiteLongitudeSchema,
 } from "./domain.js";
@@ -26,6 +28,8 @@ import {
 } from "./ids.js";
 
 const JobVisitDurationMinutesSchema = Schema.Int.pipe(Schema.positive());
+const NonEmptyTrimmedString = Schema.Trim.pipe(Schema.minLength(1));
+
 export const JobListCursor = Schema.String.pipe(
   Schema.brand("@task-tracker/jobs-core/JobListCursor")
 );
@@ -195,24 +199,23 @@ export type CreateJobSiteExistingInput = Schema.Schema.Type<
 >;
 
 export const CreateSiteInputSchema = Schema.Struct({
-  name: Schema.Trim.pipe(Schema.minLength(1)),
+  name: NonEmptyTrimmedString,
   regionId: Schema.optional(RegionId),
-  addressLine1: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  addressLine2: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  town: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  county: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  eircode: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  accessNotes: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  latitude: Schema.optional(SiteLatitudeSchema),
-  longitude: Schema.optional(SiteLongitudeSchema),
+  addressLine1: NonEmptyTrimmedString,
+  addressLine2: Schema.optional(NonEmptyTrimmedString),
+  town: Schema.optional(NonEmptyTrimmedString),
+  county: NonEmptyTrimmedString,
+  country: SiteCountrySchema,
+  eircode: Schema.optional(NonEmptyTrimmedString),
+  accessNotes: Schema.optional(NonEmptyTrimmedString),
+  latitude: Schema.optional(Schema.Never),
+  longitude: Schema.optional(Schema.Never),
 }).pipe(
   Schema.filter(
-    ({ latitude, longitude }) =>
-      (latitude === undefined && longitude === undefined) ||
-      (latitude !== undefined && longitude !== undefined)
+    ({ country, eircode }) => country !== "IE" || eircode !== undefined
   ),
   Schema.annotations({
-    message: () => "Site coordinates must include both latitude and longitude",
+    message: () => "Irish sites require an Eircode",
   })
 );
 export type CreateSiteInput = Schema.Schema.Type<typeof CreateSiteInputSchema>;
@@ -369,10 +372,13 @@ export const JobSiteOptionSchema = Schema.Struct({
   addressLine2: Schema.optional(Schema.String),
   town: Schema.optional(Schema.String),
   county: Schema.optional(Schema.String),
+  country: SiteCountrySchema,
   eircode: Schema.optional(Schema.String),
   accessNotes: Schema.optional(Schema.String),
   latitude: Schema.optional(SiteLatitudeSchema),
   longitude: Schema.optional(SiteLongitudeSchema),
+  geocodingProvider: Schema.optional(SiteGeocodingProviderSchema),
+  geocodedAt: Schema.optional(IsoDateTimeString),
 }).pipe(
   Schema.filter(
     (site) =>
