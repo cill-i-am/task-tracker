@@ -4,7 +4,7 @@ import { authClient } from "#/lib/auth-client";
 
 import { getLoginNavigationTarget } from "./auth-navigation";
 import { isServerEnvironment } from "./runtime-environment";
-import { getCurrentServerSession } from "./server-session";
+import { getCurrentServerSession } from "./server-session.server";
 
 async function getCurrentSession() {
   if (isServerEnvironment()) {

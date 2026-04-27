@@ -5,7 +5,7 @@ import { authClient } from "#/lib/auth-client";
 import type { InvitationContinuationSearch } from "../organizations/invitation-continuation";
 import { getAuthSuccessNavigationTarget } from "./auth-navigation";
 import { isServerEnvironment } from "./runtime-environment";
-import { getCurrentServerSession } from "./server-session";
+import { getCurrentServerSession } from "./server-session.server";
 
 async function getCurrentSession() {
   if (isServerEnvironment()) {

@@ -44,7 +44,7 @@ const {
   mockedIsServerEnvironment: vi.fn<() => boolean>(),
 }));
 
-vi.mock(import("./server-session"), async (importActual) => {
+vi.mock(import("./server-session.server"), async (importActual) => {
   const actual = await importActual();
 
   return {

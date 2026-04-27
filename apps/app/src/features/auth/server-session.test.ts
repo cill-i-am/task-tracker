@@ -1,4 +1,4 @@
-import { getCurrentServerSession } from "./server-session";
+import { getCurrentServerSession } from "./server-session.server";
 
 interface Session {
   id: string;

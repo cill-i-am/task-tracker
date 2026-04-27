@@ -13,7 +13,7 @@ import { readConfiguredServerApiOrigin } from "#/lib/api-origin.server";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,
-} from "#/lib/server-api-forwarded-headers";
+} from "#/lib/server-api-forwarded-headers.server";
 
 import { runJobsClient } from "./jobs-client";
 import { JobsRequestError } from "./jobs-errors";

@@ -16,7 +16,7 @@ import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client.server";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,
-} from "#/lib/server-api-forwarded-headers";
+} from "#/lib/server-api-forwarded-headers.server";
 
 const NullableString = Schema.NullOr(Schema.String);
 const NullableOrganizationId = Schema.NullOr(OrganizationId);
