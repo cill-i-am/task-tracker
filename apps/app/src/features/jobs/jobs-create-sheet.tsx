@@ -18,6 +18,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   CONTACT_NOT_FOUND_ERROR_TAG,
+  SITE_GEOCODING_FAILED_ERROR_TAG,
   SITE_NOT_FOUND_ERROR_TAG,
 } from "@task-tracker/jobs-core";
 import type {
@@ -25,7 +26,7 @@ import type {
   CreateJobInput,
   JobPriority,
   JobContactOption,
-  RegionIdType,
+  JobRegionOption,
   JobSiteOption,
   SiteIdType,
 } from "@task-tracker/jobs-core";
@@ -65,11 +66,21 @@ import {
   ResponsiveNestedDrawer,
 } from "#/components/ui/responsive-drawer";
 import { Spinner } from "#/components/ui/spinner";
-import { Textarea } from "#/components/ui/textarea";
 import { AuthFormField } from "#/features/auth/auth-form-field";
+import {
+  SiteCreateFields,
+  buildCreateSiteInputFromDraft,
+  buildSiteRegionSelectionGroups,
+  defaultSiteCreateDraft,
+  hasSiteCreateFieldErrors,
+  validateSiteCreateDraft,
+} from "#/features/sites/site-create-form";
+import type {
+  SiteCreateDraft,
+  SiteCreateFieldErrors,
+} from "#/features/sites/site-create-form";
 import { cn } from "#/lib/utils";
 
-import { JobsSitePinPicker } from "./jobs-site-pin-picker";
 import {
   createJobMutationAtom,
   deriveContactsForSite,
@@ -111,25 +122,15 @@ interface JobsCreateFormState {
   readonly contactName: string;
   readonly contactSelection: string;
   readonly priority: JobPriority;
-  readonly siteAccessNotes: string;
-  readonly siteAddressLine1: string;
-  readonly siteAddressLine2: string;
-  readonly siteCounty: string;
-  readonly siteEircode: string;
-  readonly siteLatitude: string;
-  readonly siteLongitude: string;
-  readonly siteName: string;
-  readonly siteRegionSelection: string;
+  readonly siteDraft: SiteCreateDraft;
   readonly siteSelection: string;
-  readonly siteTown: string;
   readonly title: string;
 }
 
 interface JobsCreateFieldErrors {
   readonly contactName?: string;
-  readonly siteLatitude?: string;
-  readonly siteLongitude?: string;
-  readonly siteName?: string;
+  readonly site?: SiteCreateFieldErrors;
+  readonly siteSelection?: string;
   readonly title?: string;
 }
 
@@ -137,17 +138,8 @@ const defaultFormState: JobsCreateFormState = {
   contactName: "",
   contactSelection: NONE_VALUE,
   priority: "none",
-  siteAccessNotes: "",
-  siteAddressLine1: "",
-  siteAddressLine2: "",
-  siteCounty: "",
-  siteEircode: "",
-  siteLatitude: "",
-  siteLongitude: "",
-  siteName: "",
-  siteRegionSelection: NONE_VALUE,
+  siteDraft: defaultSiteCreateDraft,
   siteSelection: NONE_VALUE,
-  siteTown: "",
   title: "",
 };
 
@@ -165,7 +157,6 @@ export function JobsCreateSheet() {
     React.useState<JobsCreateFormState>(defaultFormState);
   const [overlayOpen, setOverlayOpen] = React.useState(true);
   const [siteDrawerOpen, setSiteDrawerOpen] = React.useState(false);
-  const [locationDrawerOpen, setLocationDrawerOpen] = React.useState(false);
   const closeNavigationTimeout = React.useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -188,22 +179,18 @@ export function JobsCreateSheet() {
   React.useEffect(() => {
     if (values.siteSelection !== INLINE_CREATE_VALUE) {
       setSiteDrawerOpen(false);
-      setLocationDrawerOpen(false);
     }
   }, [values.siteSelection]);
 
   React.useEffect(() => {
-    if (fieldErrors.siteLatitude || fieldErrors.siteLongitude) {
-      setSiteDrawerOpen(true);
-      setLocationDrawerOpen(true);
-    }
-  }, [fieldErrors.siteLatitude, fieldErrors.siteLongitude]);
-
-  React.useEffect(() => {
-    if (fieldErrors.siteName && values.siteSelection === INLINE_CREATE_VALUE) {
+    if (
+      values.siteSelection === INLINE_CREATE_VALUE &&
+      fieldErrors.site &&
+      hasSiteCreateFieldErrors(fieldErrors.site)
+    ) {
       setSiteDrawerOpen(true);
     }
-  }, [fieldErrors.siteName, values.siteSelection]);
+  }, [fieldErrors.site, values.siteSelection]);
 
   React.useEffect(
     () => () => {
@@ -213,7 +200,6 @@ export function JobsCreateSheet() {
     },
     []
   );
-  const parsedSiteCoordinates = resolveSiteCoordinateDraft(values);
 
   function closeSheet({
     delayed = false,
@@ -241,7 +227,7 @@ export function JobsCreateSheet() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const nextErrors = validate(values);
+    const nextErrors = validate(values, options.regions);
     setFieldErrors(nextErrors);
 
     if (hasFieldErrors(nextErrors)) {
@@ -257,7 +243,7 @@ export function JobsCreateSheet() {
     ) {
       setFieldErrors((current) => ({
         ...current,
-        siteName: "That site is no longer available. Pick another one.",
+        siteSelection: "That site is no longer available. Pick another one.",
       }));
       return;
     }
@@ -275,7 +261,7 @@ export function JobsCreateSheet() {
       return;
     }
 
-    const payload = buildCreateJobInput(values, selectionIds);
+    const payload = buildCreateJobInput(values, selectionIds, options.regions);
     const exit = await createJob(payload);
 
     if (Exit.isSuccess(exit)) {
@@ -293,7 +279,7 @@ export function JobsCreateSheet() {
     ) {
       setFieldErrors((current) => ({
         ...current,
-        siteName: "That site is no longer available. Pick another one.",
+        siteSelection: "That site is no longer available. Pick another one.",
       }));
     }
 
@@ -306,6 +292,20 @@ export function JobsCreateSheet() {
         contactName:
           "That contact is no longer available. Pick another one or create a new contact.",
       }));
+    }
+
+    if (
+      failure._tag === "Some" &&
+      failure.value._tag === SITE_GEOCODING_FAILED_ERROR_TAG
+    ) {
+      setFieldErrors((current) => ({
+        ...current,
+        site: {
+          ...current.site,
+          eircode: failure.value.message,
+        },
+      }));
+      setSiteDrawerOpen(true);
     }
   }
 
@@ -326,13 +326,15 @@ export function JobsCreateSheet() {
       >
         <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-4 sm:px-6">
           {Result.builder(createResult)
-            .onError((error) => (
-              <Alert variant="destructive">
-                <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
-                <AlertTitle>We couldn&apos;t create that job.</AlertTitle>
-                <AlertDescription>{error.message}</AlertDescription>
-              </Alert>
-            ))
+            .onError((error) =>
+              isHandledCreateJobError(error) ? null : (
+                <Alert variant="destructive">
+                  <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
+                  <AlertTitle>We couldn&apos;t create that job.</AlertTitle>
+                  <AlertDescription>{error.message}</AlertDescription>
+                </Alert>
+              )
+            )
             .render()}
 
           <FieldGroup>
@@ -383,7 +385,7 @@ export function JobsCreateSheet() {
                 emptyText="No sites found."
                 groups={siteSelectionGroups}
                 icon={Location01Icon}
-                errorText={fieldErrors.siteName}
+                errorText={fieldErrors.siteSelection}
                 onValueChange={(nextValue) => {
                   setValues((current) => ({
                     ...current,
@@ -391,8 +393,12 @@ export function JobsCreateSheet() {
                   }));
 
                   if (nextValue === INLINE_CREATE_VALUE) {
+                    setFieldErrors(clearSiteSelectionFieldError);
                     setSiteDrawerOpen(true);
+                    return;
                   }
+
+                  setFieldErrors(clearInlineSiteFieldErrors);
                 }}
               />
               <LinearContactSelect
@@ -417,8 +423,10 @@ export function JobsCreateSheet() {
                 }
               />
             </div>
-            {fieldErrors.siteName ? (
-              <p className="text-sm text-destructive">{fieldErrors.siteName}</p>
+            {fieldErrors.siteSelection ? (
+              <p className="text-sm text-destructive">
+                {fieldErrors.siteSelection}
+              </p>
             ) : null}
             {fieldErrors.contactName ? (
               <p className="text-sm text-destructive">
@@ -437,7 +445,7 @@ export function JobsCreateSheet() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium">New site</p>
                     <p className="truncate text-sm text-muted-foreground">
-                      {values.siteName.trim()}
+                      {values.siteDraft.name.trim()}
                     </p>
                   </div>
                 </div>
@@ -479,13 +487,7 @@ export function JobsCreateSheet() {
 
       <ResponsiveNestedDrawer
         open={siteDrawerOpen}
-        onOpenChange={(nextOpen) => {
-          setSiteDrawerOpen(nextOpen);
-
-          if (!nextOpen) {
-            setLocationDrawerOpen(false);
-          }
-        }}
+        onOpenChange={setSiteDrawerOpen}
       >
         <DrawerContent className="max-h-[92vh] w-full p-2 data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:max-h-none data-[vaul-drawer-direction=right]:sm:max-w-2xl">
           <DrawerHeader className="border-b px-5 py-4 text-left md:px-6">
@@ -494,72 +496,40 @@ export function JobsCreateSheet() {
             </Badge>
             <DrawerTitle>New site</DrawerTitle>
             <DrawerDescription>
-              Capture the place once. Pin it if the map matters.
+              Capture the place once. The address will be geocoded when the job
+              is created.
             </DrawerDescription>
           </DrawerHeader>
 
           <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-4 sm:px-6">
-            <FieldGroup>
-              <AuthFormField
-                label="Site name"
-                htmlFor="new-site-name"
-                invalid={Boolean(fieldErrors.siteName)}
-                errorText={fieldErrors.siteName}
-              >
-                <Input
-                  id="new-site-name"
-                  value={values.siteName}
-                  aria-invalid={Boolean(fieldErrors.siteName) || undefined}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      siteName: event.target.value,
-                    }))
-                  }
-                />
-              </AuthFormField>
-
-              <AuthFormField
-                label="Region"
-                htmlFor="new-site-region"
-                invalid={false}
-              >
-                <CommandSelect
-                  id="new-site-region"
-                  value={values.siteRegionSelection}
-                  placeholder="Pick region"
-                  emptyText="No regions found."
-                  groups={siteRegionSelectionGroups}
-                  onValueChange={(nextValue) =>
-                    setValues((current) => ({
-                      ...current,
-                      siteRegionSelection: nextValue,
-                    }))
-                  }
-                />
-              </AuthFormField>
-            </FieldGroup>
-
-            <div className="flex items-center justify-between gap-3 border-y py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">Location</p>
-                <p className="truncate text-sm text-muted-foreground">
-                  {parsedSiteCoordinates
-                    ? `${formatCoordinate(parsedSiteCoordinates.latitude)}, ${formatCoordinate(
-                        parsedSiteCoordinates.longitude
-                      )}`
-                    : "Address and pin are optional"}
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setLocationDrawerOpen(true)}
-              >
-                Edit location
-              </Button>
-            </div>
+            <SiteCreateFields
+              draft={values.siteDraft}
+              errors={fieldErrors.site ?? {}}
+              idPrefix="new-site"
+              regionGroups={siteRegionSelectionGroups}
+              onDraftChange={(siteDraft) =>
+                setValues((current) => ({
+                  ...current,
+                  siteDraft,
+                }))
+              }
+              onRegionSelectionChange={(nextValue) => {
+                setFieldErrors((current) => ({
+                  ...current,
+                  site: {
+                    ...current.site,
+                    regionSelection: undefined,
+                  },
+                }));
+                setValues((current) => ({
+                  ...current,
+                  siteDraft: {
+                    ...current.siteDraft,
+                    regionSelection: nextValue,
+                  },
+                }));
+              }}
+            />
           </div>
 
           <DrawerFooter className="flex-row justify-end border-t px-5 py-4 sm:px-6">
@@ -567,226 +537,6 @@ export function JobsCreateSheet() {
               Done
             </Button>
           </DrawerFooter>
-
-          <ResponsiveNestedDrawer
-            open={locationDrawerOpen}
-            onOpenChange={setLocationDrawerOpen}
-          >
-            <DrawerContent className="max-h-[92vh] w-full p-2 data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:h-full data-[vaul-drawer-direction=right]:max-h-none data-[vaul-drawer-direction=right]:sm:max-w-3xl">
-              <DrawerHeader className="border-b px-5 py-4 text-left md:px-6">
-                <Badge
-                  variant="secondary"
-                  className="w-fit rounded-full px-3 py-1"
-                >
-                  Location
-                </Badge>
-                <DrawerTitle>Site location</DrawerTitle>
-                <DrawerDescription>
-                  Add the address, then place the pin if helpful.
-                </DrawerDescription>
-              </DrawerHeader>
-
-              <div className="grid flex-1 gap-5 overflow-y-auto px-5 py-4 sm:px-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(18rem,1.05fr)]">
-                <FieldGroup>
-                  <AuthFormField
-                    label="Address line 1"
-                    htmlFor="new-site-address-line-1"
-                    invalid={false}
-                  >
-                    <Input
-                      id="new-site-address-line-1"
-                      value={values.siteAddressLine1}
-                      onChange={(event) =>
-                        setValues((current) => ({
-                          ...current,
-                          siteAddressLine1: event.target.value,
-                        }))
-                      }
-                    />
-                  </AuthFormField>
-
-                  <AuthFormField
-                    label="Address line 2"
-                    htmlFor="new-site-address-line-2"
-                    invalid={false}
-                  >
-                    <Input
-                      id="new-site-address-line-2"
-                      value={values.siteAddressLine2}
-                      onChange={(event) =>
-                        setValues((current) => ({
-                          ...current,
-                          siteAddressLine2: event.target.value,
-                        }))
-                      }
-                    />
-                  </AuthFormField>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <AuthFormField
-                      label="Town"
-                      htmlFor="new-site-town"
-                      invalid={false}
-                    >
-                      <Input
-                        id="new-site-town"
-                        value={values.siteTown}
-                        onChange={(event) =>
-                          setValues((current) => ({
-                            ...current,
-                            siteTown: event.target.value,
-                          }))
-                        }
-                      />
-                    </AuthFormField>
-
-                    <AuthFormField
-                      label="County"
-                      htmlFor="new-site-county"
-                      invalid={false}
-                    >
-                      <Input
-                        id="new-site-county"
-                        value={values.siteCounty}
-                        onChange={(event) =>
-                          setValues((current) => ({
-                            ...current,
-                            siteCounty: event.target.value,
-                          }))
-                        }
-                      />
-                    </AuthFormField>
-                  </div>
-
-                  <AuthFormField
-                    label="Eircode"
-                    htmlFor="new-site-eircode"
-                    invalid={false}
-                  >
-                    <Input
-                      id="new-site-eircode"
-                      value={values.siteEircode}
-                      onChange={(event) =>
-                        setValues((current) => ({
-                          ...current,
-                          siteEircode: event.target.value,
-                        }))
-                      }
-                    />
-                  </AuthFormField>
-
-                  <AuthFormField
-                    label="Access notes"
-                    htmlFor="new-site-access-notes"
-                    invalid={false}
-                  >
-                    <Textarea
-                      id="new-site-access-notes"
-                      rows={3}
-                      value={values.siteAccessNotes}
-                      onChange={(event) =>
-                        setValues((current) => ({
-                          ...current,
-                          siteAccessNotes: event.target.value,
-                        }))
-                      }
-                    />
-                  </AuthFormField>
-                </FieldGroup>
-
-                <div className="flex flex-col gap-3 border-t pt-4 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex max-w-[32rem] flex-col gap-1">
-                      <p className="font-medium">Site pin</p>
-                    </div>
-                    {parsedSiteCoordinates ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          setValues((current) => ({
-                            ...current,
-                            siteLatitude: "",
-                            siteLongitude: "",
-                          }))
-                        }
-                      >
-                        Clear pin
-                      </Button>
-                    ) : null}
-                  </div>
-
-                  <JobsSitePinPicker
-                    latitude={parsedSiteCoordinates?.latitude}
-                    longitude={parsedSiteCoordinates?.longitude}
-                    onChange={(next) =>
-                      setValues((current) => ({
-                        ...current,
-                        siteLatitude: formatCoordinate(next.latitude),
-                        siteLongitude: formatCoordinate(next.longitude),
-                      }))
-                    }
-                  />
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <AuthFormField
-                      label="Latitude"
-                      htmlFor="new-site-latitude"
-                      invalid={Boolean(fieldErrors.siteLatitude)}
-                      errorText={fieldErrors.siteLatitude}
-                    >
-                      <Input
-                        id="new-site-latitude"
-                        inputMode="decimal"
-                        value={values.siteLatitude}
-                        aria-invalid={
-                          Boolean(fieldErrors.siteLatitude) || undefined
-                        }
-                        onChange={(event) =>
-                          setValues((current) => ({
-                            ...current,
-                            siteLatitude: event.target.value,
-                          }))
-                        }
-                      />
-                    </AuthFormField>
-
-                    <AuthFormField
-                      label="Longitude"
-                      htmlFor="new-site-longitude"
-                      invalid={Boolean(fieldErrors.siteLongitude)}
-                      errorText={fieldErrors.siteLongitude}
-                    >
-                      <Input
-                        id="new-site-longitude"
-                        inputMode="decimal"
-                        value={values.siteLongitude}
-                        aria-invalid={
-                          Boolean(fieldErrors.siteLongitude) || undefined
-                        }
-                        onChange={(event) =>
-                          setValues((current) => ({
-                            ...current,
-                            siteLongitude: event.target.value,
-                          }))
-                        }
-                      />
-                    </AuthFormField>
-                  </div>
-                </div>
-              </div>
-
-              <DrawerFooter className="flex-row justify-end border-t px-5 py-4 sm:px-6">
-                <Button
-                  type="button"
-                  onClick={() => setLocationDrawerOpen(false)}
-                >
-                  Done
-                </Button>
-              </DrawerFooter>
-            </DrawerContent>
-          </ResponsiveNestedDrawer>
         </DrawerContent>
       </ResponsiveNestedDrawer>
     </ResponsiveCreateOverlay>
@@ -1065,23 +815,6 @@ function buildPrioritySelectionGroups() {
   ] satisfies readonly CommandSelectGroup[];
 }
 
-function buildSiteRegionSelectionGroups(
-  regions: readonly { readonly id: string; readonly name: string }[]
-) {
-  return [
-    {
-      label: "Region",
-      options: [
-        { label: "No region yet", value: NONE_VALUE },
-        ...regions.map((region) => ({
-          label: region.name,
-          value: region.id,
-        })),
-      ],
-    },
-  ] satisfies readonly CommandSelectGroup[];
-}
-
 function buildContactSelectionGroups(
   contactGroups: ReturnType<typeof deriveContactsForSite>
 ) {
@@ -1124,8 +857,16 @@ function buildContactSelectionGroups(
   return groups;
 }
 
-function validate(values: JobsCreateFormState): JobsCreateFieldErrors {
-  const siteCoordinateErrors = validateSiteCoordinates(values);
+function validate(
+  values: JobsCreateFormState,
+  regions: readonly JobRegionOption[]
+): JobsCreateFieldErrors {
+  const validateInlineSite = values.siteSelection === INLINE_CREATE_VALUE;
+  const siteErrors = validateInlineSite
+    ? validateSiteCreateDraft(values.siteDraft, regions, {
+        nameRequiredMessage: "Add the site name or pick an existing site.",
+      })
+    : undefined;
 
   return {
     contactName:
@@ -1133,12 +874,9 @@ function validate(values: JobsCreateFormState): JobsCreateFieldErrors {
       values.contactName.trim().length === 0
         ? "Add the contact name or pick an existing contact."
         : undefined,
-    siteLatitude: siteCoordinateErrors.siteLatitude,
-    siteLongitude: siteCoordinateErrors.siteLongitude,
-    siteName:
-      values.siteSelection === INLINE_CREATE_VALUE &&
-      values.siteName.trim().length === 0
-        ? "Add the site name or pick an existing site."
+    site:
+      siteErrors && hasSiteCreateFieldErrors(siteErrors)
+        ? siteErrors
         : undefined,
     title:
       values.title.trim().length === 0
@@ -1148,23 +886,57 @@ function validate(values: JobsCreateFormState): JobsCreateFieldErrors {
 }
 
 function hasInlineSiteDraft(values: JobsCreateFormState) {
-  return values.siteName.trim().length > 0;
+  return values.siteDraft.name.trim().length > 0;
 }
 
 function hasFieldErrors(errors: JobsCreateFieldErrors) {
-  return Object.values(errors).some((value) => value !== undefined);
+  return (
+    errors.contactName !== undefined ||
+    errors.siteSelection !== undefined ||
+    errors.title !== undefined ||
+    (errors.site !== undefined && hasSiteCreateFieldErrors(errors.site))
+  );
+}
+
+function clearInlineSiteFieldErrors(
+  current: JobsCreateFieldErrors
+): JobsCreateFieldErrors {
+  return {
+    ...current,
+    site: undefined,
+    siteSelection: undefined,
+  };
+}
+
+function clearSiteSelectionFieldError(
+  current: JobsCreateFieldErrors
+): JobsCreateFieldErrors {
+  return {
+    ...current,
+    siteSelection: undefined,
+  };
+}
+
+function isHandledCreateJobError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "_tag" in error &&
+    (error._tag === SITE_NOT_FOUND_ERROR_TAG ||
+      error._tag === CONTACT_NOT_FOUND_ERROR_TAG ||
+      error._tag === SITE_GEOCODING_FAILED_ERROR_TAG)
+  );
 }
 
 function buildCreateJobInput(
   values: JobsCreateFormState,
-  selectionIds: JobsCreateSelectionIds
+  selectionIds: JobsCreateSelectionIds,
+  regions: readonly JobRegionOption[]
 ): CreateJobInput {
-  const siteCoordinates = resolveSiteCoordinateDraft(values);
-
   return {
     contact: resolveCreateJobContactInput(values, selectionIds),
     priority: values.priority === "none" ? undefined : values.priority,
-    site: resolveCreateJobSiteInput(values, selectionIds, siteCoordinates),
+    site: resolveCreateJobSiteInput(values, selectionIds, regions),
     title: values.title.trim(),
   };
 }
@@ -1195,7 +967,7 @@ function resolveCreateJobContactInput(
 function resolveCreateJobSiteInput(
   values: JobsCreateFormState,
   selectionIds: JobsCreateSelectionIds,
-  siteCoordinates: ReturnType<typeof resolveSiteCoordinateDraft>
+  regions: readonly JobRegionOption[]
 ): CreateJobInput["site"] {
   if (values.siteSelection === NONE_VALUE) {
     return undefined;
@@ -1204,21 +976,7 @@ function resolveCreateJobSiteInput(
   if (values.siteSelection === INLINE_CREATE_VALUE) {
     return {
       kind: "create",
-      input: {
-        accessNotes: toOptionalTrimmedString(values.siteAccessNotes),
-        addressLine1: toOptionalTrimmedString(values.siteAddressLine1),
-        addressLine2: toOptionalTrimmedString(values.siteAddressLine2),
-        county: toOptionalTrimmedString(values.siteCounty),
-        eircode: toOptionalTrimmedString(values.siteEircode),
-        latitude: siteCoordinates?.latitude,
-        longitude: siteCoordinates?.longitude,
-        name: values.siteName.trim(),
-        regionId:
-          values.siteRegionSelection === NONE_VALUE
-            ? undefined
-            : (values.siteRegionSelection as RegionIdType),
-        town: toOptionalTrimmedString(values.siteTown),
-      },
+      input: buildCreateSiteInputFromDraft(values.siteDraft, regions),
     };
   }
 
@@ -1259,83 +1017,4 @@ function resolveSelectedOptionId<Id extends string>(
   value: string
 ): Id | undefined {
   return options.find((option) => option.id === value)?.id;
-}
-
-function resolveSiteCoordinateDraft(values: JobsCreateFormState) {
-  const latitude = parseCoordinate(values.siteLatitude);
-  const longitude = parseCoordinate(values.siteLongitude);
-
-  if (latitude === undefined || longitude === undefined) {
-    return;
-  }
-
-  return { latitude, longitude };
-}
-
-function validateSiteCoordinates(values: JobsCreateFormState) {
-  if (values.siteSelection !== INLINE_CREATE_VALUE) {
-    return {
-      siteLatitude: undefined,
-      siteLongitude: undefined,
-    };
-  }
-
-  const latitudeValue = values.siteLatitude.trim();
-  const longitudeValue = values.siteLongitude.trim();
-
-  if (latitudeValue.length === 0 && longitudeValue.length === 0) {
-    return {
-      siteLatitude: undefined,
-      siteLongitude: undefined,
-    };
-  }
-
-  if (latitudeValue.length === 0 || longitudeValue.length === 0) {
-    return {
-      siteLatitude:
-        latitudeValue.length === 0
-          ? "Add both latitude and longitude or leave both empty."
-          : undefined,
-      siteLongitude:
-        longitudeValue.length === 0
-          ? "Add both latitude and longitude or leave both empty."
-          : undefined,
-    };
-  }
-
-  const latitude = Number(latitudeValue);
-  const longitude = Number(longitudeValue);
-
-  return {
-    siteLatitude:
-      !Number.isFinite(latitude) || latitude < -90 || latitude > 90
-        ? "Latitude must be between -90 and 90."
-        : undefined,
-    siteLongitude:
-      !Number.isFinite(longitude) || longitude < -180 || longitude > 180
-        ? "Longitude must be between -180 and 180."
-        : undefined,
-  };
-}
-
-function parseCoordinate(value: string) {
-  const trimmed = value.trim();
-
-  if (trimmed.length === 0) {
-    return;
-  }
-
-  const parsed = Number(trimmed);
-
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function formatCoordinate(value: number) {
-  return value.toFixed(6).replace(/\.?0+$/, "");
-}
-
-function toOptionalTrimmedString(value: string) {
-  const trimmed = value.trim();
-
-  return trimmed.length === 0 ? undefined : trimmed;
 }

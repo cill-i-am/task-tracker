@@ -111,7 +111,15 @@ describe("sites route loader", () => {
             regions: [],
             sites: [
               {
+                addressLine1: "1 Custom House Quay",
+                country: "IE",
+                county: "Dublin",
+                eircode: "D01 X2X2",
+                geocodedAt: "2026-04-27T10:00:00.000Z",
+                geocodingProvider: "stub",
                 id: "55555555-5555-4555-8555-555555555555" as SiteIdType,
+                latitude: 53.3498,
+                longitude: -6.2603,
                 name: "Docklands Campus",
               },
             ],

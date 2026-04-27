@@ -223,12 +223,14 @@ export function SitesDetailSheet({
               <AuthFormField
                 label="Address line 1"
                 htmlFor="site-edit-address-line-1"
-                invalid={false}
+                invalid={Boolean(fieldErrors.addressLine1)}
+                errorText={fieldErrors.addressLine1}
               >
                 <Input
                   id="site-edit-address-line-1"
                   disabled={!canEdit}
                   value={values.addressLine1}
+                  aria-invalid={Boolean(fieldErrors.addressLine1) || undefined}
                   onChange={(event) =>
                     setValues((current) => ({
                       ...current,
@@ -278,12 +280,14 @@ export function SitesDetailSheet({
                 <AuthFormField
                   label="County"
                   htmlFor="site-edit-county"
-                  invalid={false}
+                  invalid={Boolean(fieldErrors.county)}
+                  errorText={fieldErrors.county}
                 >
                   <Input
                     id="site-edit-county"
                     disabled={!canEdit}
                     value={values.county}
+                    aria-invalid={Boolean(fieldErrors.county) || undefined}
                     onChange={(event) =>
                       setValues((current) => ({
                         ...current,
@@ -297,12 +301,14 @@ export function SitesDetailSheet({
               <AuthFormField
                 label="Eircode"
                 htmlFor="site-edit-eircode"
-                invalid={false}
+                invalid={Boolean(fieldErrors.eircode)}
+                errorText={fieldErrors.eircode}
               >
                 <Input
                   id="site-edit-eircode"
                   disabled={!canEdit}
                   value={values.eircode}
+                  aria-invalid={Boolean(fieldErrors.eircode) || undefined}
                   onChange={(event) =>
                     setValues((current) => ({
                       ...current,
@@ -331,50 +337,6 @@ export function SitesDetailSheet({
                 />
               </AuthFormField>
             </FieldGroup>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <AuthFormField
-                label="Latitude"
-                htmlFor="site-edit-latitude"
-                invalid={Boolean(fieldErrors.latitude)}
-                errorText={fieldErrors.latitude}
-              >
-                <Input
-                  id="site-edit-latitude"
-                  disabled={!canEdit}
-                  inputMode="decimal"
-                  value={values.latitude}
-                  aria-invalid={Boolean(fieldErrors.latitude) || undefined}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      latitude: event.target.value,
-                    }))
-                  }
-                />
-              </AuthFormField>
-
-              <AuthFormField
-                label="Longitude"
-                htmlFor="site-edit-longitude"
-                invalid={Boolean(fieldErrors.longitude)}
-                errorText={fieldErrors.longitude}
-              >
-                <Input
-                  id="site-edit-longitude"
-                  disabled={!canEdit}
-                  inputMode="decimal"
-                  value={values.longitude}
-                  aria-invalid={Boolean(fieldErrors.longitude) || undefined}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      longitude: event.target.value,
-                    }))
-                  }
-                />
-              </AuthFormField>
-            </div>
           </div>
 
           <DrawerFooter className="flex flex-col-reverse gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
@@ -413,9 +375,8 @@ function buildFormStateFromSite(site: JobSiteOption): SitesCreateFormState {
     addressLine1: site.addressLine1 ?? "",
     addressLine2: site.addressLine2 ?? "",
     county: site.county ?? "",
+    country: "IE",
     eircode: site.eircode ?? "",
-    latitude: site.latitude === undefined ? "" : String(site.latitude),
-    longitude: site.longitude === undefined ? "" : String(site.longitude),
     name: site.name,
     regionSelection: site.regionId ?? NONE_VALUE,
     town: site.town ?? "",
@@ -428,9 +389,8 @@ function buildEmptySiteState(): SitesCreateFormState {
     addressLine1: "",
     addressLine2: "",
     county: "",
+    country: "IE",
     eircode: "",
-    latitude: "",
-    longitude: "",
     name: "",
     regionSelection: NONE_VALUE,
     town: "",

@@ -71,6 +71,12 @@ describe("jobs repositories integration", () => {
       databaseUrl,
       SitesRepository.create({
         accessNotes: "Use the south gate and reception desk.",
+        addressLine1: "1 Custom House Quay",
+        country: "IE",
+        county: "Dublin",
+        eircode: "D01 X2X2",
+        geocodedAt: "2026-04-27T10:00:00.000Z",
+        geocodingProvider: "google",
         name: "Docklands Campus",
         organizationId: identity.organizationId,
         regionId,
@@ -82,6 +88,14 @@ describe("jobs repositories integration", () => {
     const overflowSiteId = await runJobsEffect(
       databaseUrl,
       SitesRepository.create({
+        country: "IE",
+        addressLine1: "Overflow Yard",
+        county: "Dublin",
+        eircode: "D01 X2X3",
+        geocodedAt: "2026-04-27T10:00:00.000Z",
+        geocodingProvider: "stub",
+        latitude: 53.3498,
+        longitude: -6.2603,
         name: "Overflow Yard",
         organizationId: identity.organizationId,
         regionId,
@@ -193,16 +207,20 @@ describe("jobs repositories integration", () => {
     expect(createdSiteOption).toBeDefined();
     expect(createdSiteOption).toMatchObject({
       accessNotes: "Use the south gate and reception desk.",
+      addressLine1: "1 Custom House Quay",
+      country: "IE",
+      county: "Dublin",
+      eircode: "D01 X2X2",
+      geocodedAt: "2026-04-27T10:00:00.000Z",
+      geocodingProvider: "google",
       latitude: 53.3498,
       longitude: -6.2603,
       name: "Docklands Campus",
       regionId,
       town: "Dublin",
     });
-    expect(createdSiteOption?.addressLine1).toBeUndefined();
     expect(createdSiteOption?.addressLine2).toBeUndefined();
-    expect(createdSiteOption?.county).toBeUndefined();
-    expect(createdSiteOption?.eircode).toBeUndefined();
+    expect(createdSiteOption?.county).toBe("Dublin");
     expect(Option.getOrUndefined(createdSiteOptionById)).toStrictEqual(
       createdSiteOption
     );
@@ -454,6 +472,12 @@ describe("jobs repositories integration", () => {
     const primarySiteId = await runJobsEffect(
       databaseUrl,
       SitesRepository.create({
+        country: "IE",
+        addressLine1: "Primary Site",
+        county: "Cork",
+        eircode: "T12 X2X2",
+        geocodedAt: "2026-04-27T10:00:00.000Z",
+        geocodingProvider: "stub",
         name: "Primary Site",
         organizationId: primaryIdentity.organizationId,
         regionId: primaryRegionId,
@@ -464,6 +488,12 @@ describe("jobs repositories integration", () => {
     const foreignSiteId = await runJobsEffect(
       databaseUrl,
       SitesRepository.create({
+        country: "IE",
+        addressLine1: "Foreign Site",
+        county: "Galway",
+        eircode: "H91 X2X2",
+        geocodedAt: "2026-04-27T10:00:00.000Z",
+        geocodingProvider: "stub",
         name: "Foreign Site",
         organizationId: foreignIdentity.organizationId,
         regionId: foreignRegionId,
@@ -552,6 +582,188 @@ describe("jobs repositories integration", () => {
       visitWithForeignOrganizationExit,
       "@task-tracker/domains/jobs/WorkItemOrganizationMismatchError"
     );
+  }, 30_000);
+
+  it("rejects invalid site geocoding metadata at the database boundary", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({ prefix: "jobs_repo" });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping site geocoding constraint coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    const identity = await seedIdentityRecords(databaseUrl);
+
+    await withPool(databaseUrl, async (pool) => {
+      const insertInvalidSite = async (
+        overrides: Partial<{
+          readonly country: string;
+          readonly addressLine1: string | null;
+          readonly county: string | null;
+          readonly eircode: string | null;
+          readonly geocodedAt: string | null;
+          readonly geocodingProvider: string | null;
+          readonly latitude: number | null;
+          readonly longitude: number | null;
+          readonly name: string;
+        }>
+      ) =>
+        await pool.query(
+          `
+            insert into sites (
+              id,
+              organization_id,
+              name,
+              address_line_1,
+              county,
+              eircode,
+              country,
+              latitude,
+              longitude,
+              geocoding_provider,
+              geocoded_at,
+              created_at,
+              updated_at
+            )
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now())
+          `,
+          [
+            randomUUID(),
+            identity.organizationId,
+            overrides.name ?? "Invalid geocoding site",
+            "addressLine1" in overrides
+              ? overrides.addressLine1
+              : "1 Custom House Quay",
+            "county" in overrides ? overrides.county : "Dublin",
+            "eircode" in overrides ? overrides.eircode : "D01 X2X2",
+            overrides.country ?? "IE",
+            overrides.latitude ?? null,
+            overrides.longitude ?? null,
+            overrides.geocodingProvider ?? null,
+            overrides.geocodedAt ?? null,
+          ]
+        );
+
+      await expect(
+        insertInvalidSite({
+          addressLine1: null,
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Missing address",
+        })
+      ).rejects.toMatchObject({
+        code: "23502",
+        column: "address_line_1",
+      });
+
+      await expect(
+        insertInvalidSite({
+          county: null,
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Missing county",
+        })
+      ).rejects.toMatchObject({
+        code: "23502",
+        column: "county",
+      });
+
+      await expect(
+        insertInvalidSite({
+          eircode: null,
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Irish site missing Eircode",
+        })
+      ).rejects.toMatchObject({
+        code: "23514",
+        constraint: "sites_ie_eircode_required_chk",
+      });
+
+      await expect(
+        insertInvalidSite({
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
+          latitude: null,
+          longitude: -6.2603,
+          name: "Missing latitude",
+        })
+      ).rejects.toMatchObject({
+        code: "23502",
+        column: "latitude",
+      });
+
+      await expect(
+        insertInvalidSite({
+          geocodedAt: null,
+          geocodingProvider: "google",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Missing geocoded timestamp",
+        })
+      ).rejects.toMatchObject({
+        code: "23502",
+        column: "geocoded_at",
+      });
+
+      await expect(
+        insertInvalidSite({
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "manual",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Invalid provider",
+        })
+      ).rejects.toMatchObject({
+        code: "23514",
+        constraint: "sites_geocoding_provider_chk",
+      });
+
+      await expect(
+        insertInvalidSite({
+          country: "US",
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Invalid country",
+        })
+      ).rejects.toMatchObject({
+        code: "23514",
+        constraint: "sites_country_chk",
+      });
+
+      await expect(
+        insertInvalidSite({
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
+          latitude: 91,
+          longitude: -6.2603,
+          name: "Invalid latitude",
+        })
+      ).rejects.toMatchObject({
+        code: "23514",
+        constraint: "sites_latitude_range_check",
+      });
+    });
   }, 30_000);
 
   it("rolls back multi-step writes wrapped in a repository transaction", async (context: {
@@ -748,7 +960,15 @@ async function insertSite(
     const db = drizzle(pool);
 
     await db.insert(site).values({
+      addressLine1: name,
+      country: "IE",
+      county: "Dublin",
+      eircode: "D01 X2X2",
+      geocodedAt: new Date("2026-04-27T10:00:00.000Z"),
+      geocodingProvider: "stub",
       id: siteId,
+      latitude: 53.3498,
+      longitude: -6.2603,
       name,
       organizationId,
       regionId,

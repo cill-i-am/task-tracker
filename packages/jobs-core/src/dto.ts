@@ -10,6 +10,8 @@ import {
   JobStatusSchema,
   JobTitleSchema,
   JobVisitNoteSchema,
+  SiteCountrySchema,
+  SiteGeocodingProviderSchema,
   SiteLatitudeSchema,
   SiteLongitudeSchema,
 } from "./domain.js";
@@ -26,6 +28,8 @@ import {
 } from "./ids.js";
 
 const JobVisitDurationMinutesSchema = Schema.Int.pipe(Schema.positive());
+const NonEmptyTrimmedString = Schema.Trim.pipe(Schema.minLength(1));
+
 export const JobListCursor = Schema.String.pipe(
   Schema.brand("@task-tracker/jobs-core/JobListCursor")
 );
@@ -195,26 +199,27 @@ export type CreateJobSiteExistingInput = Schema.Schema.Type<
 >;
 
 export const CreateSiteInputSchema = Schema.Struct({
-  name: Schema.Trim.pipe(Schema.minLength(1)),
+  name: NonEmptyTrimmedString,
   regionId: Schema.optional(RegionId),
-  addressLine1: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  addressLine2: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  town: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  county: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  eircode: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  accessNotes: Schema.optional(Schema.Trim.pipe(Schema.minLength(1))),
-  latitude: Schema.optional(SiteLatitudeSchema),
-  longitude: Schema.optional(SiteLongitudeSchema),
-}).pipe(
-  Schema.filter(
-    ({ latitude, longitude }) =>
-      (latitude === undefined && longitude === undefined) ||
-      (latitude !== undefined && longitude !== undefined)
-  ),
-  Schema.annotations({
-    message: () => "Site coordinates must include both latitude and longitude",
+  addressLine1: NonEmptyTrimmedString,
+  addressLine2: Schema.optional(NonEmptyTrimmedString),
+  town: Schema.optional(NonEmptyTrimmedString),
+  county: NonEmptyTrimmedString,
+  country: SiteCountrySchema,
+  eircode: Schema.optional(NonEmptyTrimmedString),
+  accessNotes: Schema.optional(NonEmptyTrimmedString),
+})
+  .annotations({
+    parseOptions: { onExcessProperty: "error" },
   })
-);
+  .pipe(
+    Schema.filter(
+      ({ country, eircode }) => country !== "IE" || eircode !== undefined
+    ),
+    Schema.annotations({
+      message: () => "Irish sites require an Eircode",
+    })
+  );
 export type CreateSiteInput = Schema.Schema.Type<typeof CreateSiteInputSchema>;
 
 export const CreateJobSiteInlineInputSchema = Schema.Struct({
@@ -365,24 +370,18 @@ export const JobSiteOptionSchema = Schema.Struct({
   name: Schema.String,
   regionId: Schema.optional(RegionId),
   regionName: Schema.optional(Schema.String),
-  addressLine1: Schema.optional(Schema.String),
+  addressLine1: Schema.String,
   addressLine2: Schema.optional(Schema.String),
   town: Schema.optional(Schema.String),
-  county: Schema.optional(Schema.String),
+  county: Schema.String,
+  country: SiteCountrySchema,
   eircode: Schema.optional(Schema.String),
   accessNotes: Schema.optional(Schema.String),
-  latitude: Schema.optional(SiteLatitudeSchema),
-  longitude: Schema.optional(SiteLongitudeSchema),
-}).pipe(
-  Schema.filter(
-    (site) =>
-      (site.latitude === undefined && site.longitude === undefined) ||
-      (site.latitude !== undefined && site.longitude !== undefined)
-  ),
-  Schema.annotations({
-    message: () => "Site coordinates must include both latitude and longitude",
-  })
-);
+  latitude: SiteLatitudeSchema,
+  longitude: SiteLongitudeSchema,
+  geocodingProvider: SiteGeocodingProviderSchema,
+  geocodedAt: IsoDateTimeString,
+});
 export type JobSiteOption = Schema.Schema.Type<typeof JobSiteOptionSchema>;
 
 export const CreateSiteResponseSchema = JobSiteOptionSchema;

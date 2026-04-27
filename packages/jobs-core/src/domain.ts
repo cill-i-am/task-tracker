@@ -68,6 +68,18 @@ export const SiteLongitudeSchema = Schema.Number.pipe(
 );
 export type SiteLongitude = Schema.Schema.Type<typeof SiteLongitudeSchema>;
 
+export const SITE_COUNTRIES = ["IE", "GB"] as const;
+export const SiteCountrySchema = Schema.Literal(...SITE_COUNTRIES);
+export type SiteCountry = Schema.Schema.Type<typeof SiteCountrySchema>;
+
+export const SITE_GEOCODING_PROVIDERS = ["google", "stub"] as const;
+export const SiteGeocodingProviderSchema = Schema.Literal(
+  ...SITE_GEOCODING_PROVIDERS
+);
+export type SiteGeocodingProvider = Schema.Schema.Type<
+  typeof SiteGeocodingProviderSchema
+>;
+
 export const JOB_ACTIVITY_EVENT_TYPES = [
   "job_created",
   "status_changed",

@@ -31,7 +31,14 @@ const options: JobOptionsResponse = {
   sites: [
     {
       addressLine1: "1 Custom House Quay",
+      country: "IE",
+      county: "Dublin",
+      eircode: "D01 X2X2",
+      geocodedAt: "2026-04-27T10:00:00.000Z",
+      geocodingProvider: "stub",
       id: siteId,
+      latitude: 53.3498,
+      longitude: -6.2603,
       name: "Docklands Campus",
       regionId,
       regionName: "Dublin",
@@ -75,6 +82,10 @@ describe("sites page", () => {
       const row = screen.getByRole("row", { name: /docklands campus/i });
       expect(within(row).getByText("Dublin")).toBeInTheDocument();
       expect(within(row).getByText(/1 Custom House Quay/)).toBeInTheDocument();
+      expect(
+        screen.getByRole("columnheader", { name: "Map" })
+      ).toBeInTheDocument();
+      expect(within(row).getByText("Mapped")).toBeInTheDocument();
     }
   );
 

@@ -36,6 +36,8 @@ import {
   JobsRepository,
   SitesRepository,
 } from "./repositories.js";
+import type { GeocodedSiteLocation } from "./site-geocoder.js";
+import { SiteGeocoder } from "./site-geocoder.js";
 
 const WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG =
   "@task-tracker/domains/jobs/WorkItemOrganizationMismatchError" as const;
@@ -49,6 +51,7 @@ export class JobsService extends Effect.Service<JobsService>()(
       JobsAuthorization.Default,
       JobsActivityRecorder.Default,
       JobsRepositoriesLive,
+      SiteGeocoder.Default,
     ],
     effect: Effect.gen(function* JobsServiceLive() {
       const activityRecorder = yield* JobsActivityRecorder;
@@ -56,6 +59,7 @@ export class JobsService extends Effect.Service<JobsService>()(
       const contactsRepository = yield* ContactsRepository;
       const currentJobsActor = yield* CurrentJobsActor;
       const jobsRepository = yield* JobsRepository;
+      const siteGeocoder = yield* SiteGeocoder;
       const sitesRepository = yield* SitesRepository;
 
       const loadActor = Effect.fn("JobsService.loadActor")(function* (
@@ -102,13 +106,31 @@ export class JobsService extends Effect.Service<JobsService>()(
         const actor = yield* loadActor();
         yield* authorization.ensureCanCreate(actor);
 
+        if (
+          input.site?.kind === "create" &&
+          input.site.input.regionId !== undefined
+        ) {
+          yield* sitesRepository
+            .ensureRegionInOrganization(
+              actor.organizationId,
+              input.site.input.regionId
+            )
+            .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+        }
+
+        const geocodedSiteLocation =
+          input.site?.kind === "create"
+            ? yield* siteGeocoder.geocode(input.site.input)
+            : undefined;
+
         const result = yield* jobsRepository
           .withTransaction(
             Effect.gen(function* () {
               const siteId = yield* resolveCreateSiteId(
                 actor.organizationId,
                 input.site,
-                sitesRepository
+                sitesRepository,
+                geocodedSiteLocation
               );
               const contactId = yield* resolveCreateContactId(
                 actor.organizationId,
@@ -671,7 +693,8 @@ function resolveCreateContactId(
 function resolveCreateSiteId(
   organizationId: OrganizationId,
   input: CreateJobSiteInput | undefined,
-  sitesRepository: SitesRepository
+  sitesRepository: SitesRepository,
+  geocodedLocation: GeocodedSiteLocation | undefined
 ) {
   if (input === undefined) {
     return Effect.succeed<SiteId | undefined>(input);
@@ -681,16 +704,23 @@ function resolveCreateSiteId(
     return Effect.succeed<SiteId | undefined>(input.siteId);
   }
 
+  if (geocodedLocation === undefined) {
+    return Effect.die(new Error("Inline site creation was not geocoded"));
+  }
+
   return sitesRepository.create({
     accessNotes: input.input.accessNotes,
     addressLine1: input.input.addressLine1,
     addressLine2: input.input.addressLine2,
+    country: input.input.country,
     county: input.input.county,
     eircode: input.input.eircode,
-    latitude: input.input.latitude,
+    geocodedAt: geocodedLocation.geocodedAt,
+    geocodingProvider: geocodedLocation.provider,
+    latitude: geocodedLocation.latitude,
     name: input.input.name,
     organizationId,
-    longitude: input.input.longitude,
+    longitude: geocodedLocation.longitude,
     regionId: input.input.regionId,
     town: input.input.town,
   });

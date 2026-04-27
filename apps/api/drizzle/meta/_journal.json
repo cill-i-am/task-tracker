@@ -64,6 +64,13 @@
       "when": 1777311171379,
       "tag": "0008_marvelous_cloak",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1777313943609,
+      "tag": "0009_slow_bloodscream",
+      "breakpoints": true
     }
   ]
 }

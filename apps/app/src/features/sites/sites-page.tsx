@@ -109,7 +109,7 @@ export function SitesPage({
                 <TableHead>Site</TableHead>
                 <TableHead>Region</TableHead>
                 <TableHead>Address</TableHead>
-                <TableHead className="w-28 text-right">Pin</TableHead>
+                <TableHead className="w-28 text-right">Map</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -138,7 +138,7 @@ export function SitesPage({
                     {hasSiteCoordinates(site) ? (
                       <span>Mapped</span>
                     ) : (
-                      <span>No pin</span>
+                      <span>Unmapped</span>
                     )}
                   </TableCell>
                 </TableRow>
