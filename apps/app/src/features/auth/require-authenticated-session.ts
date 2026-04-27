@@ -5,9 +5,11 @@ import { authClient } from "#/lib/auth-client";
 import { getLoginNavigationTarget } from "./auth-navigation";
 import { isServerEnvironment } from "./runtime-environment";
 
+const importServerSession = () => import("./server-session");
+
 async function getCurrentSession() {
   if (isServerEnvironment()) {
-    const { getCurrentServerSession } = await import("./server-session");
+    const { getCurrentServerSession } = await importServerSession();
     return await getCurrentServerSession();
   }
 

@@ -6,9 +6,11 @@ import type { InvitationContinuationSearch } from "../organizations/invitation-c
 import { getAuthSuccessNavigationTarget } from "./auth-navigation";
 import { isServerEnvironment } from "./runtime-environment";
 
+const importServerSession = () => import("./server-session");
+
 async function getCurrentSession() {
   if (isServerEnvironment()) {
-    const { getCurrentServerSession } = await import("./server-session");
+    const { getCurrentServerSession } = await importServerSession();
     return await getCurrentServerSession();
   }
 

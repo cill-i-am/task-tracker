@@ -14,25 +14,25 @@ import { makeBrowserJobsClient, provideBrowserJobsHttp } from "./jobs-client";
 import type { JobsApiClient } from "./jobs-client";
 import { normalizeJobsError } from "./jobs-errors";
 
+const importJobsServerSsr = () => import("./jobs-server-ssr");
+
 const listAllCurrentServerJobsIsomorphic = createIsomorphicFn()
   .server(async (query: JobListQuery = {}) => {
-    const { listAllCurrentServerJobsDirect } =
-      await import("./jobs-server-ssr");
+    const { listAllCurrentServerJobsDirect } = await importJobsServerSsr();
     return await listAllCurrentServerJobsDirect(query);
   })
   .client((query: JobListQuery = {}) => listAllCurrentBrowserJobs(query));
 
 const listCurrentServerJobsIsomorphic = createIsomorphicFn()
   .server(async (query: JobListQuery = {}) => {
-    const { listCurrentServerJobsDirect } = await import("./jobs-server-ssr");
+    const { listCurrentServerJobsDirect } = await importJobsServerSsr();
     return await listCurrentServerJobsDirect(query);
   })
   .client((query: JobListQuery = {}) => listCurrentBrowserJobs(query));
 
 const getCurrentServerJobDetailIsomorphic = createIsomorphicFn()
   .server(async (workItemId: WorkItemIdType) => {
-    const { getCurrentServerJobDetailDirect } =
-      await import("./jobs-server-ssr");
+    const { getCurrentServerJobDetailDirect } = await importJobsServerSsr();
     return await getCurrentServerJobDetailDirect(workItemId);
   })
   .client((workItemId: WorkItemIdType) =>
@@ -41,16 +41,14 @@ const getCurrentServerJobDetailIsomorphic = createIsomorphicFn()
 
 const getCurrentServerJobOptionsIsomorphic = createIsomorphicFn()
   .server(async () => {
-    const { getCurrentServerJobOptionsDirect } =
-      await import("./jobs-server-ssr");
+    const { getCurrentServerJobOptionsDirect } = await importJobsServerSsr();
     return await getCurrentServerJobOptionsDirect();
   })
   .client(() => getCurrentBrowserJobOptions());
 
 const getCurrentServerSiteOptionsIsomorphic = createIsomorphicFn()
   .server(async () => {
-    const { getCurrentServerSiteOptionsDirect } =
-      await import("./jobs-server-ssr");
+    const { getCurrentServerSiteOptionsDirect } = await importJobsServerSsr();
     return await getCurrentServerSiteOptionsDirect();
   })
   .client(() => getCurrentBrowserSiteOptions());
