@@ -1,6 +1,6 @@
 "use client";
 
-import { Link, useMatches } from "@tanstack/react-router";
+import { Link, useMatches, useRouterState } from "@tanstack/react-router";
 import * as React from "react";
 
 import ThemeToggle from "#/components/ThemeToggle";
@@ -13,6 +13,15 @@ import {
   BreadcrumbSeparator,
 } from "#/components/ui/breadcrumb";
 import { SidebarTrigger } from "#/components/ui/sidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "#/components/ui/tooltip";
+import { ShortcutHint } from "#/hotkeys/hotkey-display";
+import { HOTKEYS } from "#/hotkeys/hotkey-registry";
+import type { HotkeyScope } from "#/hotkeys/hotkey-registry";
+import { RouteHotkeys } from "#/hotkeys/route-hotkeys";
 import { ShortcutHelpOverlay } from "#/hotkeys/shortcut-help-overlay";
 import { ShortcutIntroNotice } from "#/hotkeys/shortcut-intro-notice";
 
@@ -23,15 +32,32 @@ export function SiteHeader() {
         .map((match) => match.staticData.breadcrumb)
         .filter((breadcrumb) => breadcrumb !== undefined),
   });
+  const activeScopes = useRouterState({
+    select: (state) => getActiveShortcutScopes(state.location.pathname),
+  });
 
   return (
     <header className="sticky top-0 z-40 flex w-full items-center border-b border-border/60 bg-background/90 backdrop-blur">
+      <RouteHotkeys />
       <div className="flex min-h-(--header-height) w-full flex-wrap items-center gap-3 px-3 py-3 sm:px-5">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <SidebarTrigger
-            className="size-10 rounded-lg border border-border/70 bg-background/80 sm:size-8 sm:rounded-md"
-            aria-label="Toggle navigation"
-          />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <SidebarTrigger
+                  className="size-10 rounded-lg border border-border/70 bg-background/80 sm:size-8 sm:rounded-md"
+                  aria-label="Toggle navigation"
+                />
+              }
+            />
+            <TooltipContent>
+              <span>Toggle navigation</span>
+              <ShortcutHint
+                hotkey={HOTKEYS.toggleSidebar.hotkey}
+                label={HOTKEYS.toggleSidebar.label}
+              />
+            </TooltipContent>
+          </Tooltip>
           <div className="min-w-0">
             {breadcrumbs.length > 0 ? (
               <Breadcrumb>
@@ -64,11 +90,19 @@ export function SiteHeader() {
           </div>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
-          <ShortcutHelpOverlay activeScopes={["global"]} />
+          <ShortcutHelpOverlay activeScopes={activeScopes} />
           <ThemeToggle />
         </div>
       </div>
       <ShortcutIntroNotice />
     </header>
   );
+}
+
+function getActiveShortcutScopes(pathname: string): readonly HotkeyScope[] {
+  if (pathname === "/jobs" || pathname.startsWith("/jobs/")) {
+    return ["global", "jobs"];
+  }
+
+  return ["global"];
 }

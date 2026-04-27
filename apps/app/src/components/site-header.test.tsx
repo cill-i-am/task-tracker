@@ -4,7 +4,8 @@ import type { ComponentProps } from "react";
 
 import { SiteHeader } from "./site-header";
 
-const { mockedUseMatches } = vi.hoisted(() => ({
+const { mockedNavigate, mockedUseMatches } = vi.hoisted(() => ({
+  mockedNavigate: vi.fn<() => Promise<void>>(),
   mockedUseMatches:
     vi.fn<(input: { select: (matches: unknown[]) => unknown }) => unknown>(),
 }));
@@ -23,7 +24,19 @@ vi.mock(import("@tanstack/react-router"), async (importActual) => {
         {children}
       </a>
     )) as typeof actual.Link,
+    useNavigate: () => mockedNavigate,
     useMatches: mockedUseMatches as typeof actual.useMatches,
+    useRouterState: ((options?: {
+      select?: (state: { location: { pathname: string } }) => unknown;
+    }) => {
+      const state = {
+        location: {
+          pathname: "/jobs",
+        },
+      };
+
+      return options?.select ? options.select(state) : state;
+    }) as typeof actual.useRouterState,
   };
 });
 

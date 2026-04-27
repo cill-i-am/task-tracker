@@ -61,6 +61,14 @@ import {
   TableRow,
 } from "#/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "#/components/ui/tooltip";
+import { ShortcutHint } from "#/hotkeys/hotkey-display";
+import { HOTKEYS } from "#/hotkeys/hotkey-registry";
+import { useAppHotkey, useAppHotkeySequence } from "#/hotkeys/use-app-hotkey";
 import { cn } from "#/lib/utils";
 
 import { JobsCoverageMap } from "./jobs-coverage-map";
@@ -71,6 +79,7 @@ import {
   jobsLookupAtom,
   jobsNoticeAtom,
   jobsOptionsStateAtom,
+  refreshJobsListAtom,
   visibleJobsAtom,
 } from "./jobs-state";
 import type { JobsListFilters } from "./jobs-state";
@@ -111,23 +120,33 @@ const STATUS_LABELS = {
 
 export function JobsPage({
   children,
+  onViewModeChange,
+  viewMode: controlledViewMode,
   viewer,
 }: {
   readonly activeOrganizationName: string;
   readonly children?: React.ReactNode;
+  readonly onViewModeChange?: (value: JobsViewMode) => void;
+  readonly viewMode?: JobsViewMode;
   readonly viewer: JobsViewer;
 }) {
-  const [viewMode, setViewMode] = React.useState<JobsViewMode>("list");
+  const [uncontrolledViewMode, setUncontrolledViewMode] =
+    React.useState<JobsViewMode>("list");
+  const viewMode = controlledViewMode ?? uncontrolledViewMode;
   const filters = useAtomValue(jobsListFiltersAtom);
   const jobs = useAtomValue(visibleJobsAtom);
   const lookup = useAtomValue(jobsLookupAtom);
   const notice = useAtomValue(jobsNoticeAtom);
   const optionsState = useAtomValue(jobsOptionsStateAtom);
+  const refreshJobs = useAtomSet(refreshJobsListAtom);
   const setFilters = useAtomSet(jobsListFiltersAtom);
   const setNotice = useAtomSet(jobsNoticeAtom);
   const canCreateJobs = hasJobsElevatedAccess(viewer.role);
+  const createJobLinkRef = React.useRef<HTMLAnchorElement | null>(null);
+  const searchInputRef = React.useRef<HTMLInputElement | null>(null);
   const activeFilters = buildActiveFilterBadges(filters, lookup);
   const hasCustomFilters = activeFilters.length > 0;
+  const listHotkeysEnabled = children === undefined || children === null;
 
   function patchFilters(patch: Partial<JobsListFilters>) {
     setFilters((current) => ({
@@ -135,6 +154,51 @@ export function JobsPage({
       ...patch,
     }));
   }
+
+  function setViewMode(nextViewMode: JobsViewMode) {
+    if (controlledViewMode === undefined) {
+      setUncontrolledViewMode(nextViewMode);
+    }
+
+    onViewModeChange?.(nextViewMode);
+  }
+
+  useAppHotkey(
+    "jobsSearch",
+    () => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    },
+    { enabled: listHotkeysEnabled }
+  );
+  useAppHotkey(
+    "jobsCreate",
+    () => {
+      createJobLinkRef.current?.click();
+    },
+    { enabled: listHotkeysEnabled && canCreateJobs }
+  );
+  useAppHotkey(
+    "jobsRefresh",
+    () => {
+      refreshJobs();
+    },
+    { enabled: listHotkeysEnabled }
+  );
+  useAppHotkeySequence(
+    "jobsListView",
+    () => {
+      setViewMode("list");
+    },
+    { enabled: listHotkeysEnabled }
+  );
+  useAppHotkeySequence(
+    "jobsMapView",
+    () => {
+      setViewMode("map");
+    },
+    { enabled: listHotkeysEnabled }
+  );
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-3 sm:p-4 lg:p-5">
@@ -152,16 +216,7 @@ export function JobsPage({
           </div>
           <div className="flex items-center gap-2">
             <ViewModeSwitch value={viewMode} onValueChange={setViewMode} />
-            {canCreateJobs ? (
-              <Link to="/jobs/new" className={buttonVariants({ size: "sm" })}>
-                <HugeiconsIcon
-                  icon={Add01Icon}
-                  strokeWidth={2}
-                  data-icon="inline-start"
-                />
-                New job
-              </Link>
-            ) : null}
+            {canCreateJobs ? <NewJobLink linkRef={createJobLinkRef} /> : null}
           </div>
         </div>
 
@@ -171,6 +226,7 @@ export function JobsPage({
           optionsState={optionsState.data}
           onClearFilters={() => setFilters(defaultJobsListFilters)}
           onFiltersChange={patchFilters}
+          searchInputRef={searchInputRef}
         />
       </header>
 
@@ -207,7 +263,11 @@ export function JobsPage({
       ) : null}
 
       {viewMode === "list" ? (
-        <JobsListView jobs={jobs} canCreateJobs={canCreateJobs} />
+        <JobsListView
+          jobs={jobs}
+          canCreateJobs={canCreateJobs}
+          createJobLinkRef={createJobLinkRef}
+        />
       ) : (
         <section data-testid="jobs-coverage-panel" className="min-h-0">
           <JobsCoverageMap jobs={jobs} sites={lookup.siteById} />
@@ -225,6 +285,7 @@ function JobsCommandToolbar({
   onClearFilters,
   onFiltersChange,
   optionsState,
+  searchInputRef,
 }: {
   readonly filters: JobsListFilters;
   readonly hasCustomFilters: boolean;
@@ -239,6 +300,7 @@ function JobsCommandToolbar({
       readonly regionId?: string | undefined;
     }[];
   };
+  readonly searchInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -250,6 +312,7 @@ function JobsCommandToolbar({
           <InputGroupInput
             aria-label="Search jobs"
             placeholder="Search jobs"
+            ref={searchInputRef}
             value={filters.query}
             onChange={(event) => onFiltersChange({ query: event.target.value })}
           />
@@ -517,15 +580,22 @@ function ActiveFilterBar({
 
 function JobsListView({
   canCreateJobs,
+  createJobLinkRef,
   jobs,
 }: {
   readonly canCreateJobs: boolean;
+  readonly createJobLinkRef: React.RefObject<HTMLAnchorElement | null>;
   readonly jobs: readonly JobListItem[];
 }) {
   const lookup = useAtomValue(jobsLookupAtom);
 
   if (jobs.length === 0) {
-    return <JobsEmptyState canCreateJobs={canCreateJobs} />;
+    return (
+      <JobsEmptyState
+        canCreateJobs={canCreateJobs}
+        createJobLinkRef={createJobLinkRef}
+      />
+    );
   }
 
   return (
@@ -682,8 +752,10 @@ function JobIssueRow({
 
 function JobsEmptyState({
   canCreateJobs,
+  createJobLinkRef,
 }: {
   readonly canCreateJobs: boolean;
+  readonly createJobLinkRef: React.RefObject<HTMLAnchorElement | null>;
 }) {
   return (
     <section data-testid="jobs-queue-panel">
@@ -699,18 +771,45 @@ function JobsEmptyState({
         </EmptyHeader>
         {canCreateJobs ? (
           <EmptyContent>
-            <Link to="/jobs/new" className={buttonVariants({ size: "sm" })}>
-              <HugeiconsIcon
-                icon={Add01Icon}
-                strokeWidth={2}
-                data-icon="inline-start"
-              />
-              New job
-            </Link>
+            <NewJobLink linkRef={createJobLinkRef} />
           </EmptyContent>
         ) : null}
       </Empty>
     </section>
+  );
+}
+
+function NewJobLink({
+  linkRef,
+}: {
+  readonly linkRef: React.RefObject<HTMLAnchorElement | null>;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Link
+            ref={linkRef}
+            to="/jobs/new"
+            className={buttonVariants({ size: "sm" })}
+          />
+        }
+      >
+        <HugeiconsIcon
+          icon={Add01Icon}
+          strokeWidth={2}
+          data-icon="inline-start"
+        />
+        New job
+      </TooltipTrigger>
+      <TooltipContent>
+        <span>New job</span>
+        <ShortcutHint
+          hotkey={HOTKEYS.jobsCreate.hotkey}
+          label={HOTKEYS.jobsCreate.label}
+        />
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

@@ -1,4 +1,5 @@
 import { RegistryProvider } from "@effect-atom/atom-react";
+import { HotkeysProvider } from "@tanstack/react-hotkeys";
 import { decodeOrganizationId } from "@task-tracker/identity-core";
 import type {
   JobListResponse,
@@ -11,6 +12,8 @@ import type {
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
+
+import { TooltipProvider } from "#/components/ui/tooltip";
 
 import { JobsPage } from "./jobs-page";
 import {
@@ -151,6 +154,7 @@ vi.mock(import("@tanstack/react-router"), async (importActual) => {
 describe("jobs page", () => {
   afterEach(() => {
     setViewportWidth(originalInnerWidth);
+    vi.restoreAllMocks();
   });
 
   it(
@@ -266,6 +270,33 @@ describe("jobs page", () => {
     expect(
       screen.queryByRole("link", { name: /new job/i })
     ).not.toBeInTheDocument();
+  }, 10_000);
+
+  it("focuses the jobs search input with the search hotkey", async () => {
+    const user = userEvent.setup();
+
+    renderJobsPage();
+
+    await user.keyboard("/");
+
+    expect(screen.getByRole("textbox", { name: /search jobs/i })).toHaveFocus();
+  }, 10_000);
+
+  it("opens the create job action with the create hotkey", async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+
+    renderJobsPage();
+
+    await user.keyboard("n");
+
+    expect(clickSpy).toHaveBeenCalledOnce();
+    expect(screen.getByRole("link", { name: /new job/i })).toHaveAttribute(
+      "href",
+      "/jobs/new"
+    );
   }, 10_000);
 
   it(
@@ -405,25 +436,29 @@ function renderJobsPage(options?: {
   setViewportWidth(options?.viewportWidth ?? 1440);
 
   return render(
-    <RegistryProvider
-      initialValues={[
-        [jobsListStateAtom, seedJobsListState(organizationId, initialList)],
-        [
-          jobsOptionsStateAtom,
-          seedJobsOptionsState(organizationId, initialOptions),
-        ],
-      ]}
-    >
-      <JobsPage
-        activeOrganizationName="Acme Field Ops"
-        viewer={
-          options?.viewer ?? {
-            role: "owner",
-            userId: memberOneId,
-          }
-        }
-      />
-    </RegistryProvider>
+    <HotkeysProvider>
+      <TooltipProvider>
+        <RegistryProvider
+          initialValues={[
+            [jobsListStateAtom, seedJobsListState(organizationId, initialList)],
+            [
+              jobsOptionsStateAtom,
+              seedJobsOptionsState(organizationId, initialOptions),
+            ],
+          ]}
+        >
+          <JobsPage
+            activeOrganizationName="Acme Field Ops"
+            viewer={
+              options?.viewer ?? {
+                role: "owner",
+                userId: memberOneId,
+              }
+            }
+          />
+        </RegistryProvider>
+      </TooltipProvider>
+    </HotkeysProvider>
   );
 }
 

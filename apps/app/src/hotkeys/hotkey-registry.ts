@@ -78,18 +78,18 @@ export const HOTKEYS = {
     label: "Go to Members",
     scope: "global",
   },
-  goOrganizationSettings: {
+  goSettings: {
     group: "Navigation",
-    hotkey: "G O",
-    id: "goOrganizationSettings",
-    label: "Go to Organization settings",
+    hotkey: "G T",
+    id: "goSettings",
+    label: "Go to Settings",
     scope: "global",
   },
-  goUserSettings: {
+  goMap: {
     group: "Navigation",
-    hotkey: "G U",
-    id: "goUserSettings",
-    label: "Go to User settings",
+    hotkey: "G P",
+    id: "goMap",
+    label: "Go to Map",
     scope: "global",
   },
   jobsSearch: {
@@ -99,13 +99,20 @@ export const HOTKEYS = {
     label: "Search jobs",
     scope: "jobs",
   },
-  jobsNew: {
+  jobsCreate: {
     group: "Jobs",
     hotkey: "N",
-    id: "jobsNew",
+    id: "jobsCreate",
     label: "Create job",
     scope: "jobs",
     when: "Viewer can create jobs",
+  },
+  jobsRefresh: {
+    group: "Jobs",
+    hotkey: "R",
+    id: "jobsRefresh",
+    label: "Refresh jobs",
+    scope: "jobs",
   },
   jobsListView: {
     group: "Jobs",

@@ -5,7 +5,7 @@ import type {
   JobListResponse,
   JobOptionsResponse,
 } from "@task-tracker/jobs-core";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { JobsCreateSheet } from "#/features/jobs/jobs-create-sheet";
 import { JobsDetailSheet } from "#/features/jobs/jobs-detail-sheet";
@@ -23,14 +23,20 @@ export function JobsRouteContent({
   activeOrganizationName,
   children,
   list,
+  onViewModeChange,
   options,
+  viewMode,
   viewer,
 }: {
   readonly activeOrganizationId: OrganizationId;
   readonly activeOrganizationName: string;
   readonly children?: ReactNode;
   readonly list: JobListResponse;
+  readonly onViewModeChange?: ComponentProps<
+    typeof JobsPage
+  >["onViewModeChange"];
   readonly options: JobOptionsResponse;
+  readonly viewMode?: ComponentProps<typeof JobsPage>["viewMode"];
   readonly viewer: JobsViewer;
 }) {
   return (
@@ -44,7 +50,12 @@ export function JobsRouteContent({
         ],
       ]}
     >
-      <JobsPage activeOrganizationName={activeOrganizationName} viewer={viewer}>
+      <JobsPage
+        activeOrganizationName={activeOrganizationName}
+        onViewModeChange={onViewModeChange}
+        viewMode={viewMode}
+        viewer={viewer}
+      >
         {children}
       </JobsPage>
     </RegistryProvider>

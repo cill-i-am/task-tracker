@@ -1,6 +1,7 @@
 import {
   Outlet,
   createFileRoute,
+  useNavigate,
   useRouteContext,
 } from "@tanstack/react-router";
 import type { OrganizationId } from "@task-tracker/identity-core";
@@ -8,6 +9,7 @@ import type {
   JobListResponse,
   JobOptionsResponse,
 } from "@task-tracker/jobs-core";
+import { ParseResult, Schema } from "effect";
 
 import { JobsRouteContent } from "#/features/jobs/jobs-route-content";
 import {
@@ -32,6 +34,38 @@ const EMPTY_JOBS_LIST: JobListResponse = {
   items: [],
   nextCursor: undefined,
 };
+
+const RawJobsSearch = Schema.Struct({
+  view: Schema.optional(Schema.Unknown),
+});
+
+const JobsSearch = Schema.transform(
+  RawJobsSearch,
+  Schema.Struct({
+    view: Schema.optional(Schema.Literal("list", "map")),
+  }),
+  {
+    strict: true,
+    decode: ({ view }) => {
+      if (view === "list") {
+        return { view: "list" as const };
+      }
+
+      if (view === "map") {
+        return { view: "map" as const };
+      }
+
+      return {};
+    },
+    encode: (search) => search,
+  }
+);
+
+type JobsSearch = typeof JobsSearch.Type;
+
+function decodeJobsSearch(input: unknown): JobsSearch {
+  return ParseResult.decodeUnknownSync(JobsSearch)(input);
+}
 
 interface JobsRouteOrganizationAccess {
   readonly activeOrganizationId: OrganizationId;
@@ -92,6 +126,7 @@ export const Route = createFileRoute("/_app/_org/jobs")({
       to: "/jobs",
     },
   },
+  validateSearch: decodeJobsSearch,
   loader: ({ context }) => loadJobsRouteData(context),
   component: JobsRoute,
 });
@@ -101,13 +136,24 @@ function JobsRoute() {
     from: "/_app/_org",
   });
   const { list, options, viewer } = Route.useLoaderData();
+  const navigate = useNavigate({ from: "/jobs" });
+  const search = Route.useSearch();
 
   return (
     <JobsRouteContent
       activeOrganizationName={activeOrganization.name}
       activeOrganizationId={activeOrganizationId}
       list={list}
+      onViewModeChange={(viewMode) => {
+        navigate({
+          search: (current) => ({
+            ...current,
+            view: viewMode === "list" ? undefined : viewMode,
+          }),
+        });
+      }}
       options={options}
+      viewMode={search.view ?? "list"}
       viewer={viewer}
     >
       <Outlet />
