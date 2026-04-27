@@ -1,3 +1,4 @@
+import { HotkeysProvider } from "@tanstack/react-hotkeys";
 import { render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
@@ -69,6 +70,9 @@ describe("site header", () => {
   });
 
   afterEach(() => {
+    if (typeof window.localStorage.clear === "function") {
+      window.localStorage.clear();
+    }
     vi.clearAllMocks();
   });
 
@@ -78,7 +82,11 @@ describe("site header", () => {
       timeout: 10_000,
     },
     () => {
-      render(<SiteHeader />);
+      render(
+        <HotkeysProvider>
+          <SiteHeader />
+        </HotkeysProvider>
+      );
 
       expect(
         screen.getByRole("button", { name: /toggle navigation/i })
@@ -90,6 +98,9 @@ describe("site header", () => {
       expect(screen.queryByText("Your work")).not.toBeInTheDocument();
       expect(
         screen.getByRole("button", { name: /theme mode/i })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /keyboard shortcuts/i })
       ).toBeInTheDocument();
     }
   );

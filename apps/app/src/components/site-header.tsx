@@ -13,6 +13,8 @@ import {
   BreadcrumbSeparator,
 } from "#/components/ui/breadcrumb";
 import { SidebarTrigger } from "#/components/ui/sidebar";
+import { ShortcutHelpOverlay } from "#/hotkeys/shortcut-help-overlay";
+import { ShortcutIntroNotice } from "#/hotkeys/shortcut-intro-notice";
 
 export function SiteHeader() {
   const breadcrumbs = useMatches({
@@ -62,9 +64,11 @@ export function SiteHeader() {
           </div>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
+          <ShortcutHelpOverlay activeScopes={["global"]} />
           <ThemeToggle />
         </div>
       </div>
+      <ShortcutIntroNotice />
     </header>
   );
 }
