@@ -45,7 +45,7 @@ export function ShortcutIntroNotice() {
 
   return (
     <div
-      role="status"
+      aria-live="polite"
       className="fixed right-3 bottom-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-3 rounded-lg border border-border/70 bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg sm:right-5 sm:bottom-5"
     >
       <span className="min-w-0">
