@@ -53,7 +53,7 @@ export function AppStatusStripItem({
       {...props}
     >
       <div className="min-w-0 space-y-1.5">
-        <p className="text-[0.68rem] font-medium tracking-[0.16em] text-muted-foreground uppercase">
+        <p className="text-[0.68rem] font-medium text-muted-foreground uppercase">
           {label}
         </p>
         <div className="min-w-0 space-y-1">

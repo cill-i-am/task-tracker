@@ -138,7 +138,7 @@ function InvitationContextContent({
     return (
       <div className="flex flex-col gap-8">
         <div className="space-y-3">
-          <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          <p className="text-xs font-medium text-muted-foreground uppercase">
             Continue the invitation
           </p>
           <p className="max-w-[48ch] text-sm/7 text-foreground/90">
@@ -166,7 +166,7 @@ function InvitationContextContent({
   return (
     <div className="flex flex-col gap-8">
       <div className="space-y-3">
-        <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        <p className="text-xs font-medium text-muted-foreground uppercase">
           Invitation details
         </p>
         <p className="max-w-[48ch] text-sm/7 text-foreground/90">
@@ -178,7 +178,7 @@ function InvitationContextContent({
 
       <dl className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-1 border-t border-border/60 pt-4">
-          <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          <dt className="text-xs font-medium text-muted-foreground uppercase">
             Organization
           </dt>
           <dd className="text-sm/6 text-muted-foreground">
@@ -187,7 +187,7 @@ function InvitationContextContent({
         </div>
 
         <div className="space-y-1 border-t border-border/60 pt-4">
-          <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          <dt className="text-xs font-medium text-muted-foreground uppercase">
             Invited email
           </dt>
           <dd className="text-sm/6 text-muted-foreground">
@@ -196,7 +196,7 @@ function InvitationContextContent({
         </div>
 
         <div className="space-y-1 border-t border-border/60 pt-4">
-          <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          <dt className="text-xs font-medium text-muted-foreground uppercase">
             Role
           </dt>
           <dd className="text-sm/6 text-muted-foreground">{invitation.role}</dd>
@@ -204,7 +204,7 @@ function InvitationContextContent({
 
         {"inviterEmail" in invitation ? (
           <div className="space-y-1 border-t border-border/60 pt-4">
-            <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            <dt className="text-xs font-medium text-muted-foreground uppercase">
               Invited by
             </dt>
             <dd className="text-sm/6 text-muted-foreground">

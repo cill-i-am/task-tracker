@@ -72,7 +72,7 @@ export function AppRowListBody({
   return (
     <div className={cn("min-w-0 flex-1 space-y-1", className)} {...props}>
       {eyebrow ? (
-        <p className="text-[0.68rem] font-medium tracking-[0.16em] text-muted-foreground uppercase">
+        <p className="text-[0.68rem] font-medium text-muted-foreground uppercase">
           {eyebrow}
         </p>
       ) : null}

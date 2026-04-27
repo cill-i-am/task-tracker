@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import { Button } from "#/components/ui/button";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 
 import type { InvitationContinuationSearch } from "../organizations/invitation-continuation";
@@ -31,6 +32,7 @@ export function LoginPage({
   readonly search?: InvitationContinuationSearch;
 }) {
   const navigateOnSuccess = useAuthSuccessNavigation(search?.invitation);
+  const isHydrated = useIsHydrated();
   const form = useForm({
     defaultValues: {
       email: "",
@@ -80,7 +82,7 @@ export function LoginPage({
       supportingContent={
         <div className="flex flex-col gap-8">
           <div className="space-y-3">
-            <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            <p className="text-xs font-medium text-muted-foreground uppercase">
               {isInvitationFlow ? "Continue the handoff" : "Back in the flow"}
             </p>
             <p className="max-w-[48ch] text-sm/7 text-foreground/90">
@@ -92,7 +94,7 @@ export function LoginPage({
 
           <dl className="grid gap-5 sm:grid-cols-2">
             <div className="space-y-1 border-t border-border/60 pt-4">
-              <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+              <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Use this email
               </dt>
               <dd className="text-sm/6 text-muted-foreground">
@@ -103,7 +105,7 @@ export function LoginPage({
             </div>
 
             <div className="space-y-1 border-t border-border/60 pt-4">
-              <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+              <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Next step
               </dt>
               <dd className="text-sm/6 text-muted-foreground">
@@ -156,6 +158,7 @@ export function LoginPage({
 
         <form
           className="flex flex-col gap-6"
+          method="post"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
@@ -236,7 +239,7 @@ export function LoginPage({
                 type="submit"
                 size="lg"
                 className="w-full"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !isHydrated}
               >
                 {isSubmitting ? "Signing in..." : "Sign in"}
               </Button>

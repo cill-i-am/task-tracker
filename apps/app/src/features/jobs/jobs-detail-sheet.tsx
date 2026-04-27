@@ -634,6 +634,7 @@ export function JobsDetailSheet({
                 {renderMutationError(commentResult)}
                 <form
                   className="flex flex-col gap-4"
+                  method="post"
                   onSubmit={handleAddComment}
                 >
                   <FieldGroup>
@@ -729,6 +730,7 @@ export function JobsDetailSheet({
                     {renderMutationError(visitResult)}
                     <form
                       className="flex flex-col gap-4"
+                      method="post"
                       onSubmit={handleAddVisit}
                     >
                       <FieldGroup>
@@ -951,7 +953,7 @@ function HeaderMetaCard({
 }) {
   return (
     <div className="rounded-2xl border bg-muted/15 px-3 py-3 text-left">
-      <p className="text-[11px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+      <p className="text-[11px] font-medium text-muted-foreground uppercase">
         {label}
       </p>
       <p className="mt-1 truncate text-sm font-medium text-foreground">

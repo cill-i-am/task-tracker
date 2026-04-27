@@ -102,7 +102,7 @@ export function JobsCoverageMap({ jobs, sites }: JobsCoverageMapProps) {
         {hasUnmappedJobs ? (
           <aside className="flex min-h-0 flex-col border-t lg:border-t-0 lg:border-l">
             <div className="border-b px-3 py-2">
-              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              <p className="text-xs font-medium text-muted-foreground uppercase">
                 Needs pin
               </p>
             </div>

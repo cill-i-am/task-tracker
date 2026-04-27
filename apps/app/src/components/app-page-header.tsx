@@ -32,12 +32,12 @@ export function AppPageHeader({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 space-y-2">
           {eyebrow ? (
-            <p className="text-[0.68rem] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+            <p className="text-[0.68rem] font-medium text-muted-foreground uppercase">
               {eyebrow}
             </p>
           ) : null}
           <div className="space-y-1.5">
-            <h1 className="font-heading text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
+            <h1 className="font-heading text-2xl font-medium text-foreground sm:text-3xl">
               {title}
             </h1>
             {description ? (

@@ -38,7 +38,7 @@ export function EmailVerificationPage({ search }: EmailVerificationPageProps) {
       }
       supportingContent={
         <div className="space-y-3">
-          <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          <p className="text-xs font-medium text-muted-foreground uppercase">
             Status
           </p>
           <p className="max-w-[36ch] text-sm/6 text-muted-foreground">

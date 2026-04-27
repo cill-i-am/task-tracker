@@ -57,9 +57,7 @@ export function SitesPage({
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <HugeiconsIcon icon={Location01Icon} strokeWidth={2} />
           </span>
-          <h1 className="truncate font-heading text-xl font-medium tracking-tight">
-            Sites
-          </h1>
+          <h1 className="truncate font-heading text-xl font-medium">Sites</h1>
         </div>
         {canCreateSites ? (
           <Link to="/sites/new" className={buttonVariants({ size: "sm" })}>

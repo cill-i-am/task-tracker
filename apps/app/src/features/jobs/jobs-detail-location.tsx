@@ -98,7 +98,7 @@ export function JobsDetailLocation({ site }: JobsDetailLocationProps) {
 
           {site.accessNotes ? (
             <div className="flex flex-col gap-1.5 rounded-2xl border border-dashed bg-background/80 p-3">
-              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              <p className="text-xs font-medium text-muted-foreground uppercase">
                 Access notes
               </p>
               <p className="text-sm leading-6 whitespace-pre-wrap">

@@ -11,6 +11,7 @@ import {
 } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { EntryShell, EntrySurfaceCard } from "#/features/auth/entry-shell";
+import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 
 import {
@@ -23,6 +24,7 @@ const CREATE_ORGANIZATION_FAILURE_MESSAGE =
 
 export function OrganizationOnboardingPage() {
   const navigate = useNavigate();
+  const isHydrated = useIsHydrated();
   const form = useForm({
     defaultValues: {
       name: "",
@@ -67,7 +69,7 @@ export function OrganizationOnboardingPage() {
         supportingContent={
           <div className="flex flex-col gap-8">
             <div className="space-y-3">
-              <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+              <p className="text-xs font-medium text-muted-foreground uppercase">
                 Workspace details
               </p>
               <p className="max-w-[48ch] text-sm/7 text-foreground/90">
@@ -79,7 +81,7 @@ export function OrganizationOnboardingPage() {
 
             <dl className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-1 border-t border-border/60 pt-4">
-                <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                <dt className="text-xs font-medium text-muted-foreground uppercase">
                   Organization name
                 </dt>
                 <dd className="text-sm/6 text-muted-foreground">
@@ -89,7 +91,7 @@ export function OrganizationOnboardingPage() {
               </div>
 
               <div className="space-y-1 border-t border-border/60 pt-4">
-                <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                <dt className="text-xs font-medium text-muted-foreground uppercase">
                   Organization slug
                 </dt>
                 <dd className="text-sm/6 text-muted-foreground">
@@ -98,7 +100,7 @@ export function OrganizationOnboardingPage() {
               </div>
 
               <div className="space-y-1 border-t border-border/60 pt-4 sm:col-span-2">
-                <dt className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+                <dt className="text-xs font-medium text-muted-foreground uppercase">
                   After this step
                 </dt>
                 <dd className="text-sm/6 text-muted-foreground">
@@ -118,6 +120,7 @@ export function OrganizationOnboardingPage() {
         >
           <form
             className="flex flex-col gap-6"
+            method="post"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
@@ -198,7 +201,7 @@ export function OrganizationOnboardingPage() {
                   type="submit"
                   size="lg"
                   className="w-full"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isHydrated}
                 >
                   {isSubmitting
                     ? "Creating organization..."

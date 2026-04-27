@@ -18,6 +18,12 @@ import { Link } from "@tanstack/react-router";
 import type { JobListItem, JobPriority } from "@task-tracker/jobs-core";
 import * as React from "react";
 
+import {
+  Alert,
+  AlertAction,
+  AlertDescription,
+  AlertTitle,
+} from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
 import { Button, buttonVariants } from "#/components/ui/button";
 import {
@@ -54,6 +60,7 @@ import {
   TableHeader,
   TableRow,
 } from "#/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "#/components/ui/toggle-group";
 import { cn } from "#/lib/utils";
 
 import { JobsCoverageMap } from "./jobs-coverage-map";
@@ -138,7 +145,7 @@ export function JobsPage({
               <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
             </span>
             <div className="min-w-0">
-              <h1 className="truncate font-heading text-xl font-medium tracking-tight">
+              <h1 className="truncate font-heading text-xl font-medium">
                 Jobs
               </h1>
             </div>
@@ -168,28 +175,21 @@ export function JobsPage({
       </header>
 
       {notice ? (
-        <div
-          role="status"
-          className="flex min-w-0 items-center justify-between gap-3 rounded-xl border bg-background px-3 py-2 text-sm shadow-xs"
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
-            </span>
-            <span className="truncate font-medium">{notice.title}</span>
-            <span className="hidden text-muted-foreground sm:inline">
-              added
-            </span>
-          </div>
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            onClick={() => setNotice(null)}
-          >
-            Dismiss
-          </Button>
-        </div>
+        <Alert role="status" variant="success" className="py-2 pr-24">
+          <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
+          <AlertTitle className="truncate">{notice.title}</AlertTitle>
+          <AlertDescription>Job added to the queue.</AlertDescription>
+          <AlertAction>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              onClick={() => setNotice(null)}
+            >
+              Dismiss
+            </Button>
+          </AlertAction>
+        </Alert>
       ) : null}
 
       {hasCustomFilters ? (
@@ -439,38 +439,36 @@ function ViewModeSwitch({
   readonly value: JobsViewMode;
 }) {
   return (
-    <div className="flex items-center rounded-full border bg-background p-0.5">
-      <Button
-        type="button"
-        size="sm"
-        variant={value === "list" ? "secondary" : "ghost"}
-        className="h-7 rounded-full px-2"
-        aria-pressed={value === "list"}
-        onClick={() => onValueChange("list")}
-      >
+    <ToggleGroup
+      aria-label="Jobs view"
+      className="rounded-full border bg-background p-0.5"
+      size="sm"
+      value={[value]}
+      onValueChange={(nextValue) => {
+        const [nextMode] = nextValue;
+
+        if (nextMode) {
+          onValueChange(nextMode as JobsViewMode);
+        }
+      }}
+    >
+      <ToggleGroupItem className="h-7" value="list">
         <HugeiconsIcon
           icon={LeftToRightListBulletIcon}
           strokeWidth={2}
           data-icon="inline-start"
         />
         List
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant={value === "map" ? "secondary" : "ghost"}
-        className="h-7 rounded-full px-2"
-        aria-pressed={value === "map"}
-        onClick={() => onValueChange("map")}
-      >
+      </ToggleGroupItem>
+      <ToggleGroupItem className="h-7" value="map">
         <HugeiconsIcon
           icon={MapsSquare01Icon}
           strokeWidth={2}
           data-icon="inline-start"
         />
         Map
-      </Button>
-    </div>
+      </ToggleGroupItem>
+    </ToggleGroup>
   );
 }
 

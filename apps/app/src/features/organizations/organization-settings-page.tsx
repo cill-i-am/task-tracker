@@ -13,6 +13,7 @@ import {
   getFormErrorText,
 } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
+import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 
 import type { OrganizationSummary } from "./organization-access";
@@ -30,6 +31,7 @@ export function OrganizationSettingsPage({
   readonly organization: OrganizationSummary;
 }) {
   const router = useRouter();
+  const isHydrated = useIsHydrated();
   const [successMessage, setSuccessMessage] = React.useState<string | null>(
     null
   );
@@ -134,6 +136,7 @@ export function OrganizationSettingsPage({
         >
           <form
             className="flex max-w-xl flex-col gap-5"
+            method="post"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
@@ -196,7 +199,7 @@ export function OrganizationSettingsPage({
                   type="submit"
                   size="lg"
                   className="w-full sm:w-auto"
-                  disabled={isSubmitting || isDefaultValue}
+                  disabled={isSubmitting || isDefaultValue || !isHydrated}
                 >
                   {isSubmitting ? "Saving..." : "Save changes"}
                 </Button>
@@ -211,7 +214,7 @@ export function OrganizationSettingsPage({
         >
           <dl className="flex flex-col gap-4">
             <div className="space-y-1 border-t border-border/60 pt-4 first:border-t-0 first:pt-0">
-              <dt className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
+              <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Slug
               </dt>
               <dd className="font-mono text-sm break-all text-foreground">
@@ -219,7 +222,7 @@ export function OrganizationSettingsPage({
               </dd>
             </div>
             <div className="space-y-1 border-t border-border/60 pt-4">
-              <dt className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
+              <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Access
               </dt>
               <dd className="text-sm/6 text-muted-foreground">
