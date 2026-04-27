@@ -54,7 +54,6 @@ import {
 import { Input } from "#/components/ui/input";
 import { ResponsiveDrawer } from "#/components/ui/responsive-drawer";
 import { Separator } from "#/components/ui/separator";
-import { Spinner } from "#/components/ui/spinner";
 import { Textarea } from "#/components/ui/textarea";
 
 import { JobsDetailLocation } from "./jobs-detail-location";
@@ -373,19 +372,21 @@ export function JobsDetailSheet({
         {renderMutationError(reopenResult)}
         <Button
           className="w-full sm:w-fit"
-          disabled={reopenResult.waiting}
+          loading={reopenResult.waiting}
           onClick={handleReopen}
         >
           {reopenResult.waiting ? (
-            <Spinner data-icon="inline-start" />
+            "Reopening..."
           ) : (
-            <HugeiconsIcon
-              icon={CheckmarkCircle02Icon}
-              strokeWidth={2}
-              data-icon="inline-start"
-            />
+            <>
+              <HugeiconsIcon
+                icon={CheckmarkCircle02Icon}
+                strokeWidth={2}
+                data-icon="inline-start"
+              />
+              Reopen job
+            </>
           )}
-          {reopenResult.waiting ? "Reopening..." : "Reopen job"}
         </Button>
       </div>
     ) : (
@@ -429,19 +430,22 @@ export function JobsDetailSheet({
 
         <div className="flex flex-wrap gap-3">
           <Button
-            disabled={transitionResult.waiting || !selectedStatus}
+            loading={transitionResult.waiting}
+            disabled={!selectedStatus}
             onClick={handleTransition}
           >
             {transitionResult.waiting ? (
-              <Spinner data-icon="inline-start" />
+              transitionButtonLabel
             ) : (
-              <HugeiconsIcon
-                icon={CheckmarkCircle02Icon}
-                strokeWidth={2}
-                data-icon="inline-start"
-              />
+              <>
+                <HugeiconsIcon
+                  icon={CheckmarkCircle02Icon}
+                  strokeWidth={2}
+                  data-icon="inline-start"
+                />
+                {transitionButtonLabel}
+              </>
             )}
-            {transitionButtonLabel}
           </Button>
         </div>
       </div>
@@ -588,19 +592,22 @@ export function JobsDetailSheet({
                     <Button
                       type="button"
                       className="w-full sm:w-fit"
-                      disabled={!selectedSiteChanged || patchResult.waiting}
+                      loading={patchResult.waiting}
+                      disabled={!selectedSiteChanged}
                       onClick={handleUpdateSiteAssignment}
                     >
                       {patchResult.waiting ? (
-                        <Spinner data-icon="inline-start" />
+                        "Saving..."
                       ) : (
-                        <HugeiconsIcon
-                          icon={Location01Icon}
-                          strokeWidth={2}
-                          data-icon="inline-start"
-                        />
+                        <>
+                          <HugeiconsIcon
+                            icon={Location01Icon}
+                            strokeWidth={2}
+                            data-icon="inline-start"
+                          />
+                          Save site
+                        </>
                       )}
-                      {patchResult.waiting ? "Saving..." : "Save site"}
                     </Button>
                   </div>
                 ) : (
@@ -647,19 +654,21 @@ export function JobsDetailSheet({
                   <div className="flex">
                     <Button
                       type="submit"
-                      disabled={commentResult.waiting}
+                      loading={commentResult.waiting}
                       className="w-full sm:w-fit"
                     >
                       {commentResult.waiting ? (
-                        <Spinner data-icon="inline-start" />
+                        "Adding..."
                       ) : (
-                        <HugeiconsIcon
-                          icon={Comment01Icon}
-                          strokeWidth={2}
-                          data-icon="inline-start"
-                        />
+                        <>
+                          <HugeiconsIcon
+                            icon={Comment01Icon}
+                            strokeWidth={2}
+                            data-icon="inline-start"
+                          />
+                          Add comment
+                        </>
                       )}
-                      {commentResult.waiting ? "Adding..." : "Add comment"}
                     </Button>
                   </div>
                 </form>
@@ -795,19 +804,21 @@ export function JobsDetailSheet({
                       <div className="flex">
                         <Button
                           type="submit"
-                          disabled={visitResult.waiting}
+                          loading={visitResult.waiting}
                           className="w-full sm:w-fit"
                         >
                           {visitResult.waiting ? (
-                            <Spinner data-icon="inline-start" />
+                            "Logging..."
                           ) : (
-                            <HugeiconsIcon
-                              icon={Time04Icon}
-                              strokeWidth={2}
-                              data-icon="inline-start"
-                            />
+                            <>
+                              <HugeiconsIcon
+                                icon={Time04Icon}
+                                strokeWidth={2}
+                                data-icon="inline-start"
+                              />
+                              Log visit
+                            </>
                           )}
-                          {visitResult.waiting ? "Logging..." : "Log visit"}
                         </Button>
                       </div>
                     </form>
