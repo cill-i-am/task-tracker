@@ -8,7 +8,6 @@ import {
   getCurrentServerOrganizationMemberRole,
   getCurrentServerOrganizationSession,
   getCurrentServerOrganizations,
-  listCurrentServerOrganizations,
 } from "./organization-server";
 
 export interface OrganizationSummary {
@@ -53,7 +52,7 @@ export async function listOrganizations(): Promise<
   readonly OrganizationSummary[]
 > {
   if (isServerEnvironment()) {
-    return await listCurrentServerOrganizations();
+    return await getCurrentServerOrganizations();
   }
 
   const organizations = await authClient.organization.list();
@@ -143,9 +142,7 @@ export async function redirectIfOrganizationReady() {
 }
 
 async function resolveOrganizationAccessState(session: Session) {
-  const organizations = await resolveOrganizationListForAccess(
-    await listOrganizations()
-  );
+  const organizations = await listOrganizations();
   const activeOrganization = resolveCurrentOrganization(
     session.session.activeOrganizationId,
     organizations
@@ -183,17 +180,6 @@ export async function getCurrentOrganizationMemberRole(organizationId: string) {
   }
 
   return result.data satisfies OrganizationMemberRole;
-}
-
-async function resolveOrganizationListForAccess(
-  organizations: readonly OrganizationSummary[]
-): Promise<readonly OrganizationSummary[]> {
-  if (!isServerEnvironment() || organizations.length > 0) {
-    return organizations;
-  }
-
-  const strictOrganizations = await getCurrentServerOrganizations();
-  return strictOrganizations.map(toOrganizationSummary);
 }
 
 function toOrganizationSummary(
