@@ -147,14 +147,14 @@ function makeHarness(
 
   const sitesRepository = SitesRepository.make({
     create: (input: {
-      readonly addressLine1?: string;
+      readonly addressLine1: string;
       readonly country: string;
-      readonly county?: string;
+      readonly county: string;
       readonly eircode?: string;
       readonly geocodedAt: string;
       readonly geocodingProvider: string;
-      readonly latitude?: number;
-      readonly longitude?: number;
+      readonly latitude: number;
+      readonly longitude: number;
       readonly name: string;
       readonly organizationId: OrganizationId;
       readonly regionId?: typeof regionId;

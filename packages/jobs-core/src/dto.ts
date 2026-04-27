@@ -370,27 +370,18 @@ export const JobSiteOptionSchema = Schema.Struct({
   name: Schema.String,
   regionId: Schema.optional(RegionId),
   regionName: Schema.optional(Schema.String),
-  addressLine1: Schema.optional(Schema.String),
+  addressLine1: Schema.String,
   addressLine2: Schema.optional(Schema.String),
   town: Schema.optional(Schema.String),
-  county: Schema.optional(Schema.String),
+  county: Schema.String,
   country: SiteCountrySchema,
   eircode: Schema.optional(Schema.String),
   accessNotes: Schema.optional(Schema.String),
-  latitude: Schema.optional(SiteLatitudeSchema),
-  longitude: Schema.optional(SiteLongitudeSchema),
-  geocodingProvider: Schema.optional(SiteGeocodingProviderSchema),
-  geocodedAt: Schema.optional(IsoDateTimeString),
-}).pipe(
-  Schema.filter(
-    (site) =>
-      (site.latitude === undefined && site.longitude === undefined) ||
-      (site.latitude !== undefined && site.longitude !== undefined)
-  ),
-  Schema.annotations({
-    message: () => "Site coordinates must include both latitude and longitude",
-  })
-);
+  latitude: SiteLatitudeSchema,
+  longitude: SiteLongitudeSchema,
+  geocodingProvider: SiteGeocodingProviderSchema,
+  geocodedAt: IsoDateTimeString,
+});
 export type JobSiteOption = Schema.Schema.Type<typeof JobSiteOptionSchema>;
 
 export const CreateSiteResponseSchema = JobSiteOptionSchema;

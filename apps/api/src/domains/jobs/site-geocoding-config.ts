@@ -13,6 +13,7 @@ export type SiteGeocodingConfig =
     }
   | {
       readonly googleMapsApiKey: string;
+      readonly requestTimeoutMs: number;
       readonly mode: "google";
     };
 
@@ -32,7 +33,19 @@ const googleMapsApiKeyConfig = Config.string("GOOGLE_MAPS_API_KEY").pipe(
   })
 );
 
+const googleGeocodingRequestTimeoutMsConfig = Config.integer(
+  "GOOGLE_GEOCODING_REQUEST_TIMEOUT_MS"
+).pipe(
+  Config.withDefault(5000),
+  Config.validate({
+    message: "GOOGLE_GEOCODING_REQUEST_TIMEOUT_MS must be between 1 and 60000",
+    validation: (value) => value >= 1 && value <= 60_000,
+  })
+);
+
 export const loadGoogleMapsApiKey = googleMapsApiKeyConfig;
+export const loadGoogleGeocodingRequestTimeoutMs =
+  googleGeocodingRequestTimeoutMsConfig;
 
 export const loadSiteGeocodingConfig = Effect.gen(
   function* loadSiteGeocodingConfigEffect() {
@@ -45,10 +58,12 @@ export const loadSiteGeocodingConfig = Effect.gen(
     }
 
     const googleMapsApiKey = yield* loadGoogleMapsApiKey;
+    const requestTimeoutMs = yield* loadGoogleGeocodingRequestTimeoutMs;
 
     return {
       googleMapsApiKey,
       mode,
+      requestTimeoutMs,
     } satisfies SiteGeocodingConfig;
   }
 );

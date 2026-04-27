@@ -30,7 +30,13 @@ const options: JobOptionsResponse = {
     {
       addressLine1: "1 Custom House Quay",
       country: "IE",
+      county: "Dublin",
+      eircode: "D01 X2X2",
+      geocodedAt: "2026-04-27T10:00:00.000Z",
+      geocodingProvider: "stub",
       id: siteId,
+      latitude: 53.3498,
+      longitude: -6.2603,
       name: "Docklands Campus",
       regionId,
       regionName: "Dublin",
@@ -77,7 +83,7 @@ describe("sites page", () => {
       expect(
         screen.getByRole("columnheader", { name: "Map" })
       ).toBeInTheDocument();
-      expect(within(row).getByText("Unmapped")).toBeInTheDocument();
+      expect(within(row).getByText("Mapped")).toBeInTheDocument();
     }
   );
 

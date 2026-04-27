@@ -59,7 +59,11 @@ const createSiteResponse: CreateSiteResponse = {
   county: "Dublin",
   country: "IE",
   eircode: "D01 X2X2",
+  geocodedAt: "2026-04-27T10:00:00.000Z",
+  geocodingProvider: "stub",
   id: "33333333-3333-4333-8333-333333333333" as SiteIdType,
+  latitude: 53.3498,
+  longitude: -6.2603,
   name: "Docklands Campus",
   town: "Dublin",
 };

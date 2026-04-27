@@ -11,9 +11,10 @@ import type {
   SiteLatitude,
   SiteLongitude,
 } from "@task-tracker/jobs-core";
-import { Effect, Layer, Schema } from "effect";
+import { Duration, Effect, Layer, Schema } from "effect";
 
 import {
+  loadGoogleGeocodingRequestTimeoutMs,
   loadGoogleMapsApiKey,
   loadSiteGeocodingConfig,
 } from "./site-geocoding-config.js";
@@ -85,6 +86,7 @@ function logAndFailSiteGeocoding(
     readonly httpStatus?: number;
     readonly reason: string;
     readonly providerStatus?: string;
+    readonly requestTimeoutMs?: number;
   }
 ) {
   return Effect.logWarning("Site geocoding provider failed", {
@@ -99,8 +101,121 @@ function logAndFailSiteGeocoding(
       ? {}
       : { providerStatus: details.providerStatus }),
     reason: details.reason,
+    ...(details.requestTimeoutMs === undefined
+      ? {}
+      : { requestTimeoutMs: details.requestTimeoutMs }),
     siteCountry: input.country,
   }).pipe(Effect.zipRight(Effect.fail(makeSiteGeocodingFailedError(input))));
+}
+
+type PortableFetch = (
+  input: URL,
+  init?: Pick<RequestInit, "signal">
+) => Promise<Response>;
+
+type GoogleGeocodingRequestFailure =
+  | {
+      readonly _tag: "GoogleGeocodingFetchFailed";
+      readonly cause: unknown;
+    }
+  | {
+      readonly _tag: "GoogleGeocodingJsonDecodeFailed";
+      readonly cause: unknown;
+    }
+  | {
+      readonly _tag: "GoogleGeocodingTimedOut";
+      readonly requestTimeoutMs: number;
+    };
+
+type GoogleGeocodingRequestResult =
+  | {
+      readonly _tag: "Success";
+      readonly payload: unknown;
+    }
+  | {
+      readonly _tag: "HttpError";
+      readonly status: number;
+    };
+
+function googleRequestFailureDetails(failure: GoogleGeocodingRequestFailure) {
+  switch (failure._tag) {
+    case "GoogleGeocodingFetchFailed": {
+      return {
+        cause: failure.cause,
+        reason: "fetch_failed",
+      };
+    }
+    case "GoogleGeocodingJsonDecodeFailed": {
+      return {
+        cause: failure.cause,
+        reason: "json_decode_failed",
+      };
+    }
+    case "GoogleGeocodingTimedOut": {
+      return {
+        reason: "request_timeout",
+        requestTimeoutMs: failure.requestTimeoutMs,
+      };
+    }
+    default: {
+      return failure satisfies never;
+    }
+  }
+}
+
+function fetchGoogleGeocodingPayload(options: {
+  readonly fetchImplementation: PortableFetch;
+  readonly requestTimeoutMs: number;
+  readonly url: URL;
+}) {
+  return Effect.acquireUseRelease(
+    Effect.sync(() => new AbortController()),
+    (controller) =>
+      Effect.gen(function* fetchGoogleGeocodingPayloadEffect() {
+        const response = yield* Effect.tryPromise({
+          try: () =>
+            options.fetchImplementation(options.url, {
+              signal: controller.signal,
+            }),
+          catch: (cause) =>
+            ({
+              _tag: "GoogleGeocodingFetchFailed",
+              cause,
+            }) satisfies GoogleGeocodingRequestFailure,
+        });
+
+        if (!response.ok) {
+          return {
+            _tag: "HttpError",
+            status: response.status,
+          } satisfies GoogleGeocodingRequestResult;
+        }
+
+        const payload = yield* Effect.tryPromise({
+          try: () => response.json() as Promise<unknown>,
+          catch: (cause) =>
+            ({
+              _tag: "GoogleGeocodingJsonDecodeFailed",
+              cause,
+            }) satisfies GoogleGeocodingRequestFailure,
+        });
+
+        return {
+          _tag: "Success",
+          payload,
+        } satisfies GoogleGeocodingRequestResult;
+      }).pipe(
+        Effect.timeoutFail({
+          duration: Duration.millis(options.requestTimeoutMs),
+          onTimeout: () =>
+            ({
+              _tag: "GoogleGeocodingTimedOut",
+              requestTimeoutMs: options.requestTimeoutMs,
+            }) satisfies GoogleGeocodingRequestFailure,
+        })
+      ),
+    (controller) => Effect.sync(() => controller.abort())
+  );
 }
 
 const UINT32_RANGE = 4_294_967_296;
@@ -195,13 +310,16 @@ export function makeStubSiteGeocoder(): SiteGeocoderImplementation {
 
 export function makeGoogleSiteGeocoder(
   options: {
-    readonly fetch?: typeof fetch;
+    readonly fetch?: PortableFetch;
     readonly googleMapsApiKey?: string;
+    readonly requestTimeoutMs?: number;
   } = {}
 ) {
   return Effect.gen(function* makeGoogleSiteGeocoderEffect() {
     const googleMapsApiKey =
       options.googleMapsApiKey ?? (yield* loadGoogleMapsApiKey);
+    const requestTimeoutMs =
+      options.requestTimeoutMs ?? (yield* loadGoogleGeocodingRequestTimeoutMs);
     const fetchImplementation = options.fetch ?? globalThis.fetch;
 
     const geocode = Effect.fn("SiteGeocoder.Google.geocode")(function* geocode(
@@ -212,38 +330,26 @@ export function makeGoogleSiteGeocoder(
       url.searchParams.set("region", googleRegionBias(input.country));
       url.searchParams.set("key", googleMapsApiKey);
 
-      const response = yield* Effect.tryPromise({
-        try: () => fetchImplementation(url),
-        catch: (cause) => cause,
+      const requestResult = yield* fetchGoogleGeocodingPayload({
+        fetchImplementation,
+        requestTimeoutMs,
+        url,
       }).pipe(
-        Effect.catchAll((cause) =>
-          logAndFailSiteGeocoding(input, {
-            cause,
-            reason: "fetch_failed",
-          })
+        Effect.catchAll((failure) =>
+          logAndFailSiteGeocoding(input, googleRequestFailureDetails(failure))
         )
       );
 
-      if (!response.ok) {
+      if (requestResult._tag === "HttpError") {
         return yield* logAndFailSiteGeocoding(input, {
-          httpStatus: response.status,
+          httpStatus: requestResult.status,
           reason: "http_error",
         });
       }
 
-      const payload = yield* Effect.tryPromise({
-        try: () => response.json() as Promise<unknown>,
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.catchAll((cause) =>
-          logAndFailSiteGeocoding(input, {
-            cause,
-            reason: "json_decode_failed",
-          })
-        )
-      );
-
-      const decoded = yield* decodeGoogleGeocodeResponse(payload).pipe(
+      const decoded = yield* decodeGoogleGeocodeResponse(
+        requestResult.payload
+      ).pipe(
         Effect.catchAll((cause) =>
           logAndFailSiteGeocoding(input, {
             cause,
@@ -311,6 +417,7 @@ export class SiteGeocoder extends Effect.Service<SiteGeocoder>()(
 
       return yield* makeGoogleSiteGeocoder({
         googleMapsApiKey: config.googleMapsApiKey,
+        requestTimeoutMs: config.requestTimeoutMs,
       });
     }),
   }

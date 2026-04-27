@@ -83,18 +83,18 @@ export const site = pgTable(
     regionId: uuid("region_id").references(() => serviceRegion.id, {
       onDelete: "set null",
     }),
-    name: text("name"),
-    addressLine1: text("address_line_1"),
+    name: text("name").notNull(),
+    addressLine1: text("address_line_1").notNull(),
     addressLine2: text("address_line_2"),
     town: text("town"),
-    county: text("county"),
+    county: text("county").notNull(),
     country: text("country").notNull().default("IE"),
     eircode: text("eircode"),
     accessNotes: text("access_notes"),
-    latitude: doublePrecision("latitude"),
-    longitude: doublePrecision("longitude"),
-    geocodingProvider: text("geocoding_provider"),
-    geocodedAt: timestamp("geocoded_at", { withTimezone: true }),
+    latitude: doublePrecision("latitude").notNull(),
+    longitude: doublePrecision("longitude").notNull(),
+    geocodingProvider: text("geocoding_provider").notNull(),
+    geocodedAt: timestamp("geocoded_at", { withTimezone: true }).notNull(),
     createdAt: jobsTimestamp("created_at"),
     updatedAt: jobsTimestamp("updated_at"),
     archivedAt: archivedAtColumn("archived_at"),
@@ -118,6 +118,10 @@ export const site = pgTable(
       )
       .where(sql`${table.archivedAt} is null`),
     check("sites_country_chk", sql`${table.country} in ('IE', 'GB')`),
+    check(
+      "sites_ie_eircode_required_chk",
+      sql`${table.country} <> 'IE' or ${table.eircode} is not null`
+    ),
     check(
       "sites_geocoding_provider_chk",
       sql`${table.geocodingProvider} is null or ${table.geocodingProvider} in ('google', 'stub')`

@@ -273,8 +273,15 @@ function renderCreateSheet() {
             regions: [],
             sites: [
               {
+                addressLine1: "Depot Road",
                 country: "IE",
+                county: "Dublin",
+                eircode: "D01 X2X2",
+                geocodedAt: "2026-04-27T10:00:00.000Z",
+                geocodingProvider: "stub",
                 id: depotSiteId,
+                latitude: 53.3498,
+                longitude: -6.2603,
                 name: "Depot",
                 regionId: undefined,
                 regionName: undefined,

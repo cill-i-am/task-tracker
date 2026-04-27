@@ -312,6 +312,8 @@ function renderDetailSheet() {
                 county: "Dublin",
                 country: "IE",
                 eircode: "D01 X2X2",
+                geocodedAt: "2026-04-27T10:00:00.000Z",
+                geocodingProvider: "stub",
                 latitude: 53.3498,
                 id: siteId,
                 name: "Depot",

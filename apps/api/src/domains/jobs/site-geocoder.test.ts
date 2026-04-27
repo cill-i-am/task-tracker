@@ -319,4 +319,34 @@ describe("site geocoder", () => {
       message: FAILED_MESSAGE,
     });
   }, 10_000);
+
+  it("times out stalled google requests and aborts the fetch", async () => {
+    let abortSignal: AbortSignal | undefined;
+    let aborted = false;
+    const fetchImplementation = ((_url: URL, init?: RequestInit) => {
+      abortSignal = init?.signal ?? undefined;
+      init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+      });
+
+      return Promise.race<Response>([]);
+    }) as typeof fetch;
+
+    const result = await runWithConfig(
+      makeGoogleSiteGeocoder({
+        fetch: fetchImplementation,
+        requestTimeoutMs: 1,
+      }).pipe(
+        Effect.flatMap((geocoder) => geocoder.geocode(siteInput)),
+        Effect.either
+      ),
+      new Map([["GOOGLE_MAPS_API_KEY", "test-google-key"]])
+    );
+
+    expect(result._tag).toBe("Left");
+    expect(result._tag === "Left" ? result.left : undefined).toBeInstanceOf(
+      SiteGeocodingFailedError
+    );
+    expect([aborted, abortSignal?.aborted]).toStrictEqual([true, true]);
+  }, 10_000);
 });

@@ -132,17 +132,17 @@ interface JobRegionOptionRow {
 
 interface JobSiteOptionRow {
   readonly access_notes: string | null;
-  readonly address_line_1: string | null;
+  readonly address_line_1: string;
   readonly address_line_2: string | null;
   readonly country: string;
-  readonly county: string | null;
+  readonly county: string;
   readonly eircode: string | null;
-  readonly geocoded_at: Date | null;
-  readonly geocoding_provider: string | null;
+  readonly geocoded_at: Date;
+  readonly geocoding_provider: string;
   readonly id: string;
-  readonly latitude: number | null;
-  readonly longitude: number | null;
-  readonly name: string | null;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly name: string;
   readonly region_id: string | null;
   readonly region_name: string | null;
   readonly town: string | null;
@@ -210,10 +210,10 @@ export interface AddJobVisitRecordInput {
 
 export interface CreateSiteRecordInput {
   readonly accessNotes?: string;
-  readonly addressLine1?: string;
+  readonly addressLine1: string;
   readonly addressLine2?: string;
   readonly country: SiteCountry;
-  readonly county?: string;
+  readonly county: string;
   readonly eircode?: string;
   readonly geocodedAt: IsoDateTimeString;
   readonly geocodingProvider: SiteGeocodingProvider;
@@ -980,7 +980,9 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
         }
 
         const values: Record<string, unknown> = {
+          address_line_1: input.addressLine1,
           country: input.country,
+          county: input.county,
           geocoded_at: isoDateTimeStringToDate(input.geocodedAt),
           geocoding_provider: input.geocodingProvider,
           id: decodeSiteId(randomUUID()),
@@ -994,20 +996,12 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           values.region_id = input.regionId;
         }
 
-        if (input.addressLine1 !== undefined) {
-          values.address_line_1 = input.addressLine1;
-        }
-
         if (input.addressLine2 !== undefined) {
           values.address_line_2 = input.addressLine2;
         }
 
         if (input.town !== undefined) {
           values.town = input.town;
-        }
-
-        if (input.county !== undefined) {
-          values.county = input.county;
         }
 
         if (input.eircode !== undefined) {
@@ -1327,17 +1321,17 @@ function mapJobRegionOptionRow(row: JobRegionOptionRow): JobRegionOption {
 function mapJobSiteOptionRow(row: JobSiteOptionRow): JobSiteOption {
   return decodeJobSiteOption({
     accessNotes: nullableToUndefined(row.access_notes),
-    addressLine1: nullableToUndefined(row.address_line_1),
+    addressLine1: row.address_line_1,
     addressLine2: nullableToUndefined(row.address_line_2),
     country: row.country,
-    county: nullableToUndefined(row.county),
+    county: row.county,
     eircode: nullableToUndefined(row.eircode),
-    geocodedAt: nullableDateToIsoString(row.geocoded_at),
-    geocodingProvider: nullableToUndefined(row.geocoding_provider),
+    geocodedAt: dateToIsoString(row.geocoded_at),
+    geocodingProvider: row.geocoding_provider,
     id: row.id,
-    name: normalizeOptionName(row.name, "Untitled site"),
-    latitude: nullableToUndefined(row.latitude),
-    longitude: nullableToUndefined(row.longitude),
+    name: row.name,
+    latitude: row.latitude,
+    longitude: row.longitude,
     regionId: nullableToUndefined(row.region_id),
     regionName: nullableToUndefined(row.region_name),
     town: nullableToUndefined(row.town),
@@ -1442,8 +1436,8 @@ function nullableToUndefined<Value>(value: Value | null): Value | undefined {
   return value === null ? undefined : value;
 }
 
-function nullableDateToIsoString(value: Date | null): string | undefined {
-  return value === null ? undefined : value.toISOString();
+function dateToIsoString(value: Date): string {
+  return value.toISOString();
 }
 
 function isoDateTimeStringToDate(value: IsoDateTimeString): Date {

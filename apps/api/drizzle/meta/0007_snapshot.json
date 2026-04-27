@@ -879,13 +879,13 @@
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "address_line_1": {
           "name": "address_line_1",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "address_line_2": {
           "name": "address_line_2",
@@ -903,7 +903,7 @@
           "name": "county",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "country": {
           "name": "country",
@@ -928,25 +928,25 @@
           "name": "latitude",
           "type": "double precision",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "longitude": {
           "name": "longitude",
           "type": "double precision",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "geocoding_provider": {
           "name": "geocoding_provider",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "geocoded_at": {
           "name": "geocoded_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -1080,6 +1080,10 @@
         "sites_country_chk": {
           "name": "sites_country_chk",
           "value": "\"sites\".\"country\" in ('IE', 'GB')"
+        },
+        "sites_ie_eircode_required_chk": {
+          "name": "sites_ie_eircode_required_chk",
+          "value": "\"sites\".\"country\" <> 'IE' or \"sites\".\"eircode\" is not null"
         },
         "sites_geocoding_provider_chk": {
           "name": "sites_geocoding_provider_chk",

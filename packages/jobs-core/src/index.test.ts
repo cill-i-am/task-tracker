@@ -215,9 +215,14 @@ describe("jobs-core", () => {
     const siteOption = {
       id: "550e8400-e29b-41d4-a716-446655440010",
       name: "Docklands Campus",
+      addressLine1: "1 Custom House Quay",
+      county: "Dublin",
       country: "IE",
+      eircode: "D01 X2X2",
       latitude: 53.3498,
       longitude: -6.2603,
+      geocodingProvider: "google",
+      geocodedAt: "2026-04-22T10:00:00.000Z",
     };
 
     expect(
@@ -233,10 +238,14 @@ describe("jobs-core", () => {
       ParseResult.decodeUnknownSync(CreateSiteResponseSchema)({
         id: siteOption.id,
         name: siteOption.name,
+        addressLine1: siteOption.addressLine1,
+        county: siteOption.county,
         country: siteOption.country,
         latitude: 53.3498,
+        geocodingProvider: siteOption.geocodingProvider,
+        geocodedAt: siteOption.geocodedAt,
       })
-    ).toThrow(/Site coordinates must include both latitude and longitude/);
+    ).toThrow(/longitude/);
   }, 5000);
 
   it("keeps list filters and patch payloads shapeable", () => {
@@ -443,7 +452,14 @@ describe("jobs-core", () => {
           {
             id: "550e8400-e29b-41d4-a716-446655440010",
             name: "Docklands Campus",
+            addressLine1: "1 Custom House Quay",
+            county: "Dublin",
             country: "IE",
+            eircode: "D01 X2X2",
+            latitude: 53.3498,
+            longitude: -6.2603,
+            geocodingProvider: "google",
+            geocodedAt: "2026-04-22T10:00:00.000Z",
           },
         ],
       })
@@ -458,7 +474,14 @@ describe("jobs-core", () => {
         {
           id: "550e8400-e29b-41d4-a716-446655440010",
           name: "Docklands Campus",
+          addressLine1: "1 Custom House Quay",
+          county: "Dublin",
           country: "IE",
+          eircode: "D01 X2X2",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          geocodingProvider: "google",
+          geocodedAt: "2026-04-22T10:00:00.000Z",
         },
       ],
     });

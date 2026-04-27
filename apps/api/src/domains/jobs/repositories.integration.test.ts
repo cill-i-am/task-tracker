@@ -73,6 +73,7 @@ describe("jobs repositories integration", () => {
         accessNotes: "Use the south gate and reception desk.",
         addressLine1: "1 Custom House Quay",
         country: "IE",
+        county: "Dublin",
         eircode: "D01 X2X2",
         geocodedAt: "2026-04-27T10:00:00.000Z",
         geocodingProvider: "google",
@@ -88,6 +89,9 @@ describe("jobs repositories integration", () => {
       databaseUrl,
       SitesRepository.create({
         country: "IE",
+        addressLine1: "Overflow Yard",
+        county: "Dublin",
+        eircode: "D01 X2X3",
         geocodedAt: "2026-04-27T10:00:00.000Z",
         geocodingProvider: "stub",
         latitude: 53.3498,
@@ -205,6 +209,7 @@ describe("jobs repositories integration", () => {
       accessNotes: "Use the south gate and reception desk.",
       addressLine1: "1 Custom House Quay",
       country: "IE",
+      county: "Dublin",
       eircode: "D01 X2X2",
       geocodedAt: "2026-04-27T10:00:00.000Z",
       geocodingProvider: "google",
@@ -215,7 +220,7 @@ describe("jobs repositories integration", () => {
       town: "Dublin",
     });
     expect(createdSiteOption?.addressLine2).toBeUndefined();
-    expect(createdSiteOption?.county).toBeUndefined();
+    expect(createdSiteOption?.county).toBe("Dublin");
     expect(Option.getOrUndefined(createdSiteOptionById)).toStrictEqual(
       createdSiteOption
     );
@@ -468,6 +473,9 @@ describe("jobs repositories integration", () => {
       databaseUrl,
       SitesRepository.create({
         country: "IE",
+        addressLine1: "Primary Site",
+        county: "Cork",
+        eircode: "T12 X2X2",
         geocodedAt: "2026-04-27T10:00:00.000Z",
         geocodingProvider: "stub",
         name: "Primary Site",
@@ -481,6 +489,9 @@ describe("jobs repositories integration", () => {
       databaseUrl,
       SitesRepository.create({
         country: "IE",
+        addressLine1: "Foreign Site",
+        county: "Galway",
+        eircode: "H91 X2X2",
         geocodedAt: "2026-04-27T10:00:00.000Z",
         geocodingProvider: "stub",
         name: "Foreign Site",
@@ -599,6 +610,9 @@ describe("jobs repositories integration", () => {
       const insertInvalidSite = async (
         overrides: Partial<{
           readonly country: string;
+          readonly addressLine1: string | null;
+          readonly county: string | null;
+          readonly eircode: string | null;
           readonly geocodedAt: string | null;
           readonly geocodingProvider: string | null;
           readonly latitude: number | null;
@@ -612,6 +626,9 @@ describe("jobs repositories integration", () => {
               id,
               organization_id,
               name,
+              address_line_1,
+              county,
+              eircode,
               country,
               latitude,
               longitude,
@@ -620,12 +637,17 @@ describe("jobs repositories integration", () => {
               created_at,
               updated_at
             )
-            values ($1, $2, $3, $4, $5, $6, $7, $8, now(), now())
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now())
           `,
           [
             randomUUID(),
             identity.organizationId,
             overrides.name ?? "Invalid geocoding site",
+            "addressLine1" in overrides
+              ? overrides.addressLine1
+              : "1 Custom House Quay",
+            "county" in overrides ? overrides.county : "Dublin",
+            "eircode" in overrides ? overrides.eircode : "D01 X2X2",
             overrides.country ?? "IE",
             overrides.latitude ?? null,
             overrides.longitude ?? null,
@@ -636,24 +658,70 @@ describe("jobs repositories integration", () => {
 
       await expect(
         insertInvalidSite({
+          addressLine1: null,
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
           latitude: 53.3498,
           longitude: -6.2603,
-          name: "Coordinates only",
+          name: "Missing address",
+        })
+      ).rejects.toMatchObject({
+        code: "23502",
+        column: "address_line_1",
+      });
+
+      await expect(
+        insertInvalidSite({
+          county: null,
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Missing county",
+        })
+      ).rejects.toMatchObject({
+        code: "23502",
+        column: "county",
+      });
+
+      await expect(
+        insertInvalidSite({
+          eircode: null,
+          geocodedAt: "2026-04-27T10:00:00.000Z",
+          geocodingProvider: "google",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Irish site missing Eircode",
         })
       ).rejects.toMatchObject({
         code: "23514",
-        constraint: "sites_geocoding_metadata_check",
+        constraint: "sites_ie_eircode_required_chk",
       });
 
       await expect(
         insertInvalidSite({
           geocodedAt: "2026-04-27T10:00:00.000Z",
           geocodingProvider: "google",
-          name: "Metadata only",
+          latitude: null,
+          longitude: -6.2603,
+          name: "Missing latitude",
         })
       ).rejects.toMatchObject({
-        code: "23514",
-        constraint: "sites_geocoding_metadata_check",
+        code: "23502",
+        column: "latitude",
+      });
+
+      await expect(
+        insertInvalidSite({
+          geocodedAt: null,
+          geocodingProvider: "google",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          name: "Missing geocoded timestamp",
+        })
+      ).rejects.toMatchObject({
+        code: "23502",
+        column: "geocoded_at",
       });
 
       await expect(
@@ -892,7 +960,15 @@ async function insertSite(
     const db = drizzle(pool);
 
     await db.insert(site).values({
+      addressLine1: name,
+      country: "IE",
+      county: "Dublin",
+      eircode: "D01 X2X2",
+      geocodedAt: new Date("2026-04-27T10:00:00.000Z"),
+      geocodingProvider: "stub",
       id: siteId,
+      latitude: 53.3498,
+      longitude: -6.2603,
       name,
       organizationId,
       regionId,
