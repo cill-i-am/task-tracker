@@ -13,36 +13,46 @@ import { Effect } from "effect";
 import { makeBrowserJobsClient, provideBrowserJobsHttp } from "./jobs-client";
 import type { JobsApiClient } from "./jobs-client";
 import { normalizeJobsError } from "./jobs-errors";
-import {
-  getCurrentServerJobDetailDirect,
-  getCurrentServerJobOptionsDirect,
-  getCurrentServerSiteOptionsDirect,
-  listAllCurrentServerJobsDirect,
-  listCurrentServerJobsDirect,
-} from "./jobs-server-ssr";
 
 const listAllCurrentServerJobsIsomorphic = createIsomorphicFn()
-  .server((query: JobListQuery = {}) => listAllCurrentServerJobsDirect(query))
+  .server(async (query: JobListQuery = {}) => {
+    const { listAllCurrentServerJobsDirect } =
+      await import("./jobs-server-ssr");
+    return await listAllCurrentServerJobsDirect(query);
+  })
   .client((query: JobListQuery = {}) => listAllCurrentBrowserJobs(query));
 
 const listCurrentServerJobsIsomorphic = createIsomorphicFn()
-  .server((query: JobListQuery = {}) => listCurrentServerJobsDirect(query))
+  .server(async (query: JobListQuery = {}) => {
+    const { listCurrentServerJobsDirect } = await import("./jobs-server-ssr");
+    return await listCurrentServerJobsDirect(query);
+  })
   .client((query: JobListQuery = {}) => listCurrentBrowserJobs(query));
 
 const getCurrentServerJobDetailIsomorphic = createIsomorphicFn()
-  .server((workItemId: WorkItemIdType) =>
-    getCurrentServerJobDetailDirect(workItemId)
-  )
+  .server(async (workItemId: WorkItemIdType) => {
+    const { getCurrentServerJobDetailDirect } =
+      await import("./jobs-server-ssr");
+    return await getCurrentServerJobDetailDirect(workItemId);
+  })
   .client((workItemId: WorkItemIdType) =>
     getCurrentBrowserJobDetail(workItemId)
   );
 
 const getCurrentServerJobOptionsIsomorphic = createIsomorphicFn()
-  .server(() => getCurrentServerJobOptionsDirect())
+  .server(async () => {
+    const { getCurrentServerJobOptionsDirect } =
+      await import("./jobs-server-ssr");
+    return await getCurrentServerJobOptionsDirect();
+  })
   .client(() => getCurrentBrowserJobOptions());
 
 const getCurrentServerSiteOptionsIsomorphic = createIsomorphicFn()
-  .server(() => getCurrentServerSiteOptionsDirect())
+  .server(async () => {
+    const { getCurrentServerSiteOptionsDirect } =
+      await import("./jobs-server-ssr");
+    return await getCurrentServerSiteOptionsDirect();
+  })
   .client(() => getCurrentBrowserSiteOptions());
 
 function runBrowserJobsClient<Response>(

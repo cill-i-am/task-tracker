@@ -1,7 +1,7 @@
 import { createServerOnlyFn } from "@tanstack/react-start";
 
 import type { createTaskTrackerAuthClient } from "#/lib/auth-client";
-import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client";
+import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client.server";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,

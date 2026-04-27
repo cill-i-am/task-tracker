@@ -15,11 +15,6 @@ import { authClient } from "#/lib/auth-client";
 
 import { getLoginNavigationTarget } from "../auth/auth-navigation";
 import { isServerEnvironment } from "../auth/runtime-environment";
-import {
-  getCurrentServerOrganizationMemberRole,
-  getCurrentServerOrganizationSession,
-  getCurrentServerOrganizations,
-} from "./organization-server";
 
 export type { OrganizationSummary } from "@task-tracker/identity-core";
 
@@ -41,6 +36,8 @@ type OrganizationMemberRole = NonNullable<
 >;
 async function getCurrentSession(): Promise<Session | null> {
   if (isServerEnvironment()) {
+    const { getCurrentServerOrganizationSession } =
+      await import("./organization-server");
     return await getCurrentServerOrganizationSession();
   }
 
@@ -57,6 +54,8 @@ export async function listOrganizations(): Promise<
   readonly OrganizationSummary[]
 > {
   if (isServerEnvironment()) {
+    const { getCurrentServerOrganizations } =
+      await import("./organization-server");
     return await getCurrentServerOrganizations();
   }
 
@@ -172,6 +171,8 @@ export async function getCurrentOrganizationMemberRole(
   organizationId: OrganizationIdType
 ) {
   if (isServerEnvironment()) {
+    const { getCurrentServerOrganizationMemberRole } =
+      await import("./organization-server");
     return await getCurrentServerOrganizationMemberRole(organizationId);
   }
 
