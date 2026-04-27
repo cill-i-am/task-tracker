@@ -234,7 +234,11 @@ export const workItem = pgTable(
     ),
     check(
       "work_items_completed_at_matches_status_chk",
-      sql`(${table.status} = 'completed' and ${table.completedAt} is not null) or (${table.status} <> 'completed')`
+      sql`(${table.status} = 'completed' and ${table.completedAt} is not null) or (${table.status} <> 'completed' and ${table.completedAt} is null)`
+    ),
+    check(
+      "work_items_completed_by_matches_status_chk",
+      sql`(${table.status} = 'completed' and ${table.completedByUserId} is not null) or (${table.status} <> 'completed' and ${table.completedByUserId} is null)`
     ),
     index("work_items_organization_updated_at_idx").on(
       table.organizationId,

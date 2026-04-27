@@ -1,4 +1,3 @@
-import { RegistryProvider } from "@effect-atom/atom-react";
 import {
   Outlet,
   createFileRoute,
@@ -6,20 +5,15 @@ import {
 } from "@tanstack/react-router";
 import type { OrganizationId } from "@task-tracker/identity-core";
 import type { JobOptionsResponse } from "@task-tracker/jobs-core";
-import * as React from "react";
 
 import { getCurrentServerSiteOptions } from "#/features/jobs/jobs-server";
-import {
-  jobsOptionsStateAtom,
-  seedJobsOptionsState,
-} from "#/features/jobs/jobs-state";
 import type { JobsViewer } from "#/features/jobs/jobs-viewer";
 import type { ActiveOrganizationSync } from "#/features/organizations/organization-access";
 import {
   ensureActiveOrganizationId,
   getCurrentOrganizationMemberRole,
 } from "#/features/organizations/organization-access";
-import { SitesPage } from "#/features/sites/sites-page";
+import { SitesRouteContent } from "#/features/sites/sites-route-content";
 
 const EMPTY_JOBS_OPTIONS: JobOptionsResponse = {
   contacts: [],
@@ -92,32 +86,6 @@ export const Route = createFileRoute("/_app/_org/sites")({
   loader: ({ context }) => loadSitesRouteData(context),
   component: SitesRoute,
 });
-
-export function SitesRouteContent({
-  activeOrganizationId,
-  children,
-  options,
-  viewer,
-}: {
-  readonly activeOrganizationId: OrganizationId;
-  readonly children?: React.ReactNode;
-  readonly options: JobOptionsResponse;
-  readonly viewer: JobsViewer;
-}) {
-  return (
-    <RegistryProvider
-      key={activeOrganizationId}
-      initialValues={[
-        [
-          jobsOptionsStateAtom,
-          seedJobsOptionsState(activeOrganizationId, options),
-        ],
-      ]}
-    >
-      <SitesPage viewer={viewer}>{children}</SitesPage>
-    </RegistryProvider>
-  );
-}
 
 function SitesRoute() {
   const { activeOrganizationId } = useRouteContext({

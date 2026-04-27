@@ -1,4 +1,3 @@
-import { RegistryProvider } from "@effect-atom/atom-react";
 import {
   Outlet,
   createFileRoute,
@@ -9,19 +8,12 @@ import type {
   JobListResponse,
   JobOptionsResponse,
 } from "@task-tracker/jobs-core";
-import * as React from "react";
 
-import { JobsPage } from "#/features/jobs/jobs-page";
+import { JobsRouteContent } from "#/features/jobs/jobs-route-content";
 import {
   getCurrentServerJobOptions,
   listAllCurrentServerJobs,
 } from "#/features/jobs/jobs-server";
-import {
-  jobsListStateAtom,
-  jobsOptionsStateAtom,
-  seedJobsListState,
-  seedJobsOptionsState,
-} from "#/features/jobs/jobs-state";
 import type { JobsViewer } from "#/features/jobs/jobs-viewer";
 import type { ActiveOrganizationSync } from "#/features/organizations/organization-access";
 import {
@@ -103,39 +95,6 @@ export const Route = createFileRoute("/_app/_org/jobs")({
   loader: ({ context }) => loadJobsRouteData(context),
   component: JobsRoute,
 });
-
-export function JobsRouteContent({
-  activeOrganizationId,
-  activeOrganizationName,
-  children,
-  list,
-  options,
-  viewer,
-}: {
-  readonly activeOrganizationId: OrganizationId;
-  readonly activeOrganizationName: string;
-  readonly children?: React.ReactNode;
-  readonly list: JobListResponse;
-  readonly options: JobOptionsResponse;
-  readonly viewer: JobsViewer;
-}) {
-  return (
-    <RegistryProvider
-      key={activeOrganizationId}
-      initialValues={[
-        [jobsListStateAtom, seedJobsListState(activeOrganizationId, list)],
-        [
-          jobsOptionsStateAtom,
-          seedJobsOptionsState(activeOrganizationId, options),
-        ],
-      ]}
-    >
-      <JobsPage activeOrganizationName={activeOrganizationName} viewer={viewer}>
-        {children}
-      </JobsPage>
-    </RegistryProvider>
-  );
-}
 
 function JobsRoute() {
   const { activeOrganization, activeOrganizationId } = useRouteContext({

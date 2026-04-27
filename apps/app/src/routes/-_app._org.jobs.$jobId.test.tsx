@@ -137,9 +137,8 @@ describe("job detail route", () => {
       timeout: 10_000,
     },
     async () => {
-      const { JobsRouteContent } = await import("./_app._org.jobs");
-      const { JobsDetailRouteContent } =
-        await import("./_app._org.jobs.$jobId");
+      const { JobsDetailRouteContent, JobsRouteContent } =
+        await import("#/features/jobs/jobs-route-content");
 
       render(
         <JobsRouteContent

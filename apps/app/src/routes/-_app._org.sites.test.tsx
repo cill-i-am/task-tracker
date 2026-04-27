@@ -99,7 +99,8 @@ describe("sites route loader", () => {
     "renders sites from loader-seeded atom state on the first paint",
     { timeout: 10_000 },
     async () => {
-      const { SitesRouteContent } = await import("./_app._org.sites");
+      const { SitesRouteContent } =
+        await import("#/features/sites/sites-route-content");
 
       render(
         <SitesRouteContent
