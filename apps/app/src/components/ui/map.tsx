@@ -10,7 +10,6 @@ import MapLibreGL from "maplibre-gl";
 import type { PopupOptions, MarkerOptions } from "maplibre-gl";
 import {
   createContext,
-  forwardRef,
   useCallback,
   useContext,
   useEffect,
@@ -20,7 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 
 import { requestBrowserGeolocation } from "#/lib/browser-geolocation";
@@ -130,10 +129,11 @@ interface MapViewport {
 
 type MapStyleOption = string | MapLibreGL.StyleSpecification;
 
-type MapRef = MapLibreGL.Map;
+type MapRef = MapLibreGL.Map | null;
 
 type MapProps = {
   children?: ReactNode;
+  ref?: Ref<MapRef>;
   /** Additional CSS classes for the map container */
   className?: string;
   /**
@@ -185,20 +185,18 @@ function getViewport(map: MapLibreGL.Map): MapViewport {
   };
 }
 
-const Map = forwardRef<MapRef, MapProps>(function Map(
-  {
-    children,
-    className,
-    theme: themeProp,
-    styles,
-    projection,
-    viewport,
-    onViewportChange,
-    loading = false,
-    ...props
-  },
-  ref
-) {
+function Map({
+  children,
+  className,
+  ref,
+  theme: themeProp,
+  styles,
+  projection,
+  viewport,
+  onViewportChange,
+  loading = false,
+  ...props
+}: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [mapInstance, setMapInstance] = useState<MapLibreGL.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -221,8 +219,8 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     [styles]
   );
 
-  // Expose the map instance to the parent component
-  useImperativeHandle(ref, () => mapInstance as MapLibreGL.Map, [mapInstance]);
+  // Expose the map instance to the parent component once MapLibre has mounted.
+  useImperativeHandle<MapRef, MapRef>(ref, () => mapInstance, [mapInstance]);
 
   const clearStyleTimeout = useCallback(() => {
     if (styleTimeoutRef.current) {
@@ -364,7 +362,7 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
       </div>
     </MapContext.Provider>
   );
-});
+}
 
 interface MarkerContextValue {
   marker: MapLibreGL.Marker;

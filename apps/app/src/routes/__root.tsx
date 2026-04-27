@@ -1,8 +1,12 @@
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import {
+  ClientOnly,
+  HeadContent,
+  Scripts,
+  createRootRoute,
+} from "@tanstack/react-router";
 import * as React from "react";
 
 import { TooltipProvider } from "../components/ui/tooltip";
-import { useIsHydrated } from "../hooks/use-is-hydrated";
 
 import appCss from "../styles.css?url";
 
@@ -75,7 +79,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body className="font-sans [overflow-wrap:anywhere] antialiased selection:bg-primary/20">
         <TooltipProvider>
           {children}
-          <ClientOnlyDevelopmentDevtools />
+          <DevelopmentDevtoolsIsland />
           <Scripts />
         </TooltipProvider>
       </body>
@@ -83,16 +87,16 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ClientOnlyDevelopmentDevtools() {
-  const isHydrated = useIsHydrated();
-
-  if (!isHydrated || !DevelopmentDevtools) {
+function DevelopmentDevtoolsIsland() {
+  if (!DevelopmentDevtools) {
     return null;
   }
 
   return (
-    <React.Suspense fallback={null}>
-      <DevelopmentDevtools />
-    </React.Suspense>
+    <ClientOnly fallback={null}>
+      <React.Suspense fallback={null}>
+        <DevelopmentDevtools />
+      </React.Suspense>
+    </ClientOnly>
   );
 }
