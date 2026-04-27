@@ -175,7 +175,11 @@ export function JobsPage({
       </header>
 
       {notice ? (
-        <Alert role="status" variant="success" className="py-2 pr-24">
+        <Alert
+          role="status"
+          variant="success"
+          className="animate-in py-2 pr-24 duration-150 fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
+        >
           <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
           <AlertTitle className="truncate">{notice.title}</AlertTitle>
           <AlertDescription>Job added to the queue.</AlertDescription>
@@ -395,7 +399,7 @@ function CommandFilter({
             size="sm"
             variant="outline"
             className="shrink-0 bg-background"
-            aria-label={`${label} filter`}
+            aria-label={`${label} filter: ${selected?.label ?? label}`}
           />
         }
       >
@@ -495,7 +499,7 @@ function ActiveFilterBar({
           {filter.label}
           <button
             type="button"
-            className="inline-flex rounded-full text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex rounded-full text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             aria-label={`Remove ${filter.label}`}
             onClick={() => onRemove(filter.key)}
           >
@@ -591,7 +595,7 @@ function JobIssueTableRow({
         <Link
           to="/jobs/$jobId"
           params={{ jobId: job.id }}
-          className="flex min-w-0 items-center gap-3"
+          className="flex min-w-0 items-center gap-3 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <span className="flex size-5 items-center justify-center text-muted-foreground">
             <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
@@ -645,6 +649,7 @@ function JobIssueRow({
       params={{ jobId: job.id }}
       className={cn(
         "group flex min-w-0 items-center gap-3 border-b px-3 py-3 transition-colors last:border-b-0 hover:bg-muted/30",
+        "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         compact ? "items-start" : "items-center"
       )}
     >

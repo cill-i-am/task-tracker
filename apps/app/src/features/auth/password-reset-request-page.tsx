@@ -12,6 +12,7 @@ import {
 } from "#/components/ui/empty";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient, buildPasswordResetRedirectTo } from "#/lib/auth-client";
 
@@ -100,7 +101,7 @@ export function PasswordResetRequestPage({
       title={isSubmitted ? "Check your email." : "Reset your password."}
       description={shellDescription}
       supportingContent={
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           <p className="text-xs font-medium text-muted-foreground uppercase">
             {isSubmitted ? "Next" : "Reset link"}
           </p>
@@ -215,6 +216,7 @@ export function PasswordResetRequestPage({
                     className="w-full"
                     disabled={isSubmitting || isEmailEmpty || !isHydrated}
                   >
+                    {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                     {isSubmitting ? "Sending reset link..." : "Send reset link"}
                   </Button>
                 );

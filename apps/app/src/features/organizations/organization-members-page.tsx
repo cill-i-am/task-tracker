@@ -26,6 +26,7 @@ import { CommandSelect } from "#/components/ui/command-select";
 import type { CommandSelectGroup } from "#/components/ui/command-select";
 import { FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import { getErrorText } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
@@ -201,7 +202,7 @@ export function OrganizationMembersPage({
                 <AppRowListLeading aria-hidden="true">
                   {getMemberInitial(currentMember)}
                 </AppRowListLeading>
-                <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <p className="truncate text-sm font-medium text-foreground">
                     {currentMember.name || currentMember.email}
                   </p>
@@ -314,6 +315,7 @@ export function OrganizationMembersPage({
                     className="w-full sm:w-auto"
                     disabled={isSubmitting || !isHydrated}
                   >
+                    {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                     {isSubmitting ? "Sending invite..." : "Send invite"}
                   </Button>
                 )}
@@ -353,7 +355,7 @@ export function OrganizationMembersPage({
                     <AppRowListLeading aria-hidden="true">
                       {invitation.email.charAt(0).toUpperCase()}
                     </AppRowListLeading>
-                    <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <p
                         className="text-sm font-medium break-all text-foreground"
                         title={invitation.email}

@@ -8,6 +8,7 @@ import { AppUtilityPanel } from "#/components/app-utility-panel";
 import { Button } from "#/components/ui/button";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import {
   getErrorText,
   getFormErrorText,
@@ -201,6 +202,7 @@ export function OrganizationSettingsPage({
                   className="w-full sm:w-auto"
                   disabled={isSubmitting || isDefaultValue || !isHydrated}
                 >
+                  {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                   {isSubmitting ? "Saving..." : "Save changes"}
                 </Button>
               )}
@@ -213,7 +215,7 @@ export function OrganizationSettingsPage({
           description="These values are used when Task Tracker identifies this workspace."
         >
           <dl className="flex flex-col gap-4">
-            <div className="space-y-1 border-t border-border/60 pt-4 first:border-t-0 first:pt-0">
+            <div className="flex flex-col gap-1 border-t border-border/60 pt-4 first:border-t-0 first:pt-0">
               <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Slug
               </dt>
@@ -221,7 +223,7 @@ export function OrganizationSettingsPage({
                 {organization.slug}
               </dd>
             </div>
-            <div className="space-y-1 border-t border-border/60 pt-4">
+            <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
               <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Access
               </dt>

@@ -137,7 +137,7 @@ function InvitationContextContent({
   if (!invitation) {
     return (
       <div className="flex flex-col gap-8">
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           <p className="text-xs font-medium text-muted-foreground uppercase">
             Continue the invitation
           </p>
@@ -165,7 +165,7 @@ function InvitationContextContent({
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="space-y-3">
+      <div className="flex flex-col gap-3">
         <p className="text-xs font-medium text-muted-foreground uppercase">
           Invitation details
         </p>
@@ -177,7 +177,7 @@ function InvitationContextContent({
       </div>
 
       <dl className="grid gap-5 sm:grid-cols-2">
-        <div className="space-y-1 border-t border-border/60 pt-4">
+        <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
           <dt className="text-xs font-medium text-muted-foreground uppercase">
             Organization
           </dt>
@@ -186,7 +186,7 @@ function InvitationContextContent({
           </dd>
         </div>
 
-        <div className="space-y-1 border-t border-border/60 pt-4">
+        <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
           <dt className="text-xs font-medium text-muted-foreground uppercase">
             Invited email
           </dt>
@@ -195,7 +195,7 @@ function InvitationContextContent({
           </dd>
         </div>
 
-        <div className="space-y-1 border-t border-border/60 pt-4">
+        <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
           <dt className="text-xs font-medium text-muted-foreground uppercase">
             Role
           </dt>
@@ -203,7 +203,7 @@ function InvitationContextContent({
         </div>
 
         {"inviterEmail" in invitation ? (
-          <div className="space-y-1 border-t border-border/60 pt-4">
+          <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
             <dt className="text-xs font-medium text-muted-foreground uppercase">
               Invited by
             </dt>

@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import { Button } from "#/components/ui/button";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 
@@ -81,7 +82,7 @@ export function LoginPage({
       }
       supportingContent={
         <div className="flex flex-col gap-8">
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             <p className="text-xs font-medium text-muted-foreground uppercase">
               {isInvitationFlow ? "Continue the handoff" : "Back in the flow"}
             </p>
@@ -93,7 +94,7 @@ export function LoginPage({
           </div>
 
           <dl className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-1 border-t border-border/60 pt-4">
+            <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
               <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Use this email
               </dt>
@@ -104,7 +105,7 @@ export function LoginPage({
               </dd>
             </div>
 
-            <div className="space-y-1 border-t border-border/60 pt-4">
+            <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
               <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Next step
               </dt>
@@ -241,6 +242,7 @@ export function LoginPage({
                 className="w-full"
                 disabled={isSubmitting || !isHydrated}
               >
+                {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                 {isSubmitting ? "Signing in..." : "Sign in"}
               </Button>
             )}

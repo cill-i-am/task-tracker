@@ -22,6 +22,7 @@ import {
 import { FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
 import { ResponsiveDrawer } from "#/components/ui/responsive-drawer";
+import { Spinner } from "#/components/ui/spinner";
 import { Textarea } from "#/components/ui/textarea";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { jobsOptionsStateAtom } from "#/features/jobs/jobs-state";
@@ -387,11 +388,15 @@ export function SitesDetailSheet({
             </Button>
             {canEdit ? (
               <Button type="submit" disabled={updateResult.waiting}>
-                <HugeiconsIcon
-                  icon={PencilEdit02Icon}
-                  strokeWidth={2}
-                  data-icon="inline-start"
-                />
+                {updateResult.waiting ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <HugeiconsIcon
+                    icon={PencilEdit02Icon}
+                    strokeWidth={2}
+                    data-icon="inline-start"
+                  />
+                )}
                 {updateResult.waiting ? "Saving..." : "Save changes"}
               </Button>
             ) : null}

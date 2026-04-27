@@ -11,6 +11,7 @@ import {
 } from "#/components/ui/empty";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 
@@ -103,7 +104,7 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
         title="This reset link isn't valid anymore."
         description="Request a fresh reset link."
         supportingContent={
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             <p className="text-xs font-medium text-muted-foreground uppercase">
               Link expired
             </p>
@@ -159,7 +160,7 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
       title="Choose a new password."
       description="Save it to continue."
       supportingContent={
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           <p className="text-xs font-medium text-muted-foreground uppercase">
             Recovery
           </p>
@@ -271,6 +272,7 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
                 className="w-full"
                 disabled={isSubmitting || !isHydrated}
               >
+                {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                 {isSubmitting ? "Resetting password..." : "Reset password"}
               </Button>
             )}

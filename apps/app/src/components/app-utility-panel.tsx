@@ -31,7 +31,7 @@ export function AppUtilityPanel({
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 space-y-1.5">
+          <div className="flex min-w-0 flex-col gap-1.5">
             <h2 className="font-heading text-lg font-medium text-foreground">
               {title}
             </h2>

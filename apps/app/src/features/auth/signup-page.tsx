@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import { Button } from "#/components/ui/button";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import {
   authClient,
@@ -90,7 +91,7 @@ export function SignupPage({
       }
       supportingContent={
         <div className="flex flex-col gap-8">
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             <p className="text-xs font-medium text-muted-foreground uppercase">
               {isInvitationFlow ? "Create the invited account" : "Set up once"}
             </p>
@@ -102,7 +103,7 @@ export function SignupPage({
           </div>
 
           <dl className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-1 border-t border-border/60 pt-4">
+            <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
               <dt className="text-xs font-medium text-muted-foreground uppercase">
                 Email choice
               </dt>
@@ -113,7 +114,7 @@ export function SignupPage({
               </dd>
             </div>
 
-            <div className="space-y-1 border-t border-border/60 pt-4">
+            <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
               <dt className="text-xs font-medium text-muted-foreground uppercase">
                 After this
               </dt>
@@ -300,6 +301,7 @@ export function SignupPage({
                 className="w-full"
                 disabled={isSubmitting || !isHydrated}
               >
+                {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                 {isSubmitting ? "Signing up..." : "Sign up"}
               </Button>
             )}

@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import { Button } from "#/components/ui/button";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import {
   getErrorText,
   getFormErrorText,
@@ -68,7 +69,7 @@ export function OrganizationOnboardingPage() {
         description="Create the organization once, then move straight into inviting the rest of the team."
         supportingContent={
           <div className="flex flex-col gap-8">
-            <div className="space-y-3">
+            <div className="flex flex-col gap-3">
               <p className="text-xs font-medium text-muted-foreground uppercase">
                 Workspace details
               </p>
@@ -80,7 +81,7 @@ export function OrganizationOnboardingPage() {
             </div>
 
             <dl className="grid gap-5 sm:grid-cols-2">
-              <div className="space-y-1 border-t border-border/60 pt-4">
+              <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
                 <dt className="text-xs font-medium text-muted-foreground uppercase">
                   Organization name
                 </dt>
@@ -90,7 +91,7 @@ export function OrganizationOnboardingPage() {
                 </dd>
               </div>
 
-              <div className="space-y-1 border-t border-border/60 pt-4">
+              <div className="flex flex-col gap-1 border-t border-border/60 pt-4">
                 <dt className="text-xs font-medium text-muted-foreground uppercase">
                   Organization slug
                 </dt>
@@ -99,7 +100,7 @@ export function OrganizationOnboardingPage() {
                 </dd>
               </div>
 
-              <div className="space-y-1 border-t border-border/60 pt-4 sm:col-span-2">
+              <div className="flex flex-col gap-1 border-t border-border/60 pt-4 sm:col-span-2">
                 <dt className="text-xs font-medium text-muted-foreground uppercase">
                   After this step
                 </dt>
@@ -203,6 +204,7 @@ export function OrganizationOnboardingPage() {
                   className="w-full"
                   disabled={isSubmitting || !isHydrated}
                 >
+                  {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                   {isSubmitting
                     ? "Creating organization..."
                     : "Create organization"}

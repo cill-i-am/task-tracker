@@ -37,7 +37,7 @@ export function EmailVerificationPage({ search }: EmailVerificationPageProps) {
           : "You can continue into the app."
       }
       supportingContent={
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           <p className="text-xs font-medium text-muted-foreground uppercase">
             Status
           </p>
