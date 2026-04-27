@@ -208,12 +208,19 @@ describe("map controls hotkeys", () => {
     );
 
     await screen.findByRole("button", { name: "Zoom in" });
+    const mapRegion = screen.getByRole("application", {
+      name: "Interactive map",
+    });
 
     fireEvent.keyDown(document, { key: "=", shiftKey: true });
-    fireEvent.keyDown(document, { key: "-" });
-    fireEvent.keyDown(document, { key: "0" });
-    fireEvent.keyDown(document, { key: "l" });
-    fireEvent.keyDown(document, { key: "f" });
+    expect(mockedZoomTo).not.toHaveBeenCalled();
+
+    mapRegion.focus();
+    fireEvent.keyDown(mapRegion, { key: "=", shiftKey: true });
+    fireEvent.keyDown(mapRegion, { key: "-" });
+    fireEvent.keyDown(mapRegion, { key: "0" });
+    fireEvent.keyDown(mapRegion, { key: "l" });
+    fireEvent.keyDown(mapRegion, { key: "f" });
 
     expect(mockedZoomTo).toHaveBeenNthCalledWith(1, 4, { duration: 300 });
     expect(mockedZoomTo).toHaveBeenNthCalledWith(2, 3, { duration: 300 });
@@ -269,12 +276,16 @@ describe("map controls hotkeys", () => {
     );
 
     await screen.findByRole("button", { name: /keyboard shortcuts/i });
+    const mapRegion = screen.getByRole("application", {
+      name: "Interactive map",
+    });
 
-    fireEvent.keyDown(document, { key: "=", shiftKey: true });
-    fireEvent.keyDown(document, { key: "-" });
-    fireEvent.keyDown(document, { key: "0" });
-    fireEvent.keyDown(document, { key: "l" });
-    fireEvent.keyDown(document, { key: "f" });
+    mapRegion.focus();
+    fireEvent.keyDown(mapRegion, { key: "=", shiftKey: true });
+    fireEvent.keyDown(mapRegion, { key: "-" });
+    fireEvent.keyDown(mapRegion, { key: "0" });
+    fireEvent.keyDown(mapRegion, { key: "l" });
+    fireEvent.keyDown(mapRegion, { key: "f" });
 
     expect(mockedZoomTo).not.toHaveBeenCalled();
     expect(mockedResetNorthPitch).not.toHaveBeenCalled();

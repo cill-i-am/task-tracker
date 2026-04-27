@@ -61,6 +61,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "#/components/ui/tooltip";
+import { activeElementIsInside } from "#/hotkeys/focus";
 import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
@@ -130,17 +131,6 @@ function openSelect(
 
 function isAnySelectOpen(...openStates: readonly boolean[]) {
   return openStates.some(Boolean);
-}
-
-function activeElementIsInside<TElement extends HTMLElement>(
-  ref: React.RefObject<TElement | null>
-) {
-  const { activeElement } = document;
-
-  return (
-    activeElement instanceof HTMLElement &&
-    ref.current?.contains(activeElement) === true
-  );
 }
 
 export function JobsDetailSheet({

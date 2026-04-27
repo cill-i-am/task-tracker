@@ -73,6 +73,7 @@ import { cn } from "#/lib/utils";
 
 import { JobsCoverageMap } from "./jobs-coverage-map";
 import { hasSiteCoordinates } from "./jobs-location";
+import type { JobsViewMode } from "./jobs-search";
 import {
   defaultJobsListFilters,
   jobsListFiltersAtom,
@@ -85,8 +86,6 @@ import {
 import type { JobsListFilters } from "./jobs-state";
 import { hasJobsElevatedAccess } from "./jobs-viewer";
 import type { JobsViewer } from "./jobs-viewer";
-
-type JobsViewMode = "list" | "map";
 
 type JobsLookup = ReturnType<typeof useJobsLookup>;
 
@@ -157,6 +156,10 @@ export function JobsPage({
   }
 
   function setViewMode(nextViewMode: JobsViewMode) {
+    if (nextViewMode === viewMode) {
+      return;
+    }
+
     if (controlledViewMode === undefined) {
       setUncontrolledViewMode(nextViewMode);
     }

@@ -4,9 +4,7 @@ import * as React from "react";
 import { Kbd, KbdGroup } from "#/components/ui/kbd";
 import { cn } from "#/lib/utils";
 
-function splitHotkeySequence(hotkey: string) {
-  return hotkey.split(/\s+/).filter(Boolean);
-}
+import { splitHotkeySequence } from "./hotkey-sequence";
 
 function formatHotkeyDisplay(hotkey: string) {
   return formatForDisplay(hotkey, { useSymbols: false }) || hotkey;

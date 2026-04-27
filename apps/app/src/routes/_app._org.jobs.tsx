@@ -10,9 +10,9 @@ import type {
   JobListResponse,
   JobOptionsResponse,
 } from "@task-tracker/jobs-core";
-import { ParseResult, Schema } from "effect";
 
 import { JobsRouteContent } from "#/features/jobs/jobs-route-content";
+import { decodeJobsSearch } from "#/features/jobs/jobs-search";
 import {
   getCurrentServerJobOptions,
   listAllCurrentServerJobs,
@@ -23,6 +23,8 @@ import {
   ensureActiveOrganizationId,
   getCurrentOrganizationMemberRole,
 } from "#/features/organizations/organization-access";
+
+export { decodeJobsSearch };
 
 const EMPTY_JOBS_OPTIONS: JobOptionsResponse = {
   contacts: [],
@@ -35,38 +37,6 @@ const EMPTY_JOBS_LIST: JobListResponse = {
   items: [],
   nextCursor: undefined,
 };
-
-const RawJobsSearch = Schema.Struct({
-  view: Schema.optional(Schema.Unknown),
-});
-
-const JobsSearch = Schema.transform(
-  RawJobsSearch,
-  Schema.Struct({
-    view: Schema.optional(Schema.Literal("list", "map")),
-  }),
-  {
-    strict: true,
-    decode: ({ view }) => {
-      if (view === "list") {
-        return { view: "list" as const };
-      }
-
-      if (view === "map") {
-        return { view: "map" as const };
-      }
-
-      return { view: undefined };
-    },
-    encode: (search) => search,
-  }
-);
-
-type JobsSearch = typeof JobsSearch.Type;
-
-export function decodeJobsSearch(input: unknown): JobsSearch {
-  return ParseResult.decodeUnknownSync(JobsSearch)(input);
-}
 
 interface JobsRouteOrganizationAccess {
   readonly activeOrganizationId: OrganizationId;

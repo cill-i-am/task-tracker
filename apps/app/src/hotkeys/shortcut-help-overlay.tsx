@@ -66,6 +66,28 @@ export function ShortcutHelpOverlay({
   readonly activeScopes: readonly HotkeyScope[];
 }) {
   const [isOpen, setIsOpen] = React.useState(false);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <ShortcutHelpHotkeys setIsOpen={setIsOpen} />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setIsOpen(true)}
+      >
+        Keyboard shortcuts
+      </Button>
+      {isOpen ? <ShortcutHelpContent activeScopes={activeScopes} /> : null}
+    </Dialog>
+  );
+}
+
+function ShortcutHelpContent({
+  activeScopes,
+}: {
+  readonly activeScopes: readonly HotkeyScope[];
+}) {
   const { hotkeys, sequences } = useHotkeyRegistrations();
   const registeredShortcutIds = React.useMemo(() => {
     const idSet = new Set<HotkeyId>();
@@ -105,60 +127,47 @@ export function ShortcutHelpOverlay({
   );
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <ShortcutHelpHotkeys setIsOpen={setIsOpen} />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => setIsOpen(true)}
-      >
-        Keyboard shortcuts
-      </Button>
-      <DialogContent className="max-h-[min(38rem,calc(100vh-2rem))] overflow-y-auto rounded-2xl sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Keyboard shortcuts</DialogTitle>
-          <DialogDescription>
-            Press ? anytime to open this reference.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-5">
-          {shortcutGroups.map(({ group, shortcuts }) => (
-            <section key={group} aria-labelledby={`shortcut-group-${group}`}>
-              <h3
-                id={`shortcut-group-${group}`}
-                className="mb-2 text-xs font-medium tracking-normal text-muted-foreground"
-              >
-                {group}
-              </h3>
-              <div className="grid gap-1.5">
-                {shortcuts.map((shortcut) => (
-                  <div
-                    key={shortcut.id}
-                    className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium">
-                        {shortcut.label}
+    <DialogContent className="max-h-[min(38rem,calc(100vh-2rem))] overflow-y-auto rounded-2xl sm:max-w-xl">
+      <DialogHeader>
+        <DialogTitle>Keyboard shortcuts</DialogTitle>
+        <DialogDescription>
+          Press ? anytime to open this reference.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-5">
+        {shortcutGroups.map(({ group, shortcuts }) => (
+          <section key={group} aria-labelledby={`shortcut-group-${group}`}>
+            <h3
+              id={`shortcut-group-${group}`}
+              className="mb-2 text-xs font-medium tracking-normal text-muted-foreground"
+            >
+              {group}
+            </h3>
+            <div className="grid gap-1.5">
+              {shortcuts.map((shortcut) => (
+                <div
+                  key={shortcut.id}
+                  className="flex min-h-10 items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{shortcut.label}</div>
+                    {shortcut.when ? (
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {shortcut.when}
                       </div>
-                      {shortcut.when ? (
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {shortcut.when}
-                        </div>
-                      ) : null}
-                    </div>
-                    <ShortcutHint
-                      className="shrink-0"
-                      hotkey={shortcut.hotkey}
-                      label={shortcut.label}
-                    />
+                    ) : null}
                   </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
+                  <ShortcutHint
+                    className="shrink-0"
+                    hotkey={shortcut.hotkey}
+                    label={shortcut.label}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </DialogContent>
   );
 }

@@ -18,6 +18,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "#/components/ui/tooltip";
+import { isJobsMapViewSearch } from "#/features/jobs/jobs-search";
 import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import type { HotkeyScope } from "#/hotkeys/hotkey-registry";
@@ -113,7 +114,7 @@ function getActiveShortcutScopes(
   }
 
   if (pathname === "/jobs") {
-    return hasMapViewSearch(search)
+    return isJobsMapViewSearch(search)
       ? ["global", "jobs", "map"]
       : ["global", "jobs"];
   }
@@ -127,13 +128,4 @@ function getActiveShortcutScopes(
   }
 
   return ["global"];
-}
-
-function hasMapViewSearch(search: unknown) {
-  return (
-    typeof search === "object" &&
-    search !== null &&
-    "view" in search &&
-    search.view === "map"
-  );
 }

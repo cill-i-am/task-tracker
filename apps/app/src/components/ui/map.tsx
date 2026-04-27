@@ -1,6 +1,6 @@
 "use client";
 
-/* oxlint-disable eqeqeq, no-eq-null, no-inline-comments, prefer-destructuring, react/jsx-no-constructed-context-values */
+/* oxlint-disable eqeqeq, no-eq-null, no-inline-comments, prefer-destructuring, react/jsx-no-constructed-context-values, eslint-plugin-jsx-a11y/no-noninteractive-tabindex */
 
 import { Cause, Effect, Exit } from "effect";
 
@@ -362,7 +362,10 @@ const Map = forwardRef<MapRef, MapProps>(function Map(
     <MapContext.Provider value={contextValue}>
       <div
         ref={containerRef}
+        aria-label="Interactive map"
         className={cn("relative h-full w-full", className)}
+        role="application"
+        tabIndex={0}
       >
         {(!isLoaded || loading) && <DefaultLoader />}
         {/* SSR-safe: children render only when map is loaded on client */}
@@ -936,21 +939,27 @@ function MapControls({
       container.requestFullscreen();
     }
   }, [map]);
+  const mapHotkeyTarget = map?.getContainer() ?? null;
 
   useAppHotkey("mapZoomIn", handleZoomIn, {
     enabled: Boolean(map) && showZoom,
+    target: mapHotkeyTarget,
   });
   useAppHotkey("mapZoomOut", handleZoomOut, {
     enabled: Boolean(map) && showZoom,
+    target: mapHotkeyTarget,
   });
   useAppHotkey("mapResetBearing", handleResetBearing, {
     enabled: Boolean(map) && showCompass,
+    target: mapHotkeyTarget,
   });
   useAppHotkey("mapLocate", handleLocate, {
     enabled: Boolean(map) && showLocate && !waitingForLocation,
+    target: mapHotkeyTarget,
   });
   useAppHotkey("mapFullscreen", handleFullscreen, {
     enabled: Boolean(map) && showFullscreen,
+    target: mapHotkeyTarget,
   });
 
   return (

@@ -10,10 +10,7 @@ import type {
 
 import { HOTKEYS } from "./hotkey-registry";
 import type { HotkeyDefinition, HotkeyId } from "./hotkey-registry";
-
-function splitHotkeySequence(hotkey: string) {
-  return hotkey.split(/\s+/).filter(Boolean);
-}
+import { splitHotkeySequence } from "./hotkey-sequence";
 
 function getHotkeyMeta(id: HotkeyId, meta?: HotkeyMeta) {
   const definition = getHotkeyDefinition(id);

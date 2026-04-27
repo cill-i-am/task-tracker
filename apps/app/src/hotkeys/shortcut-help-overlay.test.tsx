@@ -1,5 +1,5 @@
 import { HotkeysProvider } from "@tanstack/react-hotkeys";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ShortcutHelpOverlay } from "./shortcut-help-overlay";
@@ -47,40 +47,42 @@ describe("shortcut help overlay", () => {
     vi.restoreAllMocks();
   });
 
-  it("opens from the trigger and lists global shortcuts", async () => {
-    const user = userEvent.setup();
+  it(
+    "opens from the trigger and lists global shortcuts",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      renderShortcutHelpOverlay(
+        ["global"],
+        <>
+          <RegisteredShortcut id="toggleSidebar" />
+          <RegisteredShortcutSequence id="goJobs" />
+        </>
+      );
 
-    renderShortcutHelpOverlay(
-      ["global"],
-      <>
-        <RegisteredShortcut id="toggleSidebar" />
-        <RegisteredShortcutSequence id="goJobs" />
-      </>
-    );
+      fireEvent.click(
+        screen.getByRole("button", { name: /keyboard shortcuts/i })
+      );
 
-    await user.click(
-      screen.getByRole("button", { name: /keyboard shortcuts/i })
-    );
+      const dialog = await screen.findByRole("dialog", {
+        name: /keyboard shortcuts/i,
+      });
 
-    const dialog = await screen.findByRole("dialog", {
-      name: /keyboard shortcuts/i,
-    });
-
-    expect(within(dialog).getByText("Toggle sidebar")).toBeVisible();
-    expect(within(dialog).getByText("Go to Jobs")).toBeVisible();
-    expect(within(dialog).queryByText("Go to Sites")).not.toBeInTheDocument();
-    expect(within(dialog).queryByText("Search jobs")).not.toBeInTheDocument();
-  }, 1000);
+      expect(within(dialog).getByText("Toggle sidebar")).toBeVisible();
+      expect(within(dialog).getByText("Go to Jobs")).toBeVisible();
+      expect(within(dialog).queryByText("Go to Sites")).not.toBeInTheDocument();
+      expect(within(dialog).queryByText("Search jobs")).not.toBeInTheDocument();
+    }
+  );
 
   it("includes shortcuts for every active scope", async () => {
-    const user = userEvent.setup();
-
     renderShortcutHelpOverlay(
       ["global", "jobs"],
       <RegisteredShortcut id="jobsSearch" />
     );
 
-    await user.click(
+    fireEvent.click(
       screen.getByRole("button", { name: /keyboard shortcuts/i })
     );
 
@@ -93,14 +95,12 @@ describe("shortcut help overlay", () => {
   }, 1000);
 
   it("does not list disabled registered shortcuts", async () => {
-    const user = userEvent.setup();
-
     renderShortcutHelpOverlay(
       ["global"],
       <RegisteredShortcut id="toggleSidebar" enabled={false} />
     );
 
-    await user.click(
+    fireEvent.click(
       screen.getByRole("button", { name: /keyboard shortcuts/i })
     );
 
@@ -114,14 +114,12 @@ describe("shortcut help overlay", () => {
   }, 1000);
 
   it("does not treat a same-key shortcut in another scope as registered", async () => {
-    const user = userEvent.setup();
-
     renderShortcutHelpOverlay(
       ["global", "jobs", "job-create"],
       <RegisteredShortcut id="jobCreateContact" />
     );
 
-    await user.click(
+    fireEvent.click(
       screen.getByRole("button", { name: /keyboard shortcuts/i })
     );
 

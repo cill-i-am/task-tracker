@@ -21,6 +21,7 @@ import {
 } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
+import { activeElementIsInside } from "#/hotkeys/focus";
 import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
@@ -60,14 +61,6 @@ function FormStatus({
     >
       {children}
     </p>
-  );
-}
-
-function activeElementIsInside(ref: React.RefObject<HTMLElement | null>) {
-  const { activeElement } = document;
-
-  return Boolean(
-    activeElement instanceof HTMLElement && ref.current?.contains(activeElement)
   );
 }
 
