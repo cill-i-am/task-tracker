@@ -409,8 +409,13 @@ Suggested columns:
 - `address_line_2 text null`
 - `town text null`
 - `county text null`
+- `country text not null`
 - `eircode text null`
 - `access_notes text null`
+- `latitude double precision null`
+- `longitude double precision null`
+- `geocoding_provider text null`
+- `geocoded_at timestamptz null`
 - `created_at timestamptz not null`
 - `updated_at timestamptz not null`
 - `archived_at timestamptz null`

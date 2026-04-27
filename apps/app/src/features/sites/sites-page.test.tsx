@@ -74,6 +74,10 @@ describe("sites page", () => {
       const row = screen.getByRole("row", { name: /docklands campus/i });
       expect(within(row).getByText("Dublin")).toBeInTheDocument();
       expect(within(row).getByText(/1 Custom House Quay/)).toBeInTheDocument();
+      expect(
+        screen.getByRole("columnheader", { name: "Map" })
+      ).toBeInTheDocument();
+      expect(within(row).getByText("Unmapped")).toBeInTheDocument();
     }
   );
 

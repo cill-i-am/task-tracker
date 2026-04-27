@@ -208,16 +208,18 @@ export const CreateSiteInputSchema = Schema.Struct({
   country: SiteCountrySchema,
   eircode: Schema.optional(NonEmptyTrimmedString),
   accessNotes: Schema.optional(NonEmptyTrimmedString),
-  latitude: Schema.optional(Schema.Never),
-  longitude: Schema.optional(Schema.Never),
-}).pipe(
-  Schema.filter(
-    ({ country, eircode }) => country !== "IE" || eircode !== undefined
-  ),
-  Schema.annotations({
-    message: () => "Irish sites require an Eircode",
+})
+  .annotations({
+    parseOptions: { onExcessProperty: "error" },
   })
-);
+  .pipe(
+    Schema.filter(
+      ({ country, eircode }) => country !== "IE" || eircode !== undefined
+    ),
+    Schema.annotations({
+      message: () => "Irish sites require an Eircode",
+    })
+  );
 export type CreateSiteInput = Schema.Schema.Type<typeof CreateSiteInputSchema>;
 
 export const CreateJobSiteInlineInputSchema = Schema.Struct({

@@ -86,7 +86,7 @@ describe("jobs-core", () => {
   }, 5000);
 
   it("rejects coordinates when creating a site", () => {
-    const rejectedCoordinate = /Expected undefined/;
+    const rejectedCoordinate = /is unexpected/;
 
     expect(() =>
       ParseResult.decodeUnknownSync(CreateSiteInputSchema)({
@@ -408,6 +408,21 @@ describe("jobs-core", () => {
     expect(spec.paths["/sites"]?.post?.responses["403"]).toBeDefined();
     expect(spec.paths["/sites"]?.post?.responses["404"]).toBeDefined();
     expect(spec.paths["/sites"]?.post?.responses["422"]).toBeDefined();
+  }, 5000);
+
+  it("does not document create-site coordinates as request properties", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+    const standaloneRequestBody = JSON.stringify(
+      spec.paths["/sites"]?.post?.requestBody
+    );
+    const jobsRequestBody = JSON.stringify(
+      spec.paths["/jobs"]?.post?.requestBody
+    );
+
+    expect(standaloneRequestBody).not.toContain('"latitude"');
+    expect(standaloneRequestBody).not.toContain('"longitude"');
+    expect(jobsRequestBody).not.toContain('"latitude"');
+    expect(jobsRequestBody).not.toContain('"longitude"');
   }, 5000);
 
   it("exports the shared api group", () => {
