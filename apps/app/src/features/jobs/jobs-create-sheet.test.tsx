@@ -634,8 +634,8 @@ describe("jobs create sheet", () => {
         screen.getByText(/give the job a clear title before you create it/i)
       ).toBeInTheDocument();
       expect(
-        screen.getAllByText(/add the site name or pick an existing site/i)
-      ).toHaveLength(2);
+        screen.getByText(/add the site name or pick an existing site/i)
+      ).toBeInTheDocument();
       expect(screen.getByText("Add address line 1.")).toBeInTheDocument();
       expect(screen.getByText("Add county.")).toBeInTheDocument();
       expect(screen.getByText("Add Eircode.")).toBeInTheDocument();
@@ -657,8 +657,8 @@ describe("jobs create sheet", () => {
       await user.click(screen.getByRole("button", { name: /create job/i }));
 
       expect(
-        screen.getAllByText(/add the site name or pick an existing site/i)
-      ).toHaveLength(2);
+        screen.getByText(/add the site name or pick an existing site/i)
+      ).toBeInTheDocument();
       expect(screen.getByText("Add address line 1.")).toBeInTheDocument();
       expect(screen.getByText("Add county.")).toBeInTheDocument();
       expect(screen.getByText("Add Eircode.")).toBeInTheDocument();

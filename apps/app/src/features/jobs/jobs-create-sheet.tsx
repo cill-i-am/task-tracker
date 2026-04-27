@@ -26,7 +26,7 @@ import type {
   CreateJobInput,
   JobPriority,
   JobContactOption,
-  RegionIdType,
+  JobRegionOption,
   JobSiteOption,
   SiteIdType,
 } from "@task-tracker/jobs-core";
@@ -65,9 +65,19 @@ import {
   ResponsiveDrawer,
   ResponsiveNestedDrawer,
 } from "#/components/ui/responsive-drawer";
-import { Textarea } from "#/components/ui/textarea";
 import { AuthFormField } from "#/features/auth/auth-form-field";
-import { DEFAULT_SITE_COUNTRY } from "#/features/sites/site-create-defaults";
+import {
+  SiteCreateFields,
+  buildCreateSiteInputFromDraft,
+  buildSiteRegionSelectionGroups,
+  defaultSiteCreateDraft,
+  hasSiteCreateFieldErrors,
+  validateSiteCreateDraft,
+} from "#/features/sites/site-create-form";
+import type {
+  SiteCreateDraft,
+  SiteCreateFieldErrors,
+} from "#/features/sites/site-create-form";
 import { cn } from "#/lib/utils";
 
 import {
@@ -111,24 +121,15 @@ interface JobsCreateFormState {
   readonly contactName: string;
   readonly contactSelection: string;
   readonly priority: JobPriority;
-  readonly siteAccessNotes: string;
-  readonly siteAddressLine1: string;
-  readonly siteAddressLine2: string;
-  readonly siteCounty: string;
-  readonly siteEircode: string;
-  readonly siteName: string;
-  readonly siteRegionSelection: string;
+  readonly siteDraft: SiteCreateDraft;
   readonly siteSelection: string;
-  readonly siteTown: string;
   readonly title: string;
 }
 
 interface JobsCreateFieldErrors {
   readonly contactName?: string;
-  readonly siteAddressLine1?: string;
-  readonly siteCounty?: string;
-  readonly siteEircode?: string;
-  readonly siteName?: string;
+  readonly site?: SiteCreateFieldErrors;
+  readonly siteSelection?: string;
   readonly title?: string;
 }
 
@@ -136,15 +137,8 @@ const defaultFormState: JobsCreateFormState = {
   contactName: "",
   contactSelection: NONE_VALUE,
   priority: "none",
-  siteAccessNotes: "",
-  siteAddressLine1: "",
-  siteAddressLine2: "",
-  siteCounty: "",
-  siteEircode: "",
-  siteName: "",
-  siteRegionSelection: NONE_VALUE,
+  siteDraft: defaultSiteCreateDraft,
   siteSelection: NONE_VALUE,
-  siteTown: "",
   title: "",
 };
 
@@ -190,20 +184,12 @@ export function JobsCreateSheet() {
   React.useEffect(() => {
     if (
       values.siteSelection === INLINE_CREATE_VALUE &&
-      (fieldErrors.siteName ||
-        fieldErrors.siteAddressLine1 ||
-        fieldErrors.siteCounty ||
-        fieldErrors.siteEircode)
+      fieldErrors.site &&
+      hasSiteCreateFieldErrors(fieldErrors.site)
     ) {
       setSiteDrawerOpen(true);
     }
-  }, [
-    fieldErrors.siteAddressLine1,
-    fieldErrors.siteCounty,
-    fieldErrors.siteEircode,
-    fieldErrors.siteName,
-    values.siteSelection,
-  ]);
+  }, [fieldErrors.site, values.siteSelection]);
 
   React.useEffect(
     () => () => {
@@ -240,7 +226,7 @@ export function JobsCreateSheet() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const nextErrors = validate(values);
+    const nextErrors = validate(values, options.regions);
     setFieldErrors(nextErrors);
 
     if (hasFieldErrors(nextErrors)) {
@@ -256,7 +242,7 @@ export function JobsCreateSheet() {
     ) {
       setFieldErrors((current) => ({
         ...current,
-        siteName: "That site is no longer available. Pick another one.",
+        siteSelection: "That site is no longer available. Pick another one.",
       }));
       return;
     }
@@ -274,7 +260,7 @@ export function JobsCreateSheet() {
       return;
     }
 
-    const payload = buildCreateJobInput(values, selectionIds);
+    const payload = buildCreateJobInput(values, selectionIds, options.regions);
     const exit = await createJob(payload);
 
     if (Exit.isSuccess(exit)) {
@@ -292,7 +278,7 @@ export function JobsCreateSheet() {
     ) {
       setFieldErrors((current) => ({
         ...current,
-        siteName: "That site is no longer available. Pick another one.",
+        siteSelection: "That site is no longer available. Pick another one.",
       }));
     }
 
@@ -313,7 +299,10 @@ export function JobsCreateSheet() {
     ) {
       setFieldErrors((current) => ({
         ...current,
-        siteEircode: failure.value.message,
+        site: {
+          ...current.site,
+          eircode: failure.value.message,
+        },
       }));
       setSiteDrawerOpen(true);
     }
@@ -394,7 +383,7 @@ export function JobsCreateSheet() {
                 emptyText="No sites found."
                 groups={siteSelectionGroups}
                 icon={Location01Icon}
-                errorText={fieldErrors.siteName}
+                errorText={fieldErrors.siteSelection}
                 onValueChange={(nextValue) => {
                   setValues((current) => ({
                     ...current,
@@ -432,8 +421,10 @@ export function JobsCreateSheet() {
                 }
               />
             </div>
-            {fieldErrors.siteName ? (
-              <p className="text-sm text-destructive">{fieldErrors.siteName}</p>
+            {fieldErrors.siteSelection ? (
+              <p className="text-sm text-destructive">
+                {fieldErrors.siteSelection}
+              </p>
             ) : null}
             {fieldErrors.contactName ? (
               <p className="text-sm text-destructive">
@@ -452,7 +443,7 @@ export function JobsCreateSheet() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium">New site</p>
                     <p className="truncate text-sm text-muted-foreground">
-                      {values.siteName.trim()}
+                      {values.siteDraft.name.trim()}
                     </p>
                   </div>
                 </div>
@@ -505,161 +496,34 @@ export function JobsCreateSheet() {
           </DrawerHeader>
 
           <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-4 sm:px-6">
-            <FieldGroup>
-              <AuthFormField
-                label="Site name"
-                htmlFor="new-site-name"
-                invalid={Boolean(fieldErrors.siteName)}
-                errorText={fieldErrors.siteName}
-              >
-                <Input
-                  id="new-site-name"
-                  value={values.siteName}
-                  aria-invalid={Boolean(fieldErrors.siteName) || undefined}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      siteName: event.target.value,
-                    }))
-                  }
-                />
-              </AuthFormField>
-
-              <AuthFormField
-                label="Region"
-                htmlFor="new-site-region"
-                invalid={false}
-              >
-                <CommandSelect
-                  id="new-site-region"
-                  value={values.siteRegionSelection}
-                  placeholder="Pick region"
-                  emptyText="No regions found."
-                  groups={siteRegionSelectionGroups}
-                  onValueChange={(nextValue) =>
-                    setValues((current) => ({
-                      ...current,
-                      siteRegionSelection: nextValue,
-                    }))
-                  }
-                />
-              </AuthFormField>
-            </FieldGroup>
-
-            <FieldGroup>
-              <AuthFormField
-                label="Address line 1"
-                htmlFor="new-site-address-line-1"
-                invalid={Boolean(fieldErrors.siteAddressLine1)}
-                errorText={fieldErrors.siteAddressLine1}
-              >
-                <Input
-                  id="new-site-address-line-1"
-                  value={values.siteAddressLine1}
-                  aria-invalid={
-                    Boolean(fieldErrors.siteAddressLine1) || undefined
-                  }
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      siteAddressLine1: event.target.value,
-                    }))
-                  }
-                />
-              </AuthFormField>
-
-              <AuthFormField
-                label="Address line 2"
-                htmlFor="new-site-address-line-2"
-                invalid={false}
-              >
-                <Input
-                  id="new-site-address-line-2"
-                  value={values.siteAddressLine2}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      siteAddressLine2: event.target.value,
-                    }))
-                  }
-                />
-              </AuthFormField>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <AuthFormField
-                  label="Town"
-                  htmlFor="new-site-town"
-                  invalid={false}
-                >
-                  <Input
-                    id="new-site-town"
-                    value={values.siteTown}
-                    onChange={(event) =>
-                      setValues((current) => ({
-                        ...current,
-                        siteTown: event.target.value,
-                      }))
-                    }
-                  />
-                </AuthFormField>
-
-                <AuthFormField
-                  label="County"
-                  htmlFor="new-site-county"
-                  invalid={Boolean(fieldErrors.siteCounty)}
-                  errorText={fieldErrors.siteCounty}
-                >
-                  <Input
-                    id="new-site-county"
-                    value={values.siteCounty}
-                    aria-invalid={Boolean(fieldErrors.siteCounty) || undefined}
-                    onChange={(event) =>
-                      setValues((current) => ({
-                        ...current,
-                        siteCounty: event.target.value,
-                      }))
-                    }
-                  />
-                </AuthFormField>
-              </div>
-
-              <AuthFormField
-                label="Eircode"
-                htmlFor="new-site-eircode"
-                invalid={Boolean(fieldErrors.siteEircode)}
-                errorText={fieldErrors.siteEircode}
-              >
-                <Input
-                  id="new-site-eircode"
-                  value={values.siteEircode}
-                  aria-invalid={Boolean(fieldErrors.siteEircode) || undefined}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      siteEircode: event.target.value,
-                    }))
-                  }
-                />
-              </AuthFormField>
-
-              <AuthFormField
-                label="Access notes"
-                htmlFor="new-site-access-notes"
-                invalid={false}
-              >
-                <Textarea
-                  id="new-site-access-notes"
-                  rows={3}
-                  value={values.siteAccessNotes}
-                  onChange={(event) =>
-                    setValues((current) => ({
-                      ...current,
-                      siteAccessNotes: event.target.value,
-                    }))
-                  }
-                />
-              </AuthFormField>
-            </FieldGroup>
+            <SiteCreateFields
+              draft={values.siteDraft}
+              errors={fieldErrors.site ?? {}}
+              idPrefix="new-site"
+              regionGroups={siteRegionSelectionGroups}
+              onDraftChange={(siteDraft) =>
+                setValues((current) => ({
+                  ...current,
+                  siteDraft,
+                }))
+              }
+              onRegionSelectionChange={(nextValue) => {
+                setFieldErrors((current) => ({
+                  ...current,
+                  site: {
+                    ...current.site,
+                    regionSelection: undefined,
+                  },
+                }));
+                setValues((current) => ({
+                  ...current,
+                  siteDraft: {
+                    ...current.siteDraft,
+                    regionSelection: nextValue,
+                  },
+                }));
+              }}
+            />
           </div>
 
           <DrawerFooter className="flex-row justify-end border-t px-5 py-4 sm:px-6">
@@ -942,23 +806,6 @@ function buildPrioritySelectionGroups() {
   ] satisfies readonly CommandSelectGroup[];
 }
 
-function buildSiteRegionSelectionGroups(
-  regions: readonly { readonly id: string; readonly name: string }[]
-) {
-  return [
-    {
-      label: "Region",
-      options: [
-        { label: "No region yet", value: NONE_VALUE },
-        ...regions.map((region) => ({
-          label: region.name,
-          value: region.id,
-        })),
-      ],
-    },
-  ] satisfies readonly CommandSelectGroup[];
-}
-
 function buildContactSelectionGroups(
   contactGroups: ReturnType<typeof deriveContactsForSite>
 ) {
@@ -1001,8 +848,16 @@ function buildContactSelectionGroups(
   return groups;
 }
 
-function validate(values: JobsCreateFormState): JobsCreateFieldErrors {
+function validate(
+  values: JobsCreateFormState,
+  regions: readonly JobRegionOption[]
+): JobsCreateFieldErrors {
   const validateInlineSite = values.siteSelection === INLINE_CREATE_VALUE;
+  const siteErrors = validateInlineSite
+    ? validateSiteCreateDraft(values.siteDraft, regions, {
+        nameRequiredMessage: "Add the site name or pick an existing site.",
+      })
+    : undefined;
 
   return {
     contactName:
@@ -1010,22 +865,9 @@ function validate(values: JobsCreateFormState): JobsCreateFieldErrors {
       values.contactName.trim().length === 0
         ? "Add the contact name or pick an existing contact."
         : undefined,
-    siteAddressLine1:
-      validateInlineSite && values.siteAddressLine1.trim().length === 0
-        ? "Add address line 1."
-        : undefined,
-    siteCounty:
-      validateInlineSite && values.siteCounty.trim().length === 0
-        ? "Add county."
-        : undefined,
-    siteEircode:
-      validateInlineSite && values.siteEircode.trim().length === 0
-        ? "Add Eircode."
-        : undefined,
-    siteName:
-      values.siteSelection === INLINE_CREATE_VALUE &&
-      values.siteName.trim().length === 0
-        ? "Add the site name or pick an existing site."
+    site:
+      siteErrors && hasSiteCreateFieldErrors(siteErrors)
+        ? siteErrors
         : undefined,
     title:
       values.title.trim().length === 0
@@ -1035,11 +877,16 @@ function validate(values: JobsCreateFormState): JobsCreateFieldErrors {
 }
 
 function hasInlineSiteDraft(values: JobsCreateFormState) {
-  return values.siteName.trim().length > 0;
+  return values.siteDraft.name.trim().length > 0;
 }
 
 function hasFieldErrors(errors: JobsCreateFieldErrors) {
-  return Object.values(errors).some((value) => value !== undefined);
+  return (
+    errors.contactName !== undefined ||
+    errors.siteSelection !== undefined ||
+    errors.title !== undefined ||
+    (errors.site !== undefined && hasSiteCreateFieldErrors(errors.site))
+  );
 }
 
 function clearInlineSiteFieldErrors(
@@ -1047,10 +894,8 @@ function clearInlineSiteFieldErrors(
 ): JobsCreateFieldErrors {
   return {
     ...current,
-    siteAddressLine1: undefined,
-    siteCounty: undefined,
-    siteEircode: undefined,
-    siteName: undefined,
+    site: undefined,
+    siteSelection: undefined,
   };
 }
 
@@ -1059,7 +904,7 @@ function clearSiteSelectionFieldError(
 ): JobsCreateFieldErrors {
   return {
     ...current,
-    siteName: undefined,
+    siteSelection: undefined,
   };
 }
 
@@ -1076,12 +921,13 @@ function isHandledCreateJobError(error: unknown) {
 
 function buildCreateJobInput(
   values: JobsCreateFormState,
-  selectionIds: JobsCreateSelectionIds
+  selectionIds: JobsCreateSelectionIds,
+  regions: readonly JobRegionOption[]
 ): CreateJobInput {
   return {
     contact: resolveCreateJobContactInput(values, selectionIds),
     priority: values.priority === "none" ? undefined : values.priority,
-    site: resolveCreateJobSiteInput(values, selectionIds),
+    site: resolveCreateJobSiteInput(values, selectionIds, regions),
     title: values.title.trim(),
   };
 }
@@ -1111,7 +957,8 @@ function resolveCreateJobContactInput(
 
 function resolveCreateJobSiteInput(
   values: JobsCreateFormState,
-  selectionIds: JobsCreateSelectionIds
+  selectionIds: JobsCreateSelectionIds,
+  regions: readonly JobRegionOption[]
 ): CreateJobInput["site"] {
   if (values.siteSelection === NONE_VALUE) {
     return undefined;
@@ -1120,20 +967,7 @@ function resolveCreateJobSiteInput(
   if (values.siteSelection === INLINE_CREATE_VALUE) {
     return {
       kind: "create",
-      input: {
-        accessNotes: toOptionalTrimmedString(values.siteAccessNotes),
-        addressLine1: values.siteAddressLine1.trim(),
-        addressLine2: toOptionalTrimmedString(values.siteAddressLine2),
-        county: values.siteCounty.trim(),
-        country: DEFAULT_SITE_COUNTRY,
-        eircode: values.siteEircode.trim(),
-        name: values.siteName.trim(),
-        regionId:
-          values.siteRegionSelection === NONE_VALUE
-            ? undefined
-            : (values.siteRegionSelection as RegionIdType),
-        town: toOptionalTrimmedString(values.siteTown),
-      },
+      input: buildCreateSiteInputFromDraft(values.siteDraft, regions),
     };
   }
 
@@ -1174,10 +1008,4 @@ function resolveSelectedOptionId<Id extends string>(
   value: string
 ): Id | undefined {
   return options.find((option) => option.id === value)?.id;
-}
-
-function toOptionalTrimmedString(value: string) {
-  const trimmed = value.trim();
-
-  return trimmed.length === 0 ? undefined : trimmed;
 }
