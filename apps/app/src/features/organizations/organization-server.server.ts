@@ -12,7 +12,7 @@ import type {
 } from "@task-tracker/identity-core";
 import { Schema } from "effect";
 
-import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client";
+import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client.server";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,

@@ -4,7 +4,7 @@ import {
   getCurrentServerOrganizationSession,
   getCurrentServerOrganizations,
   setCurrentServerActiveOrganization,
-} from "./organization-server";
+} from "./organization-server.server";
 
 interface Organization {
   id: string;

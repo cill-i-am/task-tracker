@@ -9,7 +9,7 @@ import type {
   WorkItemIdType,
 } from "@task-tracker/jobs-core";
 
-import { readConfiguredServerApiOrigin } from "#/lib/api-origin";
+import { readConfiguredServerApiOrigin } from "#/lib/api-origin.server";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,
