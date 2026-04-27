@@ -1,3 +1,5 @@
+import { decodeOrganizationId } from "@task-tracker/identity-core";
+
 import {
   getCurrentServerOrganizationSession,
   getCurrentServerOrganizations,
@@ -10,6 +12,8 @@ interface Organization {
   name: string;
   slug: string;
 }
+
+const organizationId = decodeOrganizationId("org_123");
 
 interface Session {
   id: string;
@@ -362,7 +366,7 @@ describe("server organization lookup", () => {
       .mockResolvedValue(Response.json({ id: "org_123" }));
 
     await expect(
-      setCurrentServerActiveOrganization("org_123")
+      setCurrentServerActiveOrganization(organizationId)
     ).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
