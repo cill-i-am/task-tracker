@@ -53,7 +53,7 @@ export function JobsDetailLocationMapPreviewCanvas({
               <div className="flex size-10 items-center justify-center rounded-full border border-primary/30 bg-primary text-primary-foreground shadow-lg">
                 <HugeiconsIcon icon={MapsLocation01Icon} strokeWidth={2} />
               </div>
-              <MarkerLabel>{site.name ?? "Pinned site"}</MarkerLabel>
+              <MarkerLabel>{site.name ?? "Mapped site"}</MarkerLabel>
             </MarkerContent>
           </MapMarker>
         </Map>
