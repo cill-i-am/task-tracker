@@ -24,19 +24,12 @@ import { Badge } from "#/components/ui/badge";
 import { Button } from "#/components/ui/button";
 import { CommandSelect } from "#/components/ui/command-select";
 import type { CommandSelectGroup } from "#/components/ui/command-select";
+import { DotMatrixLoadingState } from "#/components/ui/dot-matrix-loader";
 import { FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
-import { Spinner } from "#/components/ui/spinner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#/components/ui/tooltip";
 import { getErrorText } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
-import { ShortcutHint } from "#/hotkeys/hotkey-display";
-import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 import { authClient } from "#/lib/auth-client";
 
@@ -109,39 +102,54 @@ export function OrganizationMembersPage({
   const [loadErrorMessage, setLoadErrorMessage] = React.useState<string | null>(
     null
   );
+  const [isLoadingInvitations, setIsLoadingInvitations] = React.useState(false);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(
     null
   );
   const formRef = React.useRef<HTMLFormElement | null>(null);
   const invitationRequestSequence = React.useRef(0);
+  const invitationsOrganizationId = React.useRef(activeOrganizationId);
   const roleSelectTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [roleSelectOpen, setRoleSelectOpen] = React.useState(false);
 
   const loadInvitations = React.useCallback(async () => {
     invitationRequestSequence.current += 1;
     const requestSequence = invitationRequestSequence.current;
-    setInvitations([]);
+
+    if (invitationsOrganizationId.current !== activeOrganizationId) {
+      invitationsOrganizationId.current = activeOrganizationId;
+      setInvitations([]);
+    }
+
     setLoadErrorMessage(null);
-
-    const result = await authClient.organization.listInvitations({
-      query: {
-        organizationId: activeOrganizationId,
-      },
-    });
-
-    if (requestSequence !== invitationRequestSequence.current) {
-      return;
-    }
-
-    if (result.error || !result.data) {
-      setLoadErrorMessage(INVITATION_LOAD_FAILURE_MESSAGE);
-      return;
-    }
+    setIsLoadingInvitations(true);
 
     try {
+      const result = await authClient.organization.listInvitations({
+        query: {
+          organizationId: activeOrganizationId,
+        },
+      });
+
+      if (requestSequence !== invitationRequestSequence.current) {
+        return;
+      }
+
+      if (result.error || !result.data) {
+        setLoadErrorMessage(INVITATION_LOAD_FAILURE_MESSAGE);
+        return;
+      }
+
       setInvitations(result.data.filter(isPendingInvitation).map(toInvitation));
     } catch {
+      if (requestSequence !== invitationRequestSequence.current) {
+        return;
+      }
       setLoadErrorMessage(INVITATION_LOAD_FAILURE_MESSAGE);
+    } finally {
+      if (requestSequence === invitationRequestSequence.current) {
+        setIsLoadingInvitations(false);
+      }
     }
   }, [activeOrganizationId]);
 
@@ -212,7 +220,7 @@ export function OrganizationMembersPage({
   );
 
   const shouldRenderInvitationsSection =
-    invitations.length > 0 || Boolean(loadErrorMessage);
+    isLoadingInvitations || invitations.length > 0 || Boolean(loadErrorMessage);
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -315,13 +323,13 @@ export function OrganizationMembersPage({
                       >
                         <CommandSelect
                           id="invite-role"
-                          triggerRef={roleSelectTriggerRef}
                           value={field.state.value}
-                          open={roleSelectOpen}
                           placeholder="Pick role"
                           emptyText="No roles found."
                           groups={ROLE_SELECTION_GROUPS}
                           ariaInvalid={errorText ? true : undefined}
+                          open={roleSelectOpen}
+                          triggerRef={roleSelectTriggerRef}
                           onOpenChange={setRoleSelectOpen}
                           onValueChange={(nextValue) => {
                             if (!isInviteRole(nextValue)) {
@@ -350,36 +358,17 @@ export function OrganizationMembersPage({
               ) : null}
 
               <form.Subscribe selector={(state) => state.isSubmitting}>
-                {(isSubmitting) => {
-                  const canSubmit = !isSubmitting && isHydrated;
-
-                  return (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            type="submit"
-                            size="lg"
-                            className="w-full sm:w-auto"
-                            disabled={!canSubmit}
-                          >
-                            {isSubmitting ? (
-                              <Spinner data-icon="inline-start" />
-                            ) : null}
-                            {isSubmitting ? "Sending invite..." : "Send invite"}
-                          </Button>
-                        }
-                      />
-                      <TooltipContent>
-                        <span>Send invite</span>
-                        <ShortcutHint
-                          hotkey={HOTKEYS.membersSubmit.hotkey}
-                          label={HOTKEYS.membersSubmit.label}
-                        />
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                }}
+                {(isSubmitting) => (
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full sm:w-auto"
+                    loading={isSubmitting}
+                    disabled={!isHydrated}
+                  >
+                    {isSubmitting ? "Sending invite..." : "Send invite"}
+                  </Button>
+                )}
               </form.Subscribe>
             </form>
           </AppUtilityPanel>
@@ -404,6 +393,12 @@ export function OrganizationMembersPage({
                 {formatInvitationCount(invitations.length)}
               </Badge>
             </div>
+            {isLoadingInvitations ? (
+              <DotMatrixLoadingState
+                label="Loading invitations"
+                className="justify-start border-y py-4"
+              />
+            ) : null}
             {loadErrorMessage ? (
               <Alert variant="destructive">
                 <AlertDescription>{loadErrorMessage}</AlertDescription>

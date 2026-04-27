@@ -51,7 +51,7 @@ export function JobsDetailLocation({ site }: JobsDetailLocationProps) {
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-3 border-b pb-4">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium">{site.name ?? "Pinned site"}</p>
+            <p className="font-medium">{site.name ?? "Mapped site"}</p>
             {site.regionName ? (
               <Badge variant="secondary">{site.regionName}</Badge>
             ) : null}

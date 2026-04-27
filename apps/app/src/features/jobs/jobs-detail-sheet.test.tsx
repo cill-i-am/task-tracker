@@ -1,4 +1,3 @@
-import { HotkeysProvider } from "@tanstack/react-hotkeys";
 /* oxlint-disable vitest/prefer-import-in-mock */
 import type {
   SiteIdType,
@@ -8,10 +7,12 @@ import type {
   ActivityIdType,
   VisitIdType,
 } from "@task-tracker/jobs-core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Exit } from "effect";
-import type { ComponentProps, ReactNode, Ref } from "react";
+import type { ComponentProps, ReactNode } from "react";
+
+import { CommandBarProvider } from "#/features/command-bar/command-bar";
 
 import { JobsDetailSheet } from "./jobs-detail-sheet";
 import type { JobsViewer } from "./jobs-viewer";
@@ -94,12 +95,14 @@ vi.mock("#/components/ui/badge", () => ({
 vi.mock("#/components/ui/button", () => ({
   Button: ({
     children,
+    loading: _loading,
     type,
     variant: _variant,
     size: _size,
     className: _className,
     ...props
   }: ComponentProps<"button"> & {
+    loading?: boolean;
     variant?: string;
     size?: string;
   }) => {
@@ -150,12 +153,9 @@ vi.mock("#/components/ui/command-select", () => ({
     emptyText: _emptyText,
     groups,
     id,
-    onOpenChange: _onOpenChange,
     onValueChange,
-    open: _open,
     placeholder: _placeholder,
     searchPlaceholder: _searchPlaceholder,
-    triggerRef,
     value,
     ...props
   }: ComponentProps<"select"> & {
@@ -168,14 +168,10 @@ vi.mock("#/components/ui/command-select", () => ({
       }[];
     }[];
     onValueChange: (value: string) => void;
-    onOpenChange?: (open: boolean) => void;
-    open?: boolean;
     placeholder?: string;
     searchPlaceholder?: string;
-    triggerRef?: Ref<HTMLSelectElement>;
   }) => (
     <select
-      ref={triggerRef}
       id={id}
       value={value}
       onChange={(event) => onValueChange(event.target.value)}
@@ -258,24 +254,6 @@ vi.mock("#/components/ui/drawer", () => ({
     <header>{children}</header>
   ),
   DrawerTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
-}));
-
-vi.mock("#/components/ui/tooltip", () => ({
-  Tooltip: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  TooltipContent: ({ children }: { children?: ReactNode }) => (
-    <div>{children}</div>
-  ),
-  TooltipTrigger: ({
-    children,
-    render: renderElement,
-  }: {
-    children?: ReactNode;
-    render?: { props?: ComponentProps<"button"> };
-  }) => (
-    <button type="button" {...renderElement?.props}>
-      {children ?? renderElement?.props?.children}
-    </button>
-  ),
 }));
 
 vi.mock("#/components/ui/textarea", () => ({
@@ -537,72 +515,39 @@ describe("jobs detail sheet", () => {
     }
   );
 
-  it("focuses the comment composer with the comment hotkey", async () => {
-    const user = userEvent.setup();
-    renderDetailSheet(buildDetail());
+  it(
+    "registers job detail transition actions in the command bar",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedTransitionJob.mockResolvedValue(
+        Exit.succeed({
+          ...buildDetail().job,
+          status: "completed",
+        })
+      );
 
-    await user.keyboard("c");
+      const user = userEvent.setup();
+      renderDetailSheet(buildDetail(), undefined, { withCommandBar: true });
 
-    expect(screen.getByLabelText("Add a comment")).toHaveFocus();
-  }, 10_000);
+      fireEvent.keyDown(window, { key: "k", metaKey: true });
 
-  it("submits the focused comment form with the submit hotkey", async () => {
-    mockedAddComment.mockResolvedValue(
-      Exit.succeed({
-        authorUserId: actorUserId,
-        body: "Need a follow-up inspection.",
-        createdAt: "2026-04-23T12:00:00.000Z",
-        id: "44444444-4444-4444-8444-444444444444" as CommentIdType,
-        workItemId,
-      })
-    );
+      await waitFor(() => {
+        expect(
+          screen.getByRole("option", { name: /mark job completed/i })
+        ).toBeInTheDocument();
+      });
 
-    const user = userEvent.setup();
-    renderDetailSheet(buildDetail());
+      await user.click(
+        screen.getByRole("option", { name: /mark job completed/i })
+      );
 
-    await user.type(
-      screen.getByLabelText("Add a comment"),
-      "Need a follow-up inspection."
-    );
-    await user.keyboard("{Control>}{Enter}{/Control}");
-
-    expect(mockedAddComment).toHaveBeenCalledWith({
-      body: "Need a follow-up inspection.",
-    });
-  }, 10_000);
-
-  it("focuses job detail selects with scoped hotkeys", async () => {
-    const user = userEvent.setup();
-    renderDetailSheet(buildDetail());
-
-    await user.keyboard("s");
-
-    expect(screen.getByLabelText("Next status")).toHaveFocus();
-
-    (document.activeElement as HTMLElement | null)?.blur();
-    await user.keyboard("l");
-
-    expect(screen.getByLabelText("Site")).toHaveFocus();
-  }, 10_000);
-
-  it("closes the detail drawer with Escape outside text editing", async () => {
-    const user = userEvent.setup();
-    renderDetailSheet(buildDetail());
-
-    await user.keyboard("{Escape}");
-
-    expect(mockedNavigate).toHaveBeenCalledWith({ to: "/jobs" });
-  }, 10_000);
-
-  it("does not close the detail drawer with Escape while a select is open", async () => {
-    const user = userEvent.setup();
-    renderDetailSheet(buildDetail());
-
-    await user.keyboard("s");
-    await user.keyboard("{Escape}");
-
-    expect(mockedNavigate).not.toHaveBeenCalled();
-  }, 10_000);
+      expect(mockedTransitionJob).toHaveBeenCalledWith({
+        status: "completed",
+      });
+    }
+  );
 
   it(
     "logs a visit and clears the visit form",
@@ -745,19 +690,26 @@ function buildDetail(overrides?: {
 
 function renderDetailSheet(
   initialDetail: ReturnType<typeof buildDetail>,
-  viewer?: JobsViewer
+  viewer?: JobsViewer,
+  options?: { readonly withCommandBar?: boolean }
 ) {
-  return render(
-    <HotkeysProvider>
-      <JobsDetailSheet
-        initialDetail={initialDetail}
-        viewer={
-          viewer ?? {
-            role: "owner",
-            userId: actorUserId,
-          }
+  const sheet = (
+    <JobsDetailSheet
+      initialDetail={initialDetail}
+      viewer={
+        viewer ?? {
+          role: "owner",
+          userId: actorUserId,
         }
-      />
-    </HotkeysProvider>
+      }
+    />
+  );
+
+  return render(
+    options?.withCommandBar ? (
+      <CommandBarProvider>{sheet}</CommandBarProvider>
+    ) : (
+      sheet
+    )
   );
 }

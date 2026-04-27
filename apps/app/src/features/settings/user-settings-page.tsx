@@ -8,12 +8,6 @@ import { AppUtilityPanel } from "#/components/app-utility-panel";
 import { Button } from "#/components/ui/button";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
-import { Spinner } from "#/components/ui/spinner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#/components/ui/tooltip";
 import {
   getErrorText,
   getFormErrorText,
@@ -22,8 +16,6 @@ import {
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { activeElementIsInside } from "#/hotkeys/focus";
-import { ShortcutHint } from "#/hotkeys/hotkey-display";
-import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 import { authClient, buildEmailChangeRedirectTo } from "#/lib/auth-client";
 
@@ -355,30 +347,15 @@ export function UserSettingsPage({
               })}
             >
               {({ isDefaultValue, isSubmitting }) => (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="submit"
-                        size="lg"
-                        className="w-full sm:w-auto"
-                        disabled={isSubmitting || isDefaultValue || !isHydrated}
-                      >
-                        {isSubmitting ? (
-                          <Spinner data-icon="inline-start" />
-                        ) : null}
-                        {isSubmitting ? "Saving profile..." : "Save profile"}
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>
-                    <span>Save profile</span>
-                    <ShortcutHint
-                      hotkey={HOTKEYS.settingsSubmit.hotkey}
-                      label={HOTKEYS.settingsSubmit.label}
-                    />
-                  </TooltipContent>
-                </Tooltip>
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  loading={isSubmitting}
+                  disabled={isDefaultValue || !isHydrated}
+                >
+                  {isSubmitting ? "Saving profile..." : "Save profile"}
+                </Button>
               )}
             </profileForm.Subscribe>
           </form>
@@ -462,32 +439,17 @@ export function UserSettingsPage({
 
             <emailForm.Subscribe selector={(state) => state.isSubmitting}>
               {(isSubmitting) => (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="submit"
-                        size="lg"
-                        className="w-full sm:w-auto"
-                        disabled={isSubmitting || !isHydrated}
-                      >
-                        {isSubmitting ? (
-                          <Spinner data-icon="inline-start" />
-                        ) : null}
-                        {isSubmitting
-                          ? "Sending verification..."
-                          : "Send verification email"}
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>
-                    <span>Send verification email</span>
-                    <ShortcutHint
-                      hotkey={HOTKEYS.settingsSubmit.hotkey}
-                      label={HOTKEYS.settingsSubmit.label}
-                    />
-                  </TooltipContent>
-                </Tooltip>
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  loading={isSubmitting}
+                  disabled={!isHydrated}
+                >
+                  {isSubmitting
+                    ? "Sending verification..."
+                    : "Send verification email"}
+                </Button>
               )}
             </emailForm.Subscribe>
           </form>
@@ -624,32 +586,15 @@ export function UserSettingsPage({
 
             <passwordForm.Subscribe selector={(state) => state.isSubmitting}>
               {(isSubmitting) => (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="submit"
-                        size="lg"
-                        className="w-full sm:w-auto"
-                        disabled={isSubmitting || !isHydrated}
-                      >
-                        {isSubmitting ? (
-                          <Spinner data-icon="inline-start" />
-                        ) : null}
-                        {isSubmitting
-                          ? "Updating password..."
-                          : "Update password"}
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>
-                    <span>Update password</span>
-                    <ShortcutHint
-                      hotkey={HOTKEYS.settingsSubmit.hotkey}
-                      label={HOTKEYS.settingsSubmit.label}
-                    />
-                  </TooltipContent>
-                </Tooltip>
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  loading={isSubmitting}
+                  disabled={!isHydrated}
+                >
+                  {isSubmitting ? "Updating password..." : "Update password"}
+                </Button>
               )}
             </passwordForm.Subscribe>
           </form>

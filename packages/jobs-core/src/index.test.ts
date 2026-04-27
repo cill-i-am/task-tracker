@@ -20,6 +20,7 @@ import {
   PatchJobInputSchema,
   SitesOptionsResponseSchema,
   SitesApiGroup,
+  SiteGeocodingFailedError,
   VisitDurationIncrementError,
   WorkItemId,
 } from "./index.js";
@@ -43,9 +44,11 @@ describe("jobs-core", () => {
           kind: "create",
           input: {
             name: "  Example Site  ",
+            addressLine1: "  1 Custom House Quay  ",
             town: "  Dublin  ",
-            latitude: 53.3498,
-            longitude: -6.2603,
+            county: "  Dublin  ",
+            country: "IE",
+            eircode: "  D01 X2X2  ",
           },
         },
         contact: {
@@ -60,9 +63,11 @@ describe("jobs-core", () => {
         kind: "create",
         input: {
           name: "Example Site",
+          addressLine1: "1 Custom House Quay",
           town: "Dublin",
-          latitude: 53.3498,
-          longitude: -6.2603,
+          county: "Dublin",
+          country: "IE",
+          eircode: "D01 X2X2",
         },
       },
       contact: {
@@ -80,19 +85,19 @@ describe("jobs-core", () => {
     });
   }, 5000);
 
-  it("requires site coordinates to be provided as a complete pair", () => {
+  it("rejects coordinates when creating a site", () => {
+    const rejectedCoordinate = /is unexpected/;
+
     expect(() =>
-      ParseResult.decodeUnknownSync(CreateJobInputSchema)({
-        title: "Replace boiler",
-        site: {
-          kind: "create",
-          input: {
-            name: "Docklands Campus",
-            latitude: 53.3498,
-          },
-        },
+      ParseResult.decodeUnknownSync(CreateSiteInputSchema)({
+        name: "Docklands Campus",
+        addressLine1: "1 Custom House Quay",
+        county: "Dublin",
+        country: "IE",
+        eircode: "D01 X2X2",
+        latitude: 53.3498,
       })
-    ).toThrow(/Site coordinates must include both latitude and longitude/);
+    ).toThrow(rejectedCoordinate);
 
     expect(() =>
       ParseResult.decodeUnknownSync(CreateJobInputSchema)({
@@ -101,19 +106,37 @@ describe("jobs-core", () => {
           kind: "create",
           input: {
             name: "Docklands Campus",
+            addressLine1: "1 Custom House Quay",
+            county: "Dublin",
+            country: "IE",
+            eircode: "D01 X2X2",
             longitude: -6.2603,
           },
         },
       })
-    ).toThrow(/Site coordinates must include both latitude and longitude/);
+    ).toThrow(rejectedCoordinate);
+
+    expect(() =>
+      ParseResult.decodeUnknownSync(CreateSiteInputSchema)({
+        name: "Docklands Campus",
+        addressLine1: "1 Custom House Quay",
+        county: "Dublin",
+        country: "IE",
+        eircode: "D01 X2X2",
+        latitude: 53.3498,
+        longitude: -6.2603,
+      })
+    ).toThrow(rejectedCoordinate);
   }, 5000);
 
   it("reuses the site creation DTO for standalone and inline site creation", () => {
     const standaloneInput = {
       accessNotes: "  Enter via reception  ",
       addressLine1: "  1 Custom House Quay  ",
-      latitude: 53.3498,
-      longitude: -6.2603,
+      addressLine2: "  North Dock  ",
+      county: "  Dublin  ",
+      country: "IE",
+      eircode: "  D01 X2X2  ",
       name: "  Docklands Campus  ",
       town: "  Dublin  ",
     };
@@ -123,8 +146,10 @@ describe("jobs-core", () => {
     ).toStrictEqual({
       accessNotes: "Enter via reception",
       addressLine1: "1 Custom House Quay",
-      latitude: 53.3498,
-      longitude: -6.2603,
+      addressLine2: "North Dock",
+      county: "Dublin",
+      country: "IE",
+      eircode: "D01 X2X2",
       name: "Docklands Campus",
       town: "Dublin",
     });
@@ -141,8 +166,10 @@ describe("jobs-core", () => {
       input: {
         accessNotes: "Enter via reception",
         addressLine1: "1 Custom House Quay",
-        latitude: 53.3498,
-        longitude: -6.2603,
+        addressLine2: "North Dock",
+        county: "Dublin",
+        country: "IE",
+        eircode: "D01 X2X2",
         name: "Docklands Campus",
         town: "Dublin",
       },
@@ -152,17 +179,50 @@ describe("jobs-core", () => {
     expect(() =>
       ParseResult.decodeUnknownSync(CreateSiteInputSchema)({
         name: "Docklands Campus",
-        latitude: 53.3498,
+        addressLine1: "1 Custom House Quay",
+        county: "Dublin",
+        country: "IE",
       })
-    ).toThrow(/Site coordinates must include both latitude and longitude/);
+    ).toThrow(/Irish sites require an Eircode/);
+  }, 5000);
+
+  it("requires an Eircode for Irish site creation", () => {
+    expect(() =>
+      ParseResult.decodeUnknownSync(CreateSiteInputSchema)({
+        name: "Docklands Campus",
+        addressLine1: "1 Custom House Quay",
+        county: "Dublin",
+        country: "IE",
+      })
+    ).toThrow(/Irish sites require an Eircode/);
+
+    expect(
+      ParseResult.decodeUnknownSync(CreateSiteInputSchema)({
+        name: "London Depot",
+        addressLine1: "10 Downing Street",
+        county: "Greater London",
+        country: "GB",
+      })
+    ).toStrictEqual({
+      name: "London Depot",
+      addressLine1: "10 Downing Street",
+      county: "Greater London",
+      country: "GB",
+    });
   }, 5000);
 
   it("validates site option coordinates at response boundaries", () => {
     const siteOption = {
       id: "550e8400-e29b-41d4-a716-446655440010",
       name: "Docklands Campus",
+      addressLine1: "1 Custom House Quay",
+      county: "Dublin",
+      country: "IE",
+      eircode: "D01 X2X2",
       latitude: 53.3498,
       longitude: -6.2603,
+      geocodingProvider: "google",
+      geocodedAt: "2026-04-22T10:00:00.000Z",
     };
 
     expect(
@@ -178,9 +238,14 @@ describe("jobs-core", () => {
       ParseResult.decodeUnknownSync(CreateSiteResponseSchema)({
         id: siteOption.id,
         name: siteOption.name,
+        addressLine1: siteOption.addressLine1,
+        county: siteOption.county,
+        country: siteOption.country,
         latitude: 53.3498,
+        geocodingProvider: siteOption.geocodingProvider,
+        geocodedAt: siteOption.geocodedAt,
       })
-    ).toThrow(/Site coordinates must include both latitude and longitude/);
+    ).toThrow(/longitude/);
   }, 5000);
 
   it("keeps list filters and patch payloads shapeable", () => {
@@ -275,10 +340,13 @@ describe("jobs-core", () => {
       addressLine2: "North Dock",
       town: "Dublin",
       county: "Dublin",
+      country: "IE",
       eircode: "D01 X2X2",
       accessNotes: "Enter via reception",
       latitude: 53.3498,
       longitude: -6.2603,
+      geocodingProvider: "google",
+      geocodedAt: "2026-04-22T10:00:00.000Z",
       regionId: "550e8400-e29b-41d4-a716-446655440011",
       regionName: "Dublin",
     };
@@ -292,10 +360,13 @@ describe("jobs-core", () => {
       addressLine2: "North Dock",
       town: "Dublin",
       county: "Dublin",
+      country: "IE",
       eircode: "D01 X2X2",
       accessNotes: "Enter via reception",
       latitude: 53.3498,
       longitude: -6.2603,
+      geocodingProvider: "google",
+      geocodedAt: "2026-04-22T10:00:00.000Z",
       regionId: "550e8400-e29b-41d4-a716-446655440011",
       regionName: "Dublin",
     });
@@ -333,6 +404,7 @@ describe("jobs-core", () => {
     expect(
       spec.paths["/jobs/{workItemId}/visits"]?.post?.responses["400"]
     ).toBeDefined();
+    expect(spec.paths["/jobs"]?.post?.responses["422"]).toBeDefined();
     expect(spec.paths["/sites/options"]?.get?.operationId).toBe(
       "sites.getSiteOptions"
     );
@@ -345,6 +417,22 @@ describe("jobs-core", () => {
     expect(spec.paths["/sites"]?.post?.responses["201"]).toBeDefined();
     expect(spec.paths["/sites"]?.post?.responses["403"]).toBeDefined();
     expect(spec.paths["/sites"]?.post?.responses["404"]).toBeDefined();
+    expect(spec.paths["/sites"]?.post?.responses["422"]).toBeDefined();
+  }, 5000);
+
+  it("does not document create-site coordinates as request properties", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+    const standaloneRequestBody = JSON.stringify(
+      spec.paths["/sites"]?.post?.requestBody
+    );
+    const jobsRequestBody = JSON.stringify(
+      spec.paths["/jobs"]?.post?.requestBody
+    );
+
+    expect(standaloneRequestBody).not.toContain('"latitude"');
+    expect(standaloneRequestBody).not.toContain('"longitude"');
+    expect(jobsRequestBody).not.toContain('"latitude"');
+    expect(jobsRequestBody).not.toContain('"longitude"');
   }, 5000);
 
   it("exports the shared api group", () => {
@@ -365,6 +453,14 @@ describe("jobs-core", () => {
           {
             id: "550e8400-e29b-41d4-a716-446655440010",
             name: "Docklands Campus",
+            addressLine1: "1 Custom House Quay",
+            county: "Dublin",
+            country: "IE",
+            eircode: "D01 X2X2",
+            latitude: 53.3498,
+            longitude: -6.2603,
+            geocodingProvider: "google",
+            geocodedAt: "2026-04-22T10:00:00.000Z",
           },
         ],
       })
@@ -379,6 +475,14 @@ describe("jobs-core", () => {
         {
           id: "550e8400-e29b-41d4-a716-446655440010",
           name: "Docklands Campus",
+          addressLine1: "1 Custom House Quay",
+          county: "Dublin",
+          country: "IE",
+          eircode: "D01 X2X2",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          geocodingProvider: "google",
+          geocodedAt: "2026-04-22T10:00:00.000Z",
         },
       ],
     });
@@ -409,6 +513,17 @@ describe("jobs-core", () => {
       "@task-tracker/jobs-core/VisitDurationIncrementError"
     );
     expect(error.durationMinutes).toBe(30);
+
+    const geocodingError = new SiteGeocodingFailedError({
+      message: "Could not geocode site",
+      country: "IE",
+      eircode: "D01 X2X2",
+    });
+
+    expect(geocodingError._tag).toBe(
+      "@task-tracker/jobs-core/SiteGeocodingFailedError"
+    );
+    expect(geocodingError.country).toBe("IE");
   }, 5000);
 
   it("keeps title schema trimming strict", () => {

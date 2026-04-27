@@ -37,7 +37,7 @@ vi.mock(import("./jobs-coverage-map-canvas"), () => ({
     readonly groups: readonly { readonly site: { readonly name?: string } }[];
   }) => (
     <output data-testid="coverage-map-canvas">
-      {groups.map((group) => group.site.name ?? "Pinned site").join(" | ")}
+      {groups.map((group) => group.site.name ?? "Mapped site").join(" | ")}
     </output>
   ),
 }));
@@ -54,74 +54,72 @@ describe("jobs coverage map", () => {
     Reflect.deleteProperty(URL, "createObjectURL");
   });
 
-  it(
-    "groups mapped jobs into the interactive canvas and lists unmapped work",
-    {
-      timeout: 10_000,
-    },
-    async () => {
-      render(
-        <JobsCoverageMap
-          jobs={[
-            buildJob({
-              id: depotJobId,
-              priority: "high",
-              siteId: depotSiteId,
-              status: "blocked",
-              title: "Await switchgear",
-            }),
-            buildJob({
-              id: schoolJobId,
-              priority: "medium",
-              siteId: schoolSiteId,
-              status: "triaged",
-              title: "Check classroom snag",
-            }),
-          ]}
-          sites={
-            new Map([
-              [
-                depotSiteId,
-                {
-                  id: depotSiteId,
-                  latitude: 53.3498,
-                  longitude: -6.2603,
-                  name: "Depot",
-                  regionName: "North",
-                },
-              ],
-              [
-                schoolSiteId,
-                {
-                  addressLine1: "Main Street",
-                  id: schoolSiteId,
-                  name: "School",
-                  town: "Galway",
-                },
-              ],
-            ])
-          }
-        />
-      );
+  it("groups mapped jobs into the interactive canvas and lists unmapped work", async () => {
+    render(
+      <JobsCoverageMap
+        jobs={[
+          buildJob({
+            id: depotJobId,
+            priority: "high",
+            siteId: depotSiteId,
+            status: "blocked",
+            title: "Await switchgear",
+          }),
+          buildJob({
+            id: schoolJobId,
+            priority: "medium",
+            siteId: schoolSiteId,
+            status: "triaged",
+            title: "Check classroom snag",
+          }),
+        ]}
+        sites={
+          new Map([
+            [
+              depotSiteId,
+              {
+                id: depotSiteId,
+                latitude: 53.3498,
+                longitude: -6.2603,
+                name: "Depot",
+                regionName: "North",
+              },
+            ],
+            [
+              schoolSiteId,
+              {
+                addressLine1: "Main Street",
+                id: schoolSiteId,
+                name: "School",
+                town: "Galway",
+              },
+            ],
+          ])
+        }
+      />
+    );
 
-      await expect(
-        screen.findByTestId("coverage-map-canvas")
-      ).resolves.toHaveTextContent("Depot");
-      expect(screen.getByText(/1 without pin/i)).toBeInTheDocument();
-      expect(screen.getByText("Check classroom snag")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: /maps/i })).toHaveAttribute(
-        "href",
-        expect.stringContaining("Main+Street")
-      );
-    }
-  );
+    await expect(
+      screen.findByTestId("coverage-map-canvas")
+    ).resolves.toHaveTextContent("Depot");
+    expect(screen.getByText(/1 unmapped/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs location/i)).toBeInTheDocument();
+    expect(screen.getByText("Check classroom snag")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /maps/i })).toHaveAttribute(
+      "href",
+      expect.stringContaining("Main+Street")
+    );
+  }, 5000);
 
   it("renders the empty state when no visible jobs have mapped sites", () => {
     render(<JobsCoverageMap jobs={[]} sites={new Map()} />);
 
     expect(screen.getByText(/no mapped jobs/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/add a geocoded site address to make this view useful/i)
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("coverage-map-canvas")).not.toBeInTheDocument();
-  }, 1000);
+  }, 5000);
 });
 
 function buildJob(

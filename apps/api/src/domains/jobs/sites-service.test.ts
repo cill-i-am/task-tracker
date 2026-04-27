@@ -1,7 +1,12 @@
 import { HttpServerRequest } from "@effect/platform";
-import { JobAccessDeniedError } from "@task-tracker/jobs-core";
+import {
+  JobAccessDeniedError,
+  RegionNotFoundError,
+  SiteGeocodingFailedError,
+} from "@task-tracker/jobs-core";
 import type {
   ContactIdType as ContactId,
+  CreateSiteInput,
   JobActivityPayload,
   JobListResponse,
   JobMemberOption,
@@ -22,6 +27,7 @@ import {
   JobsRepository,
   SitesRepository,
 } from "./repositories.js";
+import { SiteGeocoder } from "./site-geocoder.js";
 import { SitesService } from "./sites-service.js";
 
 const siteId = "22222222-2222-4222-8222-222222222222" as SiteId;
@@ -30,6 +36,16 @@ const regionId = "33333333-3333-4333-8333-333333333333" as NonNullable<
 >;
 const actorUserId = "44444444-4444-4444-8444-444444444444" as UserId;
 const undefinedValue = undefined as undefined;
+const geocodedAt = "2026-04-22T10:00:00.000Z";
+const siteInput = {
+  addressLine1: "1 Custom House Quay",
+  country: "IE",
+  county: "Dublin",
+  eircode: "D01 X2X2",
+  name: "Docklands Campus",
+  regionId,
+  town: "Dublin",
+} satisfies CreateSiteInput;
 
 function makeActor(
   role: JobsActor["role"],
@@ -46,6 +62,8 @@ function makeActor(
 interface SitesServiceHarness {
   readonly calls: {
     createSite: number;
+    ensureRegion: number;
+    geocode: number;
     getOptionById: number;
   };
   readonly layer: Layer.Layer<
@@ -54,14 +72,26 @@ interface SitesServiceHarness {
 }
 
 function makeHarness(
-  actor: JobsActor = makeActor("owner")
+  options: {
+    readonly actor?: JobsActor;
+    readonly geocodingFailure?: SiteGeocodingFailedError;
+    readonly regionFailure?: RegionNotFoundError;
+  } = {}
 ): SitesServiceHarness {
+  const actor = options.actor ?? makeActor("owner");
   const calls = {
     createSite: 0,
+    ensureRegion: 0,
+    geocode: 0,
     getOptionById: 0,
   };
   const createdSiteOption: JobSiteOption = {
     addressLine1: "1 Custom House Quay",
+    country: "IE",
+    county: "Dublin",
+    eircode: "D01 X2X2",
+    geocodedAt,
+    geocodingProvider: "stub",
     id: siteId,
     latitude: 53.3498,
     longitude: -6.2603,
@@ -117,9 +147,14 @@ function makeHarness(
 
   const sitesRepository = SitesRepository.make({
     create: (input: {
-      readonly addressLine1?: string;
-      readonly latitude?: number;
-      readonly longitude?: number;
+      readonly addressLine1: string;
+      readonly country: string;
+      readonly county: string;
+      readonly eircode?: string;
+      readonly geocodedAt: string;
+      readonly geocodingProvider: string;
+      readonly latitude: number;
+      readonly longitude: number;
       readonly name: string;
       readonly organizationId: OrganizationId;
       readonly regionId?: typeof regionId;
@@ -129,6 +164,11 @@ function makeHarness(
         calls.createSite += 1;
         expect(input).toMatchObject({
           addressLine1: "1 Custom House Quay",
+          country: "IE",
+          county: "Dublin",
+          eircode: "D01 X2X2",
+          geocodedAt,
+          geocodingProvider: "stub",
           latitude: 53.3498,
           longitude: -6.2603,
           name: "Docklands Campus",
@@ -138,6 +178,21 @@ function makeHarness(
         });
 
         return siteId;
+      }),
+    ensureRegionInOrganization: (
+      organizationId: OrganizationId,
+      requestedRegionId: typeof regionId
+    ) =>
+      Effect.gen(function* () {
+        calls.ensureRegion += 1;
+        expect(organizationId).toBe(actor.organizationId);
+        expect(requestedRegionId).toBe(regionId);
+
+        if (options.regionFailure !== undefined) {
+          return yield* Effect.fail(options.regionFailure);
+        }
+
+        return requestedRegionId;
       }),
     findById: (_organizationId: OrganizationId, _siteId: SiteId) =>
       Effect.succeed(Option.some(siteId)),
@@ -172,6 +227,24 @@ function makeHarness(
       unexpected("contacts.findById"),
     listOptions: (_organizationId: OrganizationId) => Effect.succeed([]),
   });
+  const siteGeocoder = SiteGeocoder.make({
+    geocode: (input: CreateSiteInput) =>
+      Effect.gen(function* () {
+        calls.geocode += 1;
+        expect(input).toStrictEqual(siteInput);
+
+        if (options.geocodingFailure !== undefined) {
+          return yield* Effect.fail(options.geocodingFailure);
+        }
+
+        return {
+          geocodedAt,
+          latitude: 53.3498,
+          longitude: -6.2603,
+          provider: "stub" as const,
+        };
+      }),
+  });
 
   const serviceLayer = Layer.provide(
     SitesService.DefaultWithoutDependencies,
@@ -185,6 +258,7 @@ function makeHarness(
       Layer.succeed(JobsRepository, jobsRepository),
       Layer.succeed(SitesRepository, sitesRepository),
       Layer.succeed(ContactsRepository, contactsRepository),
+      Layer.succeed(SiteGeocoder, siteGeocoder),
       JobsAuthorization.Default
     )
   );
@@ -238,14 +312,7 @@ describe("sites service", () => {
         Effect.gen(function* () {
           const sites = yield* SitesService;
 
-          return yield* sites.create({
-            addressLine1: "1 Custom House Quay",
-            latitude: 53.3498,
-            longitude: -6.2603,
-            name: "Docklands Campus",
-            regionId,
-            town: "Dublin",
-          });
+          return yield* sites.create(siteInput);
         }),
         harness
       )
@@ -255,20 +322,20 @@ describe("sites service", () => {
       regionId,
     });
 
+    expect(harness.calls.geocode).toBe(1);
     expect(harness.calls.createSite).toBe(1);
+    expect(harness.calls.ensureRegion).toBe(1);
     expect(harness.calls.getOptionById).toBe(1);
   }, 10_000);
 
   it("blocks organization members from creating standalone sites", async () => {
-    const harness = makeHarness(makeActor("member"));
+    const harness = makeHarness({ actor: makeActor("member") });
 
     const exit = await runSitesServiceExit(
       Effect.gen(function* () {
         const sites = yield* SitesService;
 
-        return yield* sites.create({
-          name: "Docklands Campus",
-        });
+        return yield* sites.create(siteInput);
       }),
       harness
     );
@@ -277,6 +344,56 @@ describe("sites service", () => {
     expect(getFailure(exit)).toMatchObject({
       message: "Only organization owners and admins can create sites",
     });
+    expect(harness.calls.geocode).toBe(0);
+    expect(harness.calls.createSite).toBe(0);
+    expect(harness.calls.ensureRegion).toBe(0);
+    expect(harness.calls.getOptionById).toBe(0);
+  }, 10_000);
+
+  it("validates stale regions before geocoding standalone sites", async () => {
+    const failure = new RegionNotFoundError({
+      message: "Region does not exist in the organization",
+      organizationId: makeActor("owner").organizationId,
+      regionId,
+    });
+    const harness = makeHarness({ regionFailure: failure });
+
+    const exit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.create(siteInput);
+      }),
+      harness
+    );
+
+    expect(getFailure(exit)).toStrictEqual(failure);
+    expect(harness.calls.ensureRegion).toBe(1);
+    expect(harness.calls.geocode).toBe(0);
+    expect(harness.calls.createSite).toBe(0);
+    expect(harness.calls.getOptionById).toBe(0);
+  }, 10_000);
+
+  it("does not create a site when geocoding fails", async () => {
+    const failure = new SiteGeocodingFailedError({
+      country: "IE",
+      eircode: "D01 X2X2",
+      message: "We could not locate that site address.",
+    });
+    const harness = makeHarness({ geocodingFailure: failure });
+
+    const exit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.create(siteInput);
+      }),
+      harness
+    );
+
+    expect(getFailure(exit)).toStrictEqual(failure);
+    expect(harness.calls.ensureRegion).toBe(1);
+    expect(harness.calls.geocode).toBe(1);
     expect(harness.calls.createSite).toBe(0);
     expect(harness.calls.getOptionById).toBe(0);
   }, 10_000);

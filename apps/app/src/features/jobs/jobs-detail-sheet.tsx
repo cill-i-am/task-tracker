@@ -16,13 +16,14 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "@tanstack/react-router";
+import { SiteId } from "@task-tracker/jobs-core";
 import type {
   JobDetailResponse,
   JobSiteOption,
   JobStatus,
   SiteIdType,
 } from "@task-tracker/jobs-core";
-import { Exit } from "effect";
+import { Exit, Schema } from "effect";
 import * as React from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
@@ -54,17 +55,9 @@ import {
 import { Input } from "#/components/ui/input";
 import { ResponsiveDrawer } from "#/components/ui/responsive-drawer";
 import { Separator } from "#/components/ui/separator";
-import { Spinner } from "#/components/ui/spinner";
 import { Textarea } from "#/components/ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#/components/ui/tooltip";
-import { activeElementIsInside } from "#/hotkeys/focus";
-import { ShortcutHint } from "#/hotkeys/hotkey-display";
-import { HOTKEYS } from "#/hotkeys/hotkey-registry";
-import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
+import { useRegisterCommandActions } from "#/features/command-bar/command-bar";
+import type { CommandAction } from "#/features/command-bar/command-bar";
 
 import { JobsDetailLocation } from "./jobs-detail-location";
 import {
@@ -115,29 +108,18 @@ const VISIT_DURATION_SELECTION_GROUPS = [
 ] satisfies readonly CommandSelectGroup[];
 
 const NO_SITE_VALUE = "__none__";
+const decodeSiteId = Schema.decodeUnknownSync(SiteId);
 
 interface JobsDetailSheetProps {
   readonly initialDetail: JobDetailResponse;
   readonly viewer: JobsViewer;
 }
 
-function openSelect(
-  trigger: React.RefObject<HTMLButtonElement | null>,
-  setOpen: React.Dispatch<React.SetStateAction<boolean>>
-) {
-  trigger.current?.focus();
-  setOpen(true);
-}
-
-function isAnySelectOpen(...openStates: readonly boolean[]) {
-  return openStates.some(Boolean);
-}
-
 export function JobsDetailSheet({
   initialDetail,
   viewer,
 }: JobsDetailSheetProps) {
-  const navigate = useNavigate();
+  const navigate = useNavigate({ from: "/jobs/$jobId" });
   const workItemId = initialDetail.job.id;
 
   useAtomInitialValues([
@@ -188,26 +170,16 @@ export function JobsDetailSheet({
   const transitionSelectionGroups =
     buildTransitionSelectionGroups(transitionOptions);
 
-  const statusSelectRef = React.useRef<HTMLButtonElement | null>(null);
-  const siteAssignmentSelectRef = React.useRef<HTMLButtonElement | null>(null);
-  const commentFormRef = React.useRef<HTMLFormElement | null>(null);
-  const commentTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const visitFormRef = React.useRef<HTMLFormElement | null>(null);
-  const visitDateRef = React.useRef<HTMLInputElement | null>(null);
-  const visitNoteRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [selectedStatus, setSelectedStatus] = React.useState<JobStatus | "">(
     ""
   );
-  const [statusSelectOpen, setStatusSelectOpen] = React.useState(false);
   const [blockedReason, setBlockedReason] = React.useState("");
   const [transitionError, setTransitionError] = React.useState<string | null>(
     null
   );
-  const [selectedSiteId, setSelectedSiteId] = React.useState(
-    detail.job.siteId ?? NO_SITE_VALUE
-  );
-  const [siteAssignmentSelectOpen, setSiteAssignmentSelectOpen] =
-    React.useState(false);
+  const [selectedSiteId, setSelectedSiteId] = React.useState<
+    SiteIdType | typeof NO_SITE_VALUE
+  >(detail.job.siteId ?? NO_SITE_VALUE);
   const [siteAssignmentError, setSiteAssignmentError] = React.useState<
     string | null
   >(null);
@@ -218,8 +190,6 @@ export function JobsDetailSheet({
   const [commentError, setCommentError] = React.useState<string | null>(null);
   const [visitDate, setVisitDate] = React.useState("");
   const [visitDurationMinutes, setVisitDurationMinutes] = React.useState("60");
-  const [visitDurationSelectOpen, setVisitDurationSelectOpen] =
-    React.useState(false);
   const [visitNote, setVisitNote] = React.useState("");
   const [visitError, setVisitError] = React.useState<string | null>(null);
   const site = detail.job.siteId
@@ -252,82 +222,15 @@ export function JobsDetailSheet({
     setCommentError(null);
     setVisitDate(getLocalDateInputValue());
     setVisitDurationMinutes("60");
-    setVisitDurationSelectOpen(false);
     setVisitNote("");
     setVisitError(null);
   }, [detail.job.siteId, detail.job.status, workItemId]);
 
-  function closeSheet() {
+  const closeSheet = React.useCallback(() => {
     React.startTransition(() => {
       navigate({ to: "/jobs" });
     });
-  }
-
-  const selectOpen = isAnySelectOpen(
-    statusSelectOpen,
-    siteAssignmentSelectOpen,
-    visitDurationSelectOpen
-  );
-
-  useAppHotkey("jobDetailClose", closeSheet, {
-    enabled: !selectOpen,
-    ignoreInputs: true,
-  });
-  useAppHotkey(
-    "jobDetailComment",
-    () => {
-      commentTextareaRef.current?.focus();
-    },
-    { ignoreInputs: true }
-  );
-  useAppHotkey(
-    "jobDetailSubmit",
-    () => {
-      if (!commentResult.waiting && activeElementIsInside(commentFormRef)) {
-        commentFormRef.current?.requestSubmit();
-        return;
-      }
-
-      if (
-        canAddVisit &&
-        !visitResult.waiting &&
-        activeElementIsInside(visitFormRef)
-      ) {
-        visitFormRef.current?.requestSubmit();
-      }
-    },
-    { ignoreInputs: false }
-  );
-  useAppHotkey(
-    "jobDetailStatus",
-    () => openSelect(statusSelectRef, setStatusSelectOpen),
-    {
-      enabled:
-        detail.job.status !== "completed" &&
-        transitionOptions.length > 0 &&
-        hasAssignmentAccess,
-      ignoreInputs: true,
-    }
-  );
-  useAppHotkey(
-    "jobDetailSite",
-    () => openSelect(siteAssignmentSelectRef, setSiteAssignmentSelectOpen),
-    {
-      enabled: canEditJob && !patchResult.waiting,
-      ignoreInputs: true,
-    }
-  );
-  useAppHotkey(
-    "jobDetailVisit",
-    () => {
-      const visitTarget =
-        visitNote.trim().length > 0
-          ? visitNoteRef.current
-          : visitDateRef.current;
-      visitTarget?.focus();
-    },
-    { enabled: canAddVisit, ignoreInputs: true }
-  );
+  }, [navigate]);
 
   async function handleTransition() {
     if (!selectedStatus) {
@@ -355,21 +258,89 @@ export function JobsDetailSheet({
     }
   }
 
-  async function handleReopen() {
+  const handleReopen = React.useCallback(async () => {
     await reopenJob();
-  }
+  }, [reopenJob]);
+
+  const jobDetailCommandActions = React.useMemo<
+    readonly CommandAction[]
+  >(() => {
+    const actions: CommandAction[] = [
+      {
+        group: "Current job",
+        icon: Briefcase01Icon,
+        id: `job-${workItemId}-close`,
+        priority: 100,
+        run: closeSheet,
+        scope: "detail",
+        title: "Close job details",
+      },
+    ];
+
+    if (detail.job.status === "completed" && canReopen) {
+      actions.push({
+        disabled: reopenResult.waiting,
+        group: "Current job",
+        icon: CheckmarkCircle02Icon,
+        id: `job-${workItemId}-reopen`,
+        priority: 90,
+        run: handleReopen,
+        scope: "detail",
+        title: "Reopen job",
+      });
+    }
+
+    if (detail.job.status !== "completed" && hasAssignmentAccess) {
+      for (const status of transitionOptions) {
+        actions.push({
+          disabled: transitionResult.waiting,
+          group: "Current job",
+          icon: CheckmarkCircle02Icon,
+          id: `job-${workItemId}-transition-${status}`,
+          keywords: [STATUS_LABELS[status]],
+          priority: status === "completed" ? 90 : 80,
+          run: () => {
+            setTransitionError(null);
+
+            if (status === "blocked") {
+              setSelectedStatus("blocked");
+              return;
+            }
+
+            void transitionJob({ status });
+          },
+          scope: "detail",
+          title: getStatusCommandLabel(status),
+        });
+      }
+    }
+
+    return actions;
+  }, [
+    canReopen,
+    closeSheet,
+    detail.job.status,
+    handleReopen,
+    hasAssignmentAccess,
+    reopenResult.waiting,
+    transitionOptions,
+    transitionJob,
+    transitionResult.waiting,
+    workItemId,
+  ]);
+
+  useRegisterCommandActions(jobDetailCommandActions);
 
   async function handleUpdateSiteAssignment() {
     if (!canEditJob) {
       return;
     }
 
-    const nextSiteId =
-      selectedSiteId === NO_SITE_VALUE ? null : (selectedSiteId as SiteIdType);
+    const nextSiteId = selectedSiteId === NO_SITE_VALUE ? null : selectedSiteId;
 
     if (
       selectedSiteId !== NO_SITE_VALUE &&
-      !lookup.siteById.has(selectedSiteId as SiteIdType)
+      !lookup.siteById.has(selectedSiteId)
     ) {
       setSiteAssignmentError("Pick an available site, or choose no site.");
       return;
@@ -473,19 +444,21 @@ export function JobsDetailSheet({
         {renderMutationError(reopenResult)}
         <Button
           className="w-full sm:w-fit"
-          disabled={reopenResult.waiting}
+          loading={reopenResult.waiting}
           onClick={handleReopen}
         >
           {reopenResult.waiting ? (
-            <Spinner data-icon="inline-start" />
+            "Reopening..."
           ) : (
-            <HugeiconsIcon
-              icon={CheckmarkCircle02Icon}
-              strokeWidth={2}
-              data-icon="inline-start"
-            />
+            <>
+              <HugeiconsIcon
+                icon={CheckmarkCircle02Icon}
+                strokeWidth={2}
+                data-icon="inline-start"
+              />
+              Reopen job
+            </>
           )}
-          {reopenResult.waiting ? "Reopening..." : "Reopen job"}
         </Button>
       </div>
     ) : (
@@ -513,12 +486,9 @@ export function JobsDetailSheet({
               <CommandSelect
                 id="job-transition-status"
                 value={selectedStatus}
-                open={statusSelectOpen}
                 placeholder="Choose next state"
                 emptyText="No status changes available."
                 groups={transitionSelectionGroups}
-                triggerRef={statusSelectRef}
-                onOpenChange={setStatusSelectOpen}
                 onValueChange={(nextValue) => {
                   setSelectedStatus(nextValue as JobStatus | "");
                   setTransitionError(null);
@@ -532,19 +502,22 @@ export function JobsDetailSheet({
 
         <div className="flex flex-wrap gap-3">
           <Button
-            disabled={transitionResult.waiting || !selectedStatus}
+            loading={transitionResult.waiting}
+            disabled={!selectedStatus}
             onClick={handleTransition}
           >
             {transitionResult.waiting ? (
-              <Spinner data-icon="inline-start" />
+              transitionButtonLabel
             ) : (
-              <HugeiconsIcon
-                icon={CheckmarkCircle02Icon}
-                strokeWidth={2}
-                data-icon="inline-start"
-              />
+              <>
+                <HugeiconsIcon
+                  icon={CheckmarkCircle02Icon}
+                  strokeWidth={2}
+                  data-icon="inline-start"
+                />
+                {transitionButtonLabel}
+              </>
             )}
-            {transitionButtonLabel}
           </Button>
         </div>
       </div>
@@ -662,16 +635,21 @@ export function JobsDetailSheet({
                       <CommandSelect
                         id="job-site-assignment"
                         value={selectedSiteId}
-                        open={siteAssignmentSelectOpen}
                         placeholder="Pick site"
                         emptyText="No sites found."
                         groups={siteSelectionGroups}
                         disabled={!canEditJob || patchResult.waiting}
                         ariaInvalid={siteAssignmentError ? true : undefined}
-                        triggerRef={siteAssignmentSelectRef}
-                        onOpenChange={setSiteAssignmentSelectOpen}
                         onValueChange={(nextValue) => {
-                          setSelectedSiteId(nextValue);
+                          if (nextValue === NO_SITE_VALUE) {
+                            setSelectedSiteId(NO_SITE_VALUE);
+                          } else {
+                            try {
+                              setSelectedSiteId(decodeSiteId(nextValue));
+                            } catch {
+                              setSelectedSiteId(NO_SITE_VALUE);
+                            }
+                          }
                           setSiteAssignmentError(null);
                           setSiteAssignmentMessage(null);
                         }}
@@ -694,19 +672,22 @@ export function JobsDetailSheet({
                     <Button
                       type="button"
                       className="w-full sm:w-fit"
-                      disabled={!selectedSiteChanged || patchResult.waiting}
+                      loading={patchResult.waiting}
+                      disabled={!selectedSiteChanged}
                       onClick={handleUpdateSiteAssignment}
                     >
                       {patchResult.waiting ? (
-                        <Spinner data-icon="inline-start" />
+                        "Saving..."
                       ) : (
-                        <HugeiconsIcon
-                          icon={Location01Icon}
-                          strokeWidth={2}
-                          data-icon="inline-start"
-                        />
+                        <>
+                          <HugeiconsIcon
+                            icon={Location01Icon}
+                            strokeWidth={2}
+                            data-icon="inline-start"
+                          />
+                          Save site
+                        </>
                       )}
-                      {patchResult.waiting ? "Saving..." : "Save site"}
                     </Button>
                   </div>
                 ) : (
@@ -725,7 +706,6 @@ export function JobsDetailSheet({
               <div className="flex flex-col gap-5">
                 {renderMutationError(commentResult)}
                 <form
-                  ref={commentFormRef}
                   className="flex flex-col gap-4"
                   method="post"
                   onSubmit={handleAddComment}
@@ -737,7 +717,6 @@ export function JobsDetailSheet({
                       </FieldLabel>
                       <FieldContent>
                         <Textarea
-                          ref={commentTextareaRef}
                           id="job-comment-body"
                           value={commentBody}
                           aria-invalid={Boolean(commentError) || undefined}
@@ -755,19 +734,21 @@ export function JobsDetailSheet({
                   <div className="flex">
                     <Button
                       type="submit"
-                      disabled={commentResult.waiting}
+                      loading={commentResult.waiting}
                       className="w-full sm:w-fit"
                     >
                       {commentResult.waiting ? (
-                        <Spinner data-icon="inline-start" />
+                        "Adding..."
                       ) : (
-                        <HugeiconsIcon
-                          icon={Comment01Icon}
-                          strokeWidth={2}
-                          data-icon="inline-start"
-                        />
+                        <>
+                          <HugeiconsIcon
+                            icon={Comment01Icon}
+                            strokeWidth={2}
+                            data-icon="inline-start"
+                          />
+                          Add comment
+                        </>
                       )}
-                      {commentResult.waiting ? "Adding..." : "Add comment"}
                     </Button>
                   </div>
                 </form>
@@ -819,7 +800,6 @@ export function JobsDetailSheet({
                   <>
                     {renderMutationError(visitResult)}
                     <form
-                      ref={visitFormRef}
                       className="flex flex-col gap-4"
                       method="post"
                       onSubmit={handleAddVisit}
@@ -837,7 +817,6 @@ export function JobsDetailSheet({
                             </FieldLabel>
                             <FieldContent>
                               <Input
-                                ref={visitDateRef}
                                 id="job-visit-date"
                                 type="date"
                                 value={visitDate}
@@ -862,11 +841,9 @@ export function JobsDetailSheet({
                               <CommandSelect
                                 id="job-visit-duration"
                                 value={visitDurationMinutes}
-                                open={visitDurationSelectOpen}
                                 placeholder="Pick duration"
                                 emptyText="No durations found."
                                 groups={VISIT_DURATION_SELECTION_GROUPS}
-                                onOpenChange={setVisitDurationSelectOpen}
                                 onValueChange={setVisitDurationMinutes}
                               />
                             </FieldContent>
@@ -883,7 +860,6 @@ export function JobsDetailSheet({
                           </FieldLabel>
                           <FieldContent>
                             <Textarea
-                              ref={visitNoteRef}
                               id="job-visit-note"
                               value={visitNote}
                               aria-invalid={
@@ -908,19 +884,21 @@ export function JobsDetailSheet({
                       <div className="flex">
                         <Button
                           type="submit"
-                          disabled={visitResult.waiting}
+                          loading={visitResult.waiting}
                           className="w-full sm:w-fit"
                         >
                           {visitResult.waiting ? (
-                            <Spinner data-icon="inline-start" />
+                            "Logging..."
                           ) : (
-                            <HugeiconsIcon
-                              icon={Time04Icon}
-                              strokeWidth={2}
-                              data-icon="inline-start"
-                            />
+                            <>
+                              <HugeiconsIcon
+                                icon={Time04Icon}
+                                strokeWidth={2}
+                                data-icon="inline-start"
+                              />
+                              Log visit
+                            </>
                           )}
-                          {visitResult.waiting ? "Logging..." : "Log visit"}
                         </Button>
                       </div>
                     </form>
@@ -1014,22 +992,9 @@ export function JobsDetailSheet({
           </div>
 
           <DrawerFooter className="border-t">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button type="button" variant="ghost" onClick={closeSheet}>
-                    Close
-                  </Button>
-                }
-              />
-              <TooltipContent>
-                <span>Close</span>
-                <ShortcutHint
-                  hotkey={HOTKEYS.jobDetailClose.hotkey}
-                  label={HOTKEYS.jobDetailClose.label}
-                />
-              </TooltipContent>
-            </Tooltip>
+            <Button type="button" variant="ghost" onClick={closeSheet}>
+              Close
+            </Button>
           </DrawerFooter>
         </div>
       </DrawerContent>
@@ -1117,6 +1082,18 @@ function buildTransitionSelectionGroups(
       ],
     },
   ] satisfies readonly CommandSelectGroup[];
+}
+
+function getStatusCommandLabel(status: JobStatus) {
+  if (status === "blocked") {
+    return "Prepare blocked status";
+  }
+
+  if (status === "canceled") {
+    return "Cancel job";
+  }
+
+  return `Mark job ${STATUS_LABELS[status].toLowerCase()}`;
 }
 
 function buildSiteSelectionGroups(sites: readonly JobSiteOption[]) {

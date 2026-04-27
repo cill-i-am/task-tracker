@@ -3,7 +3,7 @@
 import { HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 
-import { JobStatusSchema } from "./domain.js";
+import { JobStatusSchema, SiteCountrySchema } from "./domain.js";
 import {
   ContactId,
   OrganizationId,
@@ -118,6 +118,18 @@ export class SiteNotFoundError extends Schema.TaggedError<SiteNotFoundError>()(
   HttpApiSchema.annotations({ status: 404 })
 ) {}
 
+export const SITE_GEOCODING_FAILED_ERROR_TAG =
+  "@task-tracker/jobs-core/SiteGeocodingFailedError" as const;
+export class SiteGeocodingFailedError extends Schema.TaggedError<SiteGeocodingFailedError>()(
+  SITE_GEOCODING_FAILED_ERROR_TAG,
+  {
+    message: Schema.String,
+    country: SiteCountrySchema,
+    eircode: Schema.optional(Schema.String),
+  },
+  HttpApiSchema.annotations({ status: 422 })
+) {}
+
 export const CONTACT_NOT_FOUND_ERROR_TAG =
   "@task-tracker/jobs-core/ContactNotFoundError" as const;
 export class ContactNotFoundError extends Schema.TaggedError<ContactNotFoundError>()(
@@ -163,6 +175,7 @@ export type JobsError =
   | CoordinatorMatchesAssigneeError
   | VisitDurationIncrementError
   | SiteNotFoundError
+  | SiteGeocodingFailedError
   | ContactNotFoundError
   | OrganizationMemberNotFoundError
   | RegionNotFoundError;

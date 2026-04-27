@@ -5,7 +5,7 @@
 import { Cause, Effect, Exit, Option } from "effect";
 
 import "maplibre-gl/dist/maplibre-gl.css";
-import { X, Minus, Plus, Locate, Maximize, Loader2 } from "lucide-react";
+import { X, Minus, Plus, Locate, Maximize } from "lucide-react";
 import MapLibreGL from "maplibre-gl";
 import type { PopupOptions, MarkerOptions } from "maplibre-gl";
 import {
@@ -22,17 +22,15 @@ import {
 import type { ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#/components/ui/tooltip";
 import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 import { requestBrowserGeolocation } from "#/lib/browser-geolocation";
 import type { BrowserGeolocationError } from "#/lib/browser-geolocation";
 import { cn } from "#/lib/utils";
+
+import { DotMatrixButtonLoader } from "./dot-matrix-loader";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 const defaultStyles = {
   dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
@@ -139,7 +137,6 @@ type MapRef = MapLibreGL.Map;
 
 type MapProps = {
   children?: ReactNode;
-  ref?: Ref<MapRef>;
   /** Additional CSS classes for the map container */
   className?: string;
   /**
@@ -167,6 +164,7 @@ type MapProps = {
   onViewportChange?: (viewport: MapViewport) => void;
   /** Show a loading indicator on the map */
   loading?: boolean;
+  ref?: Ref<MapRef>;
 } & Omit<MapLibreGL.MapOptions, "container" | "style">;
 
 function DefaultLoader() {
@@ -194,13 +192,13 @@ function getViewport(map: MapLibreGL.Map): MapViewport {
 function Map({
   children,
   className,
-  ref,
   theme: themeProp,
   styles,
   projection,
   viewport,
   onViewportChange,
   loading = false,
+  ref,
   ...props
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -790,10 +788,12 @@ function MarkerLabel({
   );
 }
 
+type MapControl = "zoom" | "compass" | "locate" | "fullscreen";
+
 interface MapControlsProps {
   /** Position of the controls on the map (default: "bottom-right") */
   position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
-  /** Controls to render (default: ["zoom"]) */
+  /** Controls to render. Defaults to zoom controls only. */
   controls?: readonly MapControl[];
   /** Additional CSS classes for the controls container */
   className?: string;
@@ -803,10 +803,6 @@ interface MapControlsProps {
   onLocateError?: (error: BrowserGeolocationError) => void;
 }
 
-type MapControl = "zoom" | "compass" | "locate" | "fullscreen";
-
-const DEFAULT_MAP_CONTROLS = ["zoom"] as const satisfies readonly MapControl[];
-
 const positionClasses = {
   "top-left": "top-2 left-2",
   "top-right": "top-2 right-2",
@@ -814,7 +810,9 @@ const positionClasses = {
   "bottom-right": "bottom-10 right-2",
 };
 
-function ControlGroup({ children }: { children: React.ReactNode }) {
+const DEFAULT_MAP_CONTROLS = ["zoom"] as const satisfies readonly MapControl[];
+
+function ControlGroup({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col overflow-hidden rounded-md border border-border bg-background shadow-sm [&>button:not(:last-child)]:border-b [&>button:not(:last-child)]:border-border">
       {children}
@@ -827,18 +825,21 @@ function ControlButton({
   label,
   shortcut,
   children,
+  busy = false,
   disabled = false,
 }: {
   onClick: () => void;
   label: string;
   shortcut?: string;
-  children: React.ReactNode;
+  children: ReactNode;
+  busy?: boolean;
   disabled?: boolean;
 }) {
   const button = (
     <button
       onClick={onClick}
       aria-label={label}
+      aria-busy={busy || undefined}
       type="button"
       className={cn(
         "flex size-8 items-center justify-center transition-all",
@@ -877,6 +878,7 @@ function MapControls({
   const showCompass = controls.includes("compass");
   const showLocate = controls.includes("locate");
   const showFullscreen = controls.includes("fullscreen");
+  const mapHotkeyTarget = map?.getCanvas() ?? null;
 
   const handleZoomIn = useCallback(() => {
     map?.zoomTo(map.getZoom() + 1, { duration: 300 });
@@ -915,10 +917,9 @@ function MapControls({
       } else {
         const failure = Cause.failureOption(exit.cause);
 
-        Option.match(failure, {
-          onNone: () => null,
-          onSome: (error) => onLocateError?.(error),
-        });
+        if (Option.isSome(failure)) {
+          onLocateError?.(failure.value);
+        }
       }
 
       setWaitingForLocation(false);
@@ -936,26 +937,25 @@ function MapControls({
       container.requestFullscreen();
     }
   }, [map]);
-  const mapHotkeyTarget = map?.getCanvas() ?? null;
 
   useAppHotkey("mapZoomIn", handleZoomIn, {
-    enabled: Boolean(map) && showZoom,
+    enabled: showZoom && map !== null,
     target: mapHotkeyTarget,
   });
   useAppHotkey("mapZoomOut", handleZoomOut, {
-    enabled: Boolean(map) && showZoom,
+    enabled: showZoom && map !== null,
     target: mapHotkeyTarget,
   });
   useAppHotkey("mapResetBearing", handleResetBearing, {
-    enabled: Boolean(map) && showCompass,
+    enabled: showCompass && map !== null,
     target: mapHotkeyTarget,
   });
   useAppHotkey("mapLocate", handleLocate, {
-    enabled: Boolean(map) && showLocate && !waitingForLocation,
+    enabled: showLocate && map !== null && !waitingForLocation,
     target: mapHotkeyTarget,
   });
   useAppHotkey("mapFullscreen", handleFullscreen, {
-    enabled: Boolean(map) && showFullscreen,
+    enabled: showFullscreen && map !== null,
     target: mapHotkeyTarget,
   });
 
@@ -996,10 +996,11 @@ function MapControls({
             onClick={handleLocate}
             label="Find my location"
             shortcut={HOTKEYS.mapLocate.hotkey}
+            busy={waitingForLocation}
             disabled={waitingForLocation}
           >
             {waitingForLocation ? (
-              <Loader2 className="size-4 animate-spin" />
+              <DotMatrixButtonLoader />
             ) : (
               <Locate className="size-4" />
             )}

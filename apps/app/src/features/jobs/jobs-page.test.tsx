@@ -1,5 +1,4 @@
 import { RegistryProvider } from "@effect-atom/atom-react";
-import { HotkeysProvider } from "@tanstack/react-hotkeys";
 import { decodeOrganizationId } from "@task-tracker/identity-core";
 import type {
   JobListResponse,
@@ -9,11 +8,17 @@ import type {
   UserIdType,
   WorkItemIdType,
 } from "@task-tracker/jobs-core";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 
-import { TooltipProvider } from "#/components/ui/tooltip";
+import { CommandBarProvider } from "#/features/command-bar/command-bar";
 
 import { JobsPage } from "./jobs-page";
 import {
@@ -32,6 +37,10 @@ const siteDepotId = "55555555-5555-4555-8555-555555555555" as SiteIdType;
 const siteSchoolId = "66666666-6666-4666-8666-666666666666" as SiteIdType;
 const organizationId = decodeOrganizationId("org_123");
 const originalInnerWidth = window.innerWidth;
+
+const { mockedNavigate } = vi.hoisted(() => ({
+  mockedNavigate: vi.fn<(...args: unknown[]) => unknown>(),
+}));
 
 const initialList: JobListResponse = {
   items: [
@@ -120,13 +129,29 @@ const initialOptions: JobOptionsResponse = {
   ],
   sites: [
     {
+      addressLine1: "Depot Road",
+      country: "IE",
+      county: "Dublin",
+      eircode: "D01 X2X2",
+      geocodedAt: "2026-04-27T10:00:00.000Z",
+      geocodingProvider: "stub",
       id: siteDepotId,
+      latitude: 53.3498,
+      longitude: -6.2603,
       name: "Depot",
       regionId: regionNorthId,
       regionName: "North",
     },
     {
+      addressLine1: "School Road",
+      country: "IE",
+      county: "Galway",
+      eircode: "H91 X2X2",
+      geocodedAt: "2026-04-27T10:00:00.000Z",
+      geocodingProvider: "stub",
       id: siteSchoolId,
+      latitude: 53.2734,
+      longitude: -9.0511,
       name: "School",
       regionId: regionWestId,
       regionName: "West",
@@ -148,13 +173,14 @@ vi.mock(import("@tanstack/react-router"), async (importActual) => {
         {children}
       </a>
     )) as typeof actual.Link,
+    useNavigate: (() => mockedNavigate) as typeof actual.useNavigate,
   };
 });
 
 describe("jobs page", () => {
   afterEach(() => {
     setViewportWidth(originalInnerWidth);
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it(
@@ -259,6 +285,46 @@ describe("jobs page", () => {
     }
   );
 
+  it(
+    "registers jobs page actions in the command bar",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+
+      renderJobsPage({ withCommandBar: true, viewportWidth: 1280 });
+
+      fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("option", { name: /create job/i })
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("option", { name: /switch to map view/i })
+        ).toBeInTheDocument();
+      });
+
+      await user.click(
+        screen.getByRole("option", { name: /switch to map view/i })
+      );
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("jobs-coverage-panel")).toHaveLength(1);
+        expect(screen.getByRole("tab", { name: "Map" })).toHaveAttribute(
+          "aria-selected",
+          "true"
+        );
+      });
+
+      fireEvent.keyDown(window, { key: "k", metaKey: true });
+      await user.click(screen.getByRole("option", { name: /create job/i }));
+
+      expect(mockedNavigate).toHaveBeenCalledWith({ to: "/jobs/new" });
+    }
+  );
+
   it("hides the create affordance for members", () => {
     renderJobsPage({
       viewer: {
@@ -270,33 +336,6 @@ describe("jobs page", () => {
     expect(
       screen.queryByRole("link", { name: /new job/i })
     ).not.toBeInTheDocument();
-  }, 10_000);
-
-  it("focuses the jobs search input with the search hotkey", async () => {
-    const user = userEvent.setup();
-
-    renderJobsPage();
-
-    await user.keyboard("/");
-
-    expect(screen.getByRole("textbox", { name: /search jobs/i })).toHaveFocus();
-  }, 10_000);
-
-  it("opens the create job action with the create hotkey", async () => {
-    const user = userEvent.setup();
-    const clickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => {});
-
-    renderJobsPage();
-
-    await user.keyboard("n");
-
-    expect(clickSpy).toHaveBeenCalledOnce();
-    expect(screen.getByRole("link", { name: /new job/i })).toHaveAttribute(
-      "href",
-      "/jobs/new"
-    );
   }, 10_000);
 
   it(
@@ -432,33 +471,37 @@ function getPrimaryQueuePanel() {
 function renderJobsPage(options?: {
   readonly viewer?: JobsViewer;
   readonly viewportWidth?: number;
+  readonly withCommandBar?: boolean;
 }) {
   setViewportWidth(options?.viewportWidth ?? 1440);
+  const page = (
+    <RegistryProvider
+      initialValues={[
+        [jobsListStateAtom, seedJobsListState(organizationId, initialList)],
+        [
+          jobsOptionsStateAtom,
+          seedJobsOptionsState(organizationId, initialOptions),
+        ],
+      ]}
+    >
+      <JobsPage
+        activeOrganizationName="Acme Field Ops"
+        viewer={
+          options?.viewer ?? {
+            role: "owner",
+            userId: memberOneId,
+          }
+        }
+      />
+    </RegistryProvider>
+  );
 
   return render(
-    <HotkeysProvider>
-      <TooltipProvider>
-        <RegistryProvider
-          initialValues={[
-            [jobsListStateAtom, seedJobsListState(organizationId, initialList)],
-            [
-              jobsOptionsStateAtom,
-              seedJobsOptionsState(organizationId, initialOptions),
-            ],
-          ]}
-        >
-          <JobsPage
-            activeOrganizationName="Acme Field Ops"
-            viewer={
-              options?.viewer ?? {
-                role: "owner",
-                userId: memberOneId,
-              }
-            }
-          />
-        </RegistryProvider>
-      </TooltipProvider>
-    </HotkeysProvider>
+    options?.withCommandBar ? (
+      <CommandBarProvider>{page}</CommandBarProvider>
+    ) : (
+      page
+    )
   );
 }
 

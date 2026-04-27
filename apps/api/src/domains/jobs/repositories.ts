@@ -45,8 +45,11 @@ import type {
   JobSiteOption,
   JobTitle,
   JobVisit,
+  IsoDateTimeStringType as IsoDateTimeString,
   OrganizationIdType as OrganizationId,
   RegionIdType as RegionId,
+  SiteCountry,
+  SiteGeocodingProvider,
   SiteIdType as SiteId,
   UserIdType as UserId,
   WorkItemIdType as WorkItemId,
@@ -133,14 +136,17 @@ interface JobRegionOptionRow {
 
 interface JobSiteOptionRow {
   readonly access_notes: string | null;
-  readonly address_line_1: string | null;
+  readonly address_line_1: string;
   readonly address_line_2: string | null;
-  readonly county: string | null;
+  readonly country: string;
+  readonly county: string;
   readonly eircode: string | null;
+  readonly geocoded_at: Date;
+  readonly geocoding_provider: string;
   readonly id: string;
-  readonly latitude: number | null;
-  readonly longitude: number | null;
-  readonly name: string | null;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly name: string;
   readonly region_id: string | null;
   readonly region_name: string | null;
   readonly town: string | null;
@@ -208,26 +214,32 @@ export interface AddJobVisitRecordInput {
 
 export interface CreateSiteRecordInput {
   readonly accessNotes?: string;
-  readonly addressLine1?: string;
+  readonly addressLine1: string;
   readonly addressLine2?: string;
-  readonly county?: string;
+  readonly country: SiteCountry;
+  readonly county: string;
   readonly eircode?: string;
-  readonly latitude?: number;
+  readonly geocodedAt: IsoDateTimeString;
+  readonly geocodingProvider: SiteGeocodingProvider;
+  readonly latitude: number;
   readonly name: string;
   readonly organizationId: OrganizationId;
   readonly regionId?: RegionId;
-  readonly longitude?: number;
+  readonly longitude: number;
   readonly town?: string;
 }
 
 export interface UpdateSiteRecordInput {
   readonly accessNotes?: string;
-  readonly addressLine1?: string;
+  readonly addressLine1: string;
   readonly addressLine2?: string;
-  readonly county?: string;
+  readonly country: SiteCountry;
+  readonly county: string;
   readonly eircode?: string;
-  readonly latitude?: number;
-  readonly longitude?: number;
+  readonly geocodedAt: IsoDateTimeString;
+  readonly geocodingProvider: SiteGeocodingProvider;
+  readonly latitude: number;
+  readonly longitude: number;
   readonly name: string;
   readonly regionId?: RegionId;
   readonly town?: string;
@@ -267,6 +279,9 @@ const decodeJobSiteOption = Schema.decodeUnknownSync(JobSiteOptionSchema);
 const decodeJobVisit = Schema.decodeUnknownSync(JobVisitSchema);
 const decodeSiteId = Schema.decodeUnknownSync(SiteIdSchema);
 const decodeWorkItemId = Schema.decodeUnknownSync(WorkItemIdSchema);
+const decodeIsoDateTimeString = Schema.decodeUnknownSync(
+  IsoDateTimeStringSchema
+);
 const decodeJobCursorState = Schema.decodeUnknownSync(
   Schema.Struct({
     id: WorkItemIdSchema,
@@ -983,17 +998,20 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
         }
 
         const values: Record<string, unknown> = {
+          address_line_1: input.addressLine1,
+          country: input.country,
+          county: input.county,
+          geocoded_at: isoDateTimeStringToDate(input.geocodedAt),
+          geocoding_provider: input.geocodingProvider,
           id: generateSiteId(),
+          latitude: input.latitude,
+          longitude: input.longitude,
           name: input.name,
           organization_id: input.organizationId,
         };
 
         if (input.regionId !== undefined) {
           values.region_id = input.regionId;
-        }
-
-        if (input.addressLine1 !== undefined) {
-          values.address_line_1 = input.addressLine1;
         }
 
         if (input.addressLine2 !== undefined) {
@@ -1004,24 +1022,12 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           values.town = input.town;
         }
 
-        if (input.county !== undefined) {
-          values.county = input.county;
-        }
-
         if (input.eircode !== undefined) {
           values.eircode = input.eircode;
         }
 
         if (input.accessNotes !== undefined) {
           values.access_notes = input.accessNotes;
-        }
-
-        if (input.latitude !== undefined) {
-          values.latitude = input.latitude;
-        }
-
-        if (input.longitude !== undefined) {
-          values.longitude = input.longitude;
         }
 
         const rows = yield* sql<IdRow>`
@@ -1044,12 +1050,15 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           update sites
           set ${sql.update({
             access_notes: input.accessNotes ?? null,
-            address_line_1: input.addressLine1 ?? null,
+            address_line_1: input.addressLine1,
             address_line_2: input.addressLine2 ?? null,
-            county: input.county ?? null,
+            country: input.country,
+            county: input.county,
             eircode: input.eircode ?? null,
-            latitude: input.latitude ?? null,
-            longitude: input.longitude ?? null,
+            geocoded_at: isoDateTimeStringToDate(input.geocodedAt),
+            geocoding_provider: input.geocodingProvider,
+            latitude: input.latitude,
+            longitude: input.longitude,
             name: input.name,
             region_id: input.regionId ?? null,
             town: input.town ?? null,
@@ -1102,8 +1111,11 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
             sites.access_notes,
             sites.address_line_1,
             sites.address_line_2,
+            sites.country,
             sites.county,
             sites.eircode,
+            sites.geocoded_at,
+            sites.geocoding_provider,
             sites.id,
             sites.latitude,
             sites.longitude,
@@ -1128,8 +1140,11 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
               sites.access_notes,
               sites.address_line_1,
               sites.address_line_2,
+              sites.country,
               sites.county,
               sites.eircode,
+              sites.geocoded_at,
+              sites.geocoding_provider,
               sites.id,
               sites.latitude,
               sites.longitude,
@@ -1219,6 +1234,7 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
 
       return {
         create,
+        ensureRegionInOrganization,
         findById,
         getOptionById,
         linkContact,
@@ -1378,14 +1394,17 @@ function mapJobRegionOptionRow(row: JobRegionOptionRow): JobRegionOption {
 function mapJobSiteOptionRow(row: JobSiteOptionRow): JobSiteOption {
   return decodeJobSiteOption({
     accessNotes: nullableToUndefined(row.access_notes),
-    addressLine1: nullableToUndefined(row.address_line_1),
+    addressLine1: row.address_line_1,
     addressLine2: nullableToUndefined(row.address_line_2),
-    county: nullableToUndefined(row.county),
+    country: row.country,
+    county: row.county,
     eircode: nullableToUndefined(row.eircode),
+    geocodedAt: dateToIsoString(row.geocoded_at),
+    geocodingProvider: row.geocoding_provider,
     id: row.id,
-    name: normalizeOptionName(row.name, "Untitled site"),
-    latitude: nullableToUndefined(row.latitude),
-    longitude: nullableToUndefined(row.longitude),
+    name: row.name,
+    latitude: row.latitude,
+    longitude: row.longitude,
     regionId: nullableToUndefined(row.region_id),
     regionName: nullableToUndefined(row.region_name),
     town: nullableToUndefined(row.town),
@@ -1487,6 +1506,14 @@ function decodeCursor(cursor: JobListCursor): {
 
 function nullableToUndefined<Value>(value: Value | null): Value | undefined {
   return value === null ? undefined : value;
+}
+
+function dateToIsoString(value: Date): string {
+  return value.toISOString();
+}
+
+function isoDateTimeStringToDate(value: IsoDateTimeString): Date {
+  return new Date(decodeIsoDateTimeString(value));
 }
 
 function normalizeOptionName(value: string | null, fallback: string): string {

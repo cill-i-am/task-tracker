@@ -8,20 +8,12 @@ import { AppUtilityPanel } from "#/components/app-utility-panel";
 import { Button } from "#/components/ui/button";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
-import { Spinner } from "#/components/ui/spinner";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "#/components/ui/tooltip";
 import {
   getErrorText,
   getFormErrorText,
 } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
-import { ShortcutHint } from "#/hotkeys/hotkey-display";
-import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 import { authClient } from "#/lib/auth-client";
 
@@ -217,37 +209,17 @@ export function OrganizationSettingsPage({
                 isSubmitting: state.isSubmitting,
               })}
             >
-              {({ isDefaultValue, isSubmitting }) => {
-                const canSubmit =
-                  !isSubmitting && !isDefaultValue && isHydrated;
-
-                return (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="submit"
-                          size="lg"
-                          className="w-full sm:w-auto"
-                          disabled={!canSubmit}
-                        >
-                          {isSubmitting ? (
-                            <Spinner data-icon="inline-start" />
-                          ) : null}
-                          {isSubmitting ? "Saving..." : "Save changes"}
-                        </Button>
-                      }
-                    />
-                    <TooltipContent>
-                      <span>Save changes</span>
-                      <ShortcutHint
-                        hotkey={HOTKEYS.settingsSubmit.hotkey}
-                        label={HOTKEYS.settingsSubmit.label}
-                      />
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              }}
+              {({ isDefaultValue, isSubmitting }) => (
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full sm:w-auto"
+                  loading={isSubmitting}
+                  disabled={isDefaultValue || !isHydrated}
+                >
+                  {isSubmitting ? "Saving..." : "Save changes"}
+                </Button>
+              )}
             </form.Subscribe>
           </form>
         </AppUtilityPanel>

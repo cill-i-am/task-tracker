@@ -34,6 +34,7 @@ import {
   JobStorageError,
   OrganizationMemberNotFoundError,
   RegionNotFoundError,
+  SiteGeocodingFailedError,
   SiteNotFoundError,
   VisitDurationIncrementError,
 } from "./errors.js";
@@ -61,6 +62,7 @@ const jobsGroup = HttpApiGroup.make("jobs")
       .addError(JobAccessDeniedError)
       .addError(RegionNotFoundError)
       .addError(SiteNotFoundError)
+      .addError(SiteGeocodingFailedError)
       .addError(ContactNotFoundError)
       .addError(JobStorageError)
   )
@@ -140,6 +142,7 @@ const sitesGroup = HttpApiGroup.make("sites")
       .addSuccess(CreateSiteResponseSchema, { status: 201 })
       .addError(JobAccessDeniedError)
       .addError(RegionNotFoundError)
+      .addError(SiteGeocodingFailedError)
       .addError(JobStorageError)
   )
   .add(
@@ -150,6 +153,7 @@ const sitesGroup = HttpApiGroup.make("sites")
       .addError(JobAccessDeniedError)
       .addError(RegionNotFoundError)
       .addError(SiteNotFoundError)
+      .addError(SiteGeocodingFailedError)
       .addError(JobStorageError)
   );
 

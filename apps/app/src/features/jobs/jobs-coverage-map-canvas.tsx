@@ -58,13 +58,13 @@ export function JobsCoverageMapCanvas({
             >
               <MarkerContent
                 interactive
-                ariaLabel={`Open jobs at ${group.site.name ?? "Pinned site"}`}
+                ariaLabel={`Open jobs at ${group.site.name ?? "Mapped site"}`}
               >
                 <div className={markerToneClassName(group.tone)}>
                   {group.jobs.length}
                 </div>
                 <MarkerLabel visibility="hover">
-                  {group.site.name ?? "Pinned site"}
+                  {group.site.name ?? "Mapped site"}
                 </MarkerLabel>
               </MarkerContent>
               <MarkerPopup
@@ -76,7 +76,7 @@ export function JobsCoverageMapCanvas({
                   <div className="flex flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium">
-                        {group.site.name ?? "Pinned site"}
+                        {group.site.name ?? "Mapped site"}
                       </p>
                       <Badge variant="secondary">
                         {group.jobs.length} job

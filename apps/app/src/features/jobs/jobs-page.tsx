@@ -14,7 +14,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import type { JobListItem, JobPriority } from "@task-tracker/jobs-core";
 import * as React from "react";
 
@@ -66,6 +66,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "#/components/ui/tooltip";
+import { useRegisterCommandActions } from "#/features/command-bar/command-bar";
+import type { CommandAction } from "#/features/command-bar/command-bar";
 import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey, useAppHotkeySequence } from "#/hotkeys/use-app-hotkey";
@@ -73,7 +75,6 @@ import { cn } from "#/lib/utils";
 
 import { JobsCoverageMap } from "./jobs-coverage-map";
 import { hasSiteCoordinates } from "./jobs-location";
-import type { JobsViewMode } from "./jobs-search";
 import {
   defaultJobsListFilters,
   jobsListFiltersAtom,
@@ -86,6 +87,8 @@ import {
 import type { JobsListFilters } from "./jobs-state";
 import { hasJobsElevatedAccess } from "./jobs-viewer";
 import type { JobsViewer } from "./jobs-viewer";
+
+type JobsViewMode = "list" | "map";
 
 type JobsLookup = ReturnType<typeof useJobsLookup>;
 
@@ -142,31 +145,119 @@ export function JobsPage({
   const refreshJobs = useAtomSet(refreshJobsListAtom);
   const setFilters = useAtomSet(jobsListFiltersAtom);
   const setNotice = useAtomSet(jobsNoticeAtom);
+  const navigate = useNavigate({ from: "/jobs" });
   const canCreateJobs = hasJobsElevatedAccess(viewer.role);
-  const createJobLinkRef = React.useRef<HTMLAnchorElement | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement | null>(null);
   const activeFilters = buildActiveFilterBadges(filters, lookup);
   const hasCustomFilters = activeFilters.length > 0;
 
-  function patchFilters(patch: Partial<JobsListFilters>) {
-    setFilters((current) => ({
-      ...current,
-      ...patch,
-    }));
-  }
+  const patchFilters = React.useCallback(
+    (patch: Partial<JobsListFilters>) => {
+      setFilters((current) => ({
+        ...current,
+        ...patch,
+      }));
+    },
+    [setFilters]
+  );
 
-  function setViewMode(nextViewMode: JobsViewMode) {
-    if (nextViewMode === viewMode) {
-      return;
+  const setViewMode = React.useCallback(
+    (nextViewMode: JobsViewMode) => {
+      if (nextViewMode === viewMode) {
+        return;
+      }
+
+      if (controlledViewMode === undefined) {
+        setUncontrolledViewMode(nextViewMode);
+      }
+
+      onViewModeChange?.(nextViewMode);
+    },
+    [controlledViewMode, onViewModeChange, viewMode]
+  );
+
+  const jobsPageCommandActions = React.useMemo<readonly CommandAction[]>(() => {
+    const actions: CommandAction[] = [
+      ...(canCreateJobs
+        ? [
+            {
+              group: "Current page",
+              icon: Add01Icon,
+              id: "jobs-create",
+              priority: 90,
+              run: () => navigate({ to: "/jobs/new" }),
+              scope: "route" as const,
+              title: "Create job",
+            },
+          ]
+        : []),
+      {
+        disabled: viewMode === "list",
+        group: "Current page",
+        icon: LeftToRightListBulletIcon,
+        id: "jobs-switch-list-view",
+        priority: 80,
+        run: () => setViewMode("list"),
+        scope: "route",
+        title: "Switch to list view",
+      },
+      {
+        disabled: viewMode === "map",
+        group: "Current page",
+        icon: MapsSquare01Icon,
+        id: "jobs-switch-map-view",
+        priority: 70,
+        run: () => setViewMode("map"),
+        scope: "route",
+        title: "Switch to map view",
+      },
+      {
+        disabled: filters.status === "active",
+        group: "Job filters",
+        icon: FilterHorizontalIcon,
+        id: "jobs-filter-active",
+        priority: 60,
+        run: () => patchFilters({ status: "active" }),
+        scope: "route",
+        title: "Show active jobs",
+      },
+      {
+        disabled: filters.status === "all",
+        group: "Job filters",
+        icon: FilterHorizontalIcon,
+        id: "jobs-filter-all",
+        priority: 50,
+        run: () => patchFilters({ status: "all" }),
+        scope: "route",
+        title: "Show all jobs",
+      },
+    ];
+
+    if (hasCustomFilters) {
+      actions.push({
+        group: "Job filters",
+        icon: Cancel01Icon,
+        id: "jobs-clear-filters",
+        priority: 90,
+        run: () => setFilters(defaultJobsListFilters),
+        scope: "route",
+        title: "Clear job filters",
+      });
     }
 
-    if (controlledViewMode === undefined) {
-      setUncontrolledViewMode(nextViewMode);
-    }
+    return actions;
+  }, [
+    canCreateJobs,
+    filters.status,
+    hasCustomFilters,
+    navigate,
+    patchFilters,
+    setFilters,
+    viewMode,
+    setViewMode,
+  ]);
 
-    onViewModeChange?.(nextViewMode);
-  }
-
+  useRegisterCommandActions(jobsPageCommandActions);
   useAppHotkey(
     "jobsSearch",
     () => {
@@ -178,7 +269,7 @@ export function JobsPage({
   useAppHotkey(
     "jobsCreate",
     () => {
-      createJobLinkRef.current?.click();
+      navigate({ to: "/jobs/new" });
     },
     { enabled: listHotkeysEnabled && canCreateJobs }
   );
@@ -220,7 +311,7 @@ export function JobsPage({
           </div>
           <div className="flex items-center gap-2">
             <ViewModeSwitch value={viewMode} onValueChange={setViewMode} />
-            {canCreateJobs ? <NewJobLink linkRef={createJobLinkRef} /> : null}
+            {canCreateJobs ? <NewJobLink /> : null}
           </div>
         </div>
 
@@ -267,11 +358,7 @@ export function JobsPage({
       ) : null}
 
       {viewMode === "list" ? (
-        <JobsListView
-          jobs={jobs}
-          canCreateJobs={canCreateJobs}
-          createJobLinkRef={createJobLinkRef}
-        />
+        <JobsListView jobs={jobs} canCreateJobs={canCreateJobs} />
       ) : (
         <section data-testid="jobs-coverage-panel" className="min-h-0">
           <JobsCoverageMap jobs={jobs} sites={lookup.siteById} />
@@ -584,22 +671,15 @@ function ActiveFilterBar({
 
 function JobsListView({
   canCreateJobs,
-  createJobLinkRef,
   jobs,
 }: {
   readonly canCreateJobs: boolean;
-  readonly createJobLinkRef: React.RefObject<HTMLAnchorElement | null>;
   readonly jobs: readonly JobListItem[];
 }) {
   const lookup = useAtomValue(jobsLookupAtom);
 
   if (jobs.length === 0) {
-    return (
-      <JobsEmptyState
-        canCreateJobs={canCreateJobs}
-        createJobLinkRef={createJobLinkRef}
-      />
-    );
+    return <JobsEmptyState canCreateJobs={canCreateJobs} />;
   }
 
   return (
@@ -756,10 +836,8 @@ function JobIssueRow({
 
 function JobsEmptyState({
   canCreateJobs,
-  createJobLinkRef,
 }: {
   readonly canCreateJobs: boolean;
-  readonly createJobLinkRef: React.RefObject<HTMLAnchorElement | null>;
 }) {
   return (
     <section data-testid="jobs-queue-panel">
@@ -775,7 +853,7 @@ function JobsEmptyState({
         </EmptyHeader>
         {canCreateJobs ? (
           <EmptyContent>
-            <NewJobLink linkRef={createJobLinkRef} />
+            <NewJobLink />
           </EmptyContent>
         ) : null}
       </Empty>
@@ -783,20 +861,12 @@ function JobsEmptyState({
   );
 }
 
-function NewJobLink({
-  linkRef,
-}: {
-  readonly linkRef: React.RefObject<HTMLAnchorElement | null>;
-}) {
+function NewJobLink() {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Link
-            ref={linkRef}
-            to="/jobs/new"
-            className={buttonVariants({ size: "sm" })}
-          />
+          <Link to="/jobs/new" className={buttonVariants({ size: "sm" })} />
         }
       >
         <HugeiconsIcon
