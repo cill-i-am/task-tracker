@@ -4,6 +4,7 @@ import {
   createFileRoute,
   useRouteContext,
 } from "@tanstack/react-router";
+import type { OrganizationId } from "@task-tracker/identity-core";
 import type {
   JobListResponse,
   JobOptionsResponse,
@@ -41,7 +42,7 @@ const EMPTY_JOBS_LIST: JobListResponse = {
 };
 
 interface JobsRouteOrganizationAccess {
-  readonly activeOrganizationId: string;
+  readonly activeOrganizationId: OrganizationId;
   readonly activeOrganizationSync: ActiveOrganizationSync;
   readonly currentUserId: string;
 }
@@ -74,10 +75,10 @@ export async function loadJobsRouteData(
     };
   }
 
-  const activeRole = await getCurrentOrganizationMemberRole(
-    resolvedOrganizationAccess.activeOrganizationId
-  );
-  const [list, options] = await Promise.all([
+  const [activeRole, list, options] = await Promise.all([
+    getCurrentOrganizationMemberRole(
+      resolvedOrganizationAccess.activeOrganizationId
+    ),
     listAllCurrentServerJobs({}),
     getCurrentServerJobOptions(),
   ]);
@@ -86,7 +87,7 @@ export async function loadJobsRouteData(
     list,
     options,
     viewer: {
-      role: normalizeJobsViewerRole(activeRole.role),
+      role: activeRole.role,
       userId: resolvedOrganizationAccess.currentUserId,
     } satisfies JobsViewer,
   };
@@ -111,7 +112,7 @@ export function JobsRouteContent({
   options,
   viewer,
 }: {
-  readonly activeOrganizationId: string;
+  readonly activeOrganizationId: OrganizationId;
   readonly activeOrganizationName: string;
   readonly children?: React.ReactNode;
   readonly list: JobListResponse;
@@ -153,12 +154,4 @@ function JobsRoute() {
       <Outlet />
     </JobsRouteContent>
   );
-}
-
-function normalizeJobsViewerRole(role: string): JobsViewer["role"] {
-  if (role === "owner" || role === "admin" || role === "member") {
-    return role;
-  }
-
-  throw new Error("Organization member role is not supported by Jobs.");
 }

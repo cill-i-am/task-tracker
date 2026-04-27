@@ -1,4 +1,9 @@
 import { isRedirect } from "@tanstack/react-router";
+import { decodeOrganizationId } from "@task-tracker/identity-core";
+import type {
+  OrganizationId,
+  OrganizationRole,
+} from "@task-tracker/identity-core";
 
 import {
   ensureActiveOrganizationId,
@@ -38,6 +43,8 @@ interface Organization {
   slug: string;
 }
 
+const serverOrganizationId = decodeOrganizationId("org_server");
+
 const {
   mockedGetStrictServerSession,
   mockedGetServerOrganizationMemberRole,
@@ -51,7 +58,9 @@ const {
 } = vi.hoisted(() => ({
   mockedGetStrictServerSession: vi.fn<() => Promise<Session | null>>(),
   mockedGetServerOrganizationMemberRole:
-    vi.fn<(organizationId: string) => Promise<{ role: string }>>(),
+    vi.fn<
+      (organizationId: OrganizationId) => Promise<{ role: OrganizationRole }>
+    >(),
   mockedListServerOrganizations:
     vi.fn<() => Promise<readonly OrganizationSummary[]>>(),
   mockedGetStrictServerOrganizations:
@@ -155,7 +164,7 @@ describe("organization access helpers", () => {
   it("uses the plan-shaped server list helper during SSR", async () => {
     mockedIsServerEnvironment.mockReturnValue(true);
     mockedListServerOrganizations.mockResolvedValue([
-      { id: "org_server", name: "Server Org", slug: "server-org" },
+      { id: serverOrganizationId, name: "Server Org", slug: "server-org" },
     ]);
 
     await expect(listOrganizations()).resolves.toStrictEqual([
@@ -449,7 +458,7 @@ describe("organization access helpers", () => {
     });
     mockedListServerOrganizations.mockResolvedValue([]);
     mockedGetStrictServerOrganizations.mockResolvedValue([
-      { id: "org_server", name: "Server Org", slug: "server-org" },
+      { id: serverOrganizationId, name: "Server Org", slug: "server-org" },
     ]);
 
     await expect(ensureActiveOrganizationId()).resolves.toStrictEqual({
