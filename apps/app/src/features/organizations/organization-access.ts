@@ -19,7 +19,7 @@ import {
   getCurrentServerOrganizationMemberRole,
   getCurrentServerOrganizationSession,
   getCurrentServerOrganizations,
-} from "./organization-server.server";
+} from "./organization-server";
 
 export type { OrganizationSummary } from "@task-tracker/identity-core";
 

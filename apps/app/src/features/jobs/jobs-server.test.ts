@@ -14,7 +14,7 @@ import {
   getCurrentServerJobDetailDirect as getCurrentServerJobDetail,
   getCurrentServerJobOptionsDirect as getCurrentServerJobOptions,
   listCurrentServerJobsDirect as listCurrentServerJobs,
-} from "./jobs-server.server";
+} from "./jobs-server-ssr";
 
 const { mockedGetRequestHeader } = vi.hoisted(() => ({
   mockedGetRequestHeader: vi.fn<(name: string) => string | undefined>(),

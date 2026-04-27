@@ -12,11 +12,11 @@ import type {
 } from "@task-tracker/identity-core";
 import { Schema } from "effect";
 
-import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client.server";
+import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,
-} from "#/lib/server-api-forwarded-headers.server";
+} from "#/lib/server-api-forwarded-headers";
 
 const NullableString = Schema.NullOr(Schema.String);
 const NullableOrganizationId = Schema.NullOr(OrganizationId);

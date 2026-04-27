@@ -19,7 +19,7 @@ import {
   getCurrentServerJobOptionsDirect,
   getCurrentServerSiteOptionsDirect,
   listCurrentServerJobsDirect,
-} from "./jobs-server.server";
+} from "./jobs-server-ssr";
 
 const listAllCurrentServerJobsIsomorphic = createIsomorphicFn()
   .server((query: JobListQuery = {}) => listAllCurrentServerJobsDirect(query))

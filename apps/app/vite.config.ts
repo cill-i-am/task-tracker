@@ -13,10 +13,10 @@ const config = defineConfig({
     __SERVER_API_ORIGIN__: JSON.stringify(serverApiOrigin),
   },
   plugins: [
+    tanstackStart(),
     devtools(),
     tsconfigPaths({ projects: ["./tsconfig.json"] }),
     tailwindcss(),
-    tanstackStart(),
     viteReact(),
   ],
 });

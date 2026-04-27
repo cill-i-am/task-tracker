@@ -9,11 +9,11 @@ import type {
   WorkItemIdType,
 } from "@task-tracker/jobs-core";
 
-import { readConfiguredServerApiOrigin } from "#/lib/api-origin.server";
+import { readConfiguredServerApiOrigin } from "#/lib/api-origin";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,
-} from "#/lib/server-api-forwarded-headers.server";
+} from "#/lib/server-api-forwarded-headers";
 
 import { runJobsClient } from "./jobs-client";
 import { JobsRequestError } from "./jobs-errors";

@@ -5,6 +5,7 @@ import { createAuthClient } from "better-auth/react";
 
 import {
   readConfiguredApiOrigin,
+  readConfiguredServerApiOrigin,
   resolveApiOrigin,
 } from "./api-origin";
 
@@ -30,6 +31,10 @@ export function resolveAuthBaseURL(
   }
 
   return new URL(AUTH_BASE_PATH, apiOrigin).toString();
+}
+
+export function resolveConfiguredServerAuthBaseURL(): string | undefined {
+  return resolveAuthBaseURL(undefined, readConfiguredServerApiOrigin());
 }
 
 export function resolveApiBaseURL(

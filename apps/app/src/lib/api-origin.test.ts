@@ -1,5 +1,4 @@
-import { resolveApiOrigin } from "./api-origin";
-import { readConfiguredServerApiOrigin } from "./api-origin.server";
+import { readConfiguredServerApiOrigin, resolveApiOrigin } from "./api-origin";
 
 describe("api origin resolution", () => {
   afterEach(() => {
