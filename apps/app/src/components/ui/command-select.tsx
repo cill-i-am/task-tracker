@@ -19,6 +19,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "#/components/ui/popover";
+import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { cn } from "#/lib/utils";
 
 export interface CommandSelectOption {
@@ -143,11 +144,15 @@ export function CommandSelect({
                           className="text-muted-foreground"
                         />
                       ) : null}
-                      <span className="truncate">{option.label}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {option.label}
+                      </span>
                       {option.shortcut ? (
-                        <span className="order-3 text-muted-foreground tabular-nums">
-                          {option.shortcut}
-                        </span>
+                        <ShortcutHint
+                          className="order-3 shrink-0 tabular-nums"
+                          hotkey={option.shortcut}
+                          label={option.label}
+                        />
                       ) : null}
                     </CommandItem>
                   ))}
