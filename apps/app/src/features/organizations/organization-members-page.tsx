@@ -26,8 +26,10 @@ import { CommandSelect } from "#/components/ui/command-select";
 import type { CommandSelectGroup } from "#/components/ui/command-select";
 import { FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import { getErrorText } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
+import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 
 import {
@@ -91,6 +93,7 @@ export function OrganizationMembersPage({
   readonly activeOrganizationId: OrganizationId;
   readonly currentMember?: CurrentMemberSummary;
 }) {
+  const isHydrated = useIsHydrated();
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [invitations, setInvitations] = React.useState<
     readonly InvitationSummary[]
@@ -183,7 +186,7 @@ export function OrganizationMembersPage({
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <h2
                 id="current-members-heading"
-                className="font-heading text-lg font-medium tracking-tight"
+                className="font-heading text-lg font-medium"
               >
                 Current members
               </h2>
@@ -199,7 +202,7 @@ export function OrganizationMembersPage({
                 <AppRowListLeading aria-hidden="true">
                   {getMemberInitial(currentMember)}
                 </AppRowListLeading>
-                <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <p className="truncate text-sm font-medium text-foreground">
                     {currentMember.name || currentMember.email}
                   </p>
@@ -223,6 +226,7 @@ export function OrganizationMembersPage({
           >
             <form
               className="flex flex-col gap-5"
+              method="post"
               noValidate
               onSubmit={(event) => {
                 event.preventDefault();
@@ -309,8 +313,9 @@ export function OrganizationMembersPage({
                     type="submit"
                     size="lg"
                     className="w-full sm:w-auto"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !isHydrated}
                   >
+                    {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                     {isSubmitting ? "Sending invite..." : "Send invite"}
                   </Button>
                 )}
@@ -327,7 +332,7 @@ export function OrganizationMembersPage({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <h2
                 id="pending-invitations-heading"
-                className="font-heading text-lg font-medium tracking-tight"
+                className="font-heading text-lg font-medium"
               >
                 Pending invitations
               </h2>
@@ -350,7 +355,7 @@ export function OrganizationMembersPage({
                     <AppRowListLeading aria-hidden="true">
                       {invitation.email.charAt(0).toUpperCase()}
                     </AppRowListLeading>
-                    <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <p
                         className="text-sm font-medium break-all text-foreground"
                         title={invitation.email}

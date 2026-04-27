@@ -64,6 +64,7 @@ import {
   ResponsiveDrawer,
   ResponsiveNestedDrawer,
 } from "#/components/ui/responsive-drawer";
+import { Spinner } from "#/components/ui/spinner";
 import { Textarea } from "#/components/ui/textarea";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import { cn } from "#/lib/utils";
@@ -319,6 +320,7 @@ export function JobsCreateSheet() {
     >
       <form
         className="flex min-h-0 flex-1 flex-col"
+        method="post"
         noValidate
         onSubmit={handleSubmit}
       >
@@ -461,11 +463,15 @@ export function JobsCreateSheet() {
             Cancel
           </Button>
           <Button type="submit" disabled={createResult.waiting}>
-            <HugeiconsIcon
-              icon={Add01Icon}
-              strokeWidth={2}
-              data-icon="inline-start"
-            />
+            {createResult.waiting ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <HugeiconsIcon
+                icon={Add01Icon}
+                strokeWidth={2}
+                data-icon="inline-start"
+              />
+            )}
             {createResult.waiting ? "Creating..." : "Create job"}
           </Button>
         </DrawerFooter>

@@ -5,10 +5,11 @@ import { Schema } from "effect";
 
 import { SitesDetailSheet } from "#/features/sites/sites-detail-sheet";
 
-const decodeSiteId = Schema.decodeUnknownSync(SiteId);
+const decodeSiteId: (siteId: unknown) => SiteIdType =
+  Schema.decodeUnknownSync(SiteId);
 const sitesRouteApi = getRouteApi("/_app/_org/sites");
 
-export function loadSiteDetailRouteData(siteId: string | SiteIdType) {
+export function loadSiteDetailRouteData(siteId: unknown): SiteIdType {
   return decodeSiteId(siteId);
 }
 
@@ -23,7 +24,7 @@ export const Route = createFileRoute("/_app/_org/sites/$siteId")({
 });
 
 function SitesDetailRoute() {
-  const siteId = Route.useLoaderData() as SiteIdType;
+  const siteId = loadSiteDetailRouteData(Route.useLoaderData());
   const { options, viewer } = sitesRouteApi.useLoaderData();
   const initialSite = options.sites.find((site) => site.id === siteId) ?? null;
 

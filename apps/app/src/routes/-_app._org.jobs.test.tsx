@@ -147,7 +147,8 @@ describe("jobs route loader", () => {
       timeout: 10_000,
     },
     async () => {
-      const { JobsRouteContent } = await import("./_app._org.jobs");
+      const { JobsRouteContent } =
+        await import("#/features/jobs/jobs-route-content");
 
       render(
         <JobsRouteContent

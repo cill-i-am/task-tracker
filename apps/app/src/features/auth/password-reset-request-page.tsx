@@ -12,6 +12,8 @@ import {
 } from "#/components/ui/empty";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
+import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient, buildPasswordResetRedirectTo } from "#/lib/auth-client";
 
 import type { InvitationContinuationSearch } from "../organizations/invitation-continuation";
@@ -38,6 +40,7 @@ export function PasswordResetRequestPage({
   readonly search?: InvitationContinuationSearch;
 }) {
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const isHydrated = useIsHydrated();
   const loginNavigationTarget: LoginNavigationTarget = getLoginNavigationTarget(
     search?.invitation
   );
@@ -98,8 +101,8 @@ export function PasswordResetRequestPage({
       title={isSubmitted ? "Check your email." : "Reset your password."}
       description={shellDescription}
       supportingContent={
-        <div className="space-y-3">
-          <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
+        <div className="flex flex-col gap-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase">
             {isSubmitted ? "Next" : "Reset link"}
           </p>
           <p className="max-w-[36ch] text-sm/6 text-muted-foreground">
@@ -147,6 +150,7 @@ export function PasswordResetRequestPage({
         ) : (
           <form
             className="flex flex-col gap-6"
+            method="post"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
@@ -210,8 +214,9 @@ export function PasswordResetRequestPage({
                     type="submit"
                     size="lg"
                     className="w-full"
-                    disabled={isSubmitting || isEmailEmpty}
+                    disabled={isSubmitting || isEmailEmpty || !isHydrated}
                   >
+                    {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                     {isSubmitting ? "Sending reset link..." : "Send reset link"}
                   </Button>
                 );

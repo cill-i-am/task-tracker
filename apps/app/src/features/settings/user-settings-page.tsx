@@ -8,12 +8,14 @@ import { AppUtilityPanel } from "#/components/app-utility-panel";
 import { Button } from "#/components/ui/button";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import { Spinner } from "#/components/ui/spinner";
 import {
   getErrorText,
   getFormErrorText,
   getSettingsFailureMessage,
 } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
+import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient, buildEmailChangeRedirectTo } from "#/lib/auth-client";
 
 import {
@@ -61,6 +63,7 @@ export function UserSettingsPage({
   readonly emailChangeStatus?: EmailChangeStatus | undefined;
 }) {
   const router = useRouter();
+  const isHydrated = useIsHydrated();
   const [profileMessage, setProfileMessage] = React.useState<string | null>(
     null
   );
@@ -206,6 +209,7 @@ export function UserSettingsPage({
         >
           <form
             className="flex flex-col gap-5"
+            method="post"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
@@ -303,8 +307,9 @@ export function UserSettingsPage({
                   type="submit"
                   size="lg"
                   className="w-full sm:w-auto"
-                  disabled={isSubmitting || isDefaultValue}
+                  disabled={isSubmitting || isDefaultValue || !isHydrated}
                 >
+                  {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                   {isSubmitting ? "Saving profile..." : "Save profile"}
                 </Button>
               )}
@@ -317,7 +322,7 @@ export function UserSettingsPage({
           description="Email changes are verified before they replace your current sign-in address."
         >
           <div className="rounded-[calc(var(--radius)*2)] border border-border/60 bg-muted/30 px-4 py-3">
-            <p className="text-xs font-medium tracking-[0.16em] text-muted-foreground uppercase">
+            <p className="text-xs font-medium text-muted-foreground uppercase">
               Current email
             </p>
             <p className="mt-1 text-sm font-medium break-all text-foreground">
@@ -327,6 +332,7 @@ export function UserSettingsPage({
 
           <form
             className="flex flex-col gap-5"
+            method="post"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
@@ -392,8 +398,9 @@ export function UserSettingsPage({
                   type="submit"
                   size="lg"
                   className="w-full sm:w-auto"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isHydrated}
                 >
+                  {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                   {isSubmitting
                     ? "Sending verification..."
                     : "Send verification email"}
@@ -409,6 +416,7 @@ export function UserSettingsPage({
         >
           <form
             className="flex flex-col gap-5"
+            method="post"
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
@@ -536,8 +544,9 @@ export function UserSettingsPage({
                   type="submit"
                   size="lg"
                   className="w-full sm:w-auto"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isHydrated}
                 >
+                  {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
                   {isSubmitting ? "Updating password..." : "Update password"}
                 </Button>
               )}

@@ -5,6 +5,7 @@ import {
   JOB_NOT_FOUND_ERROR_TAG,
   JobAccessDeniedError,
   JobNotFoundError,
+  JobStorageError,
   ORGANIZATION_MEMBER_NOT_FOUND_ERROR_TAG,
   VisitDurationIncrementError,
 } from "@task-tracker/jobs-core";
@@ -73,7 +74,7 @@ export class JobsService extends Effect.Service<JobsService>()(
 
         return yield* jobsRepository
           .list(actor.organizationId, query)
-          .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+          .pipe(Effect.catchTag("SqlError", failJobsStorageError));
       });
 
       const getOptions = Effect.fn("JobsService.getOptions")(function* () {
@@ -85,7 +86,7 @@ export class JobsService extends Effect.Service<JobsService>()(
           sitesRepository.listRegions(actor.organizationId),
           sitesRepository.listOptions(actor.organizationId),
           contactsRepository.listOptions(actor.organizationId),
-        ]).pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+        ]).pipe(Effect.catchTag("SqlError", failJobsStorageError));
 
         return {
           contacts,
@@ -154,10 +155,12 @@ export class JobsService extends Effect.Service<JobsService>()(
                 )
               : Effect.die(result.left);
           }
-          case JOB_NOT_FOUND_ERROR_TAG:
           case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG:
-          case "SqlError": {
+          case JOB_NOT_FOUND_ERROR_TAG: {
             return yield* Effect.die(result.left);
+          }
+          case "SqlError": {
+            return yield* failJobsStorageError(result.left);
           }
           default: {
             return yield* Effect.fail(result.left);
@@ -174,7 +177,7 @@ export class JobsService extends Effect.Service<JobsService>()(
         const detail = yield* jobsRepository
           .getDetail(actor.organizationId, workItemId)
           .pipe(
-            Effect.catchTag("SqlError", (error) => Effect.die(error)),
+            Effect.catchTag("SqlError", failJobsStorageError),
             Effect.map(Option.getOrUndefined)
           );
 
@@ -284,9 +287,11 @@ export class JobsService extends Effect.Service<JobsService>()(
                 )
               : Effect.fail(result.left);
           }
-          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG:
-          case "SqlError": {
+          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG: {
             return yield* Effect.die(result.left);
+          }
+          case "SqlError": {
+            return yield* failJobsStorageError(result.left);
           }
           default: {
             return yield* Effect.fail(result.left);
@@ -368,9 +373,11 @@ export class JobsService extends Effect.Service<JobsService>()(
                 )
               : Effect.die(result.left);
           }
-          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG:
-          case "SqlError": {
+          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG: {
             return yield* Effect.die(result.left);
+          }
+          case "SqlError": {
+            return yield* failJobsStorageError(result.left);
           }
           default: {
             return yield* Effect.fail(result.left);
@@ -438,9 +445,11 @@ export class JobsService extends Effect.Service<JobsService>()(
                 )
               : Effect.die(result.left);
           }
-          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG:
-          case "SqlError": {
+          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG: {
             return yield* Effect.die(result.left);
+          }
+          case "SqlError": {
+            return yield* failJobsStorageError(result.left);
           }
           default: {
             return yield* Effect.fail(result.left);
@@ -497,7 +506,7 @@ export class JobsService extends Effect.Service<JobsService>()(
               : Effect.die(result.left);
           }
           case "SqlError": {
-            return yield* Effect.die(result.left);
+            return yield* failJobsStorageError(result.left);
           }
           default: {
             return yield* Effect.fail(result.left);
@@ -565,9 +574,11 @@ export class JobsService extends Effect.Service<JobsService>()(
                 )
               : Effect.die(result.left);
           }
-          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG:
-          case "SqlError": {
+          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG: {
             return yield* Effect.die(result.left);
+          }
+          case "SqlError": {
+            return yield* failJobsStorageError(result.left);
           }
           default: {
             return yield* Effect.fail(result.left);
@@ -589,6 +600,19 @@ export class JobsService extends Effect.Service<JobsService>()(
     }),
   }
 ) {}
+
+function failJobsStorageError(
+  error: unknown
+): Effect.Effect<never, JobStorageError> {
+  return Effect.fail(makeJobsStorageError(error));
+}
+
+function makeJobsStorageError(error: unknown): JobStorageError {
+  return new JobStorageError({
+    cause: error instanceof Error ? error.message : String(error),
+    message: "Jobs storage operation failed",
+  });
+}
 
 function ensureCoordinatorDiffersFromAssignee(input: {
   readonly assigneeId?: Job["assigneeId"];

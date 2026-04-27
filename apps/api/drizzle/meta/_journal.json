@@ -57,6 +57,13 @@
       "when": 1777239507885,
       "tag": "0007_organization_role_contracts",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777311171379,
+      "tag": "0008_marvelous_cloak",
+      "breakpoints": true
     }
   ]
 }

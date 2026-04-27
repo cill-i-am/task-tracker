@@ -1,4 +1,4 @@
-import { SiteNotFoundError } from "@task-tracker/jobs-core";
+import { JobStorageError, SiteNotFoundError } from "@task-tracker/jobs-core";
 import type {
   CreateSiteInput,
   SiteIdType as SiteId,
@@ -90,7 +90,7 @@ export class SitesService extends Effect.Service<SitesService>()(
               return site;
             })
           )
-          .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+          .pipe(Effect.catchTag("SqlError", failSitesStorageError));
       });
 
       const update = Effect.fn("SitesService.update")(function* (
@@ -129,7 +129,7 @@ export class SitesService extends Effect.Service<SitesService>()(
               })
               .pipe(Effect.map(Option.getOrUndefined))
           )
-          .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+          .pipe(Effect.catchTag("SqlError", failSitesStorageError));
 
         if (site !== undefined) {
           return site;
@@ -157,7 +157,7 @@ export class SitesService extends Effect.Service<SitesService>()(
         const [regions, sites] = yield* Effect.all([
           sitesRepository.listRegions(actor.organizationId),
           sitesRepository.listOptions(actor.organizationId),
-        ]).pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+        ]).pipe(Effect.catchTag("SqlError", failSitesStorageError));
 
         return {
           regions,
@@ -173,3 +173,14 @@ export class SitesService extends Effect.Service<SitesService>()(
     }),
   }
 ) {}
+
+function failSitesStorageError(
+  error: unknown
+): Effect.Effect<never, JobStorageError> {
+  return Effect.fail(
+    new JobStorageError({
+      cause: error instanceof Error ? error.message : String(error),
+      message: "Sites storage operation failed",
+    })
+  );
+}

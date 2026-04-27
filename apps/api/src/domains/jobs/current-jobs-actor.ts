@@ -2,7 +2,11 @@ import { HttpServerRequest } from "@effect/platform";
 import { SqlClient } from "@effect/sql";
 import { OrganizationRole as OrganizationRoleSchema } from "@task-tracker/identity-core";
 import type { OrganizationRole } from "@task-tracker/identity-core";
-import { OrganizationId, UserId } from "@task-tracker/jobs-core";
+import {
+  JobStorageError,
+  OrganizationId,
+  UserId,
+} from "@task-tracker/jobs-core";
 import type { OrganizationIdType, UserIdType } from "@task-tracker/jobs-core";
 import { Effect, Schema } from "effect";
 
@@ -48,7 +52,7 @@ export const resolveCurrentJobsActor = Effect.fn("CurrentJobsActor.resolve")(
     readonly loadMembershipRoles: (
       organizationId: OrganizationIdType,
       userId: UserIdType
-    ) => Effect.Effect<readonly MembershipRoleRow[], never>;
+    ) => Effect.Effect<readonly MembershipRoleRow[], JobStorageError>;
   }) {
     const session = yield* Effect.promise(() =>
       options.getSession(options.headers)
@@ -130,7 +134,9 @@ export class CurrentJobsActor extends Effect.Service<CurrentJobsActor>()(
               where organization_id = ${organizationId}
                 and user_id = ${userId}
               limit 1
-            `.pipe(Effect.catchTag("SqlError", (error) => Effect.die(error))),
+            `.pipe(
+              Effect.catchTag("SqlError", failCurrentJobsActorStorageError)
+            ),
         });
       });
 
@@ -140,6 +146,17 @@ export class CurrentJobsActor extends Effect.Service<CurrentJobsActor>()(
     }),
   }
 ) {}
+
+function failCurrentJobsActorStorageError(
+  error: unknown
+): Effect.Effect<never, JobStorageError> {
+  return Effect.fail(
+    new JobStorageError({
+      cause: error instanceof Error ? error.message : String(error),
+      message: "Jobs actor storage lookup failed",
+    })
+  );
+}
 
 function normalizeJobsActorRole(
   membershipRole: string
