@@ -37,7 +37,7 @@ vi.mock(import("./jobs-coverage-map-canvas"), () => ({
     readonly groups: readonly { readonly site: { readonly name?: string } }[];
   }) => (
     <output data-testid="coverage-map-canvas">
-      {groups.map((group) => group.site.name ?? "Pinned site").join(" | ")}
+      {groups.map((group) => group.site.name ?? "Mapped site").join(" | ")}
     </output>
   ),
 }));
@@ -102,7 +102,8 @@ describe("jobs coverage map", () => {
     await expect(
       screen.findByTestId("coverage-map-canvas")
     ).resolves.toHaveTextContent("Depot");
-    expect(screen.getByText(/1 without pin/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 unmapped/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs location/i)).toBeInTheDocument();
     expect(screen.getByText("Check classroom snag")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /maps/i })).toHaveAttribute(
       "href",
@@ -114,6 +115,9 @@ describe("jobs coverage map", () => {
     render(<JobsCoverageMap jobs={[]} sites={new Map()} />);
 
     expect(screen.getByText(/no mapped jobs/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/add a geocoded site address to make this view useful/i)
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("coverage-map-canvas")).not.toBeInTheDocument();
   }, 1000);
 });
