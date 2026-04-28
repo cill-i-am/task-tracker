@@ -6,6 +6,7 @@ import {
   loadAuthenticationConfig,
   matchesTrustedOrigin,
 } from "../identity/authentication/config.js";
+import { ConfigurationService } from "./configuration-service.js";
 import { JobsService } from "./service.js";
 import { SiteGeocoder } from "./site-geocoder.js";
 import { SitesService } from "./sites-service.js";
@@ -57,23 +58,72 @@ const SitesHandlersLive = HttpApiBuilder.group(JobsApi, "sites", (handlers) =>
   })
 );
 
-export const JobsHttpLive = HttpApiBuilder.api(JobsApi).pipe(
-  Layer.provide(
-    Layer.unwrapEffect(
-      Effect.gen(function* () {
-        const config = yield* loadAuthenticationConfig;
+const ServiceAreasHandlersLive = HttpApiBuilder.group(
+  JobsApi,
+  "serviceAreas",
+  (handlers) =>
+    Effect.gen(function* () {
+      const configurationService = yield* ConfigurationService;
 
-        return HttpApiBuilder.middlewareCors({
-          allowedOrigins: (origin) =>
-            matchesTrustedOrigin(origin, config.trustedOrigins),
-          credentials: true,
-        });
-      })
-    )
-  ),
-  Layer.provide(JobsHandlersLive),
-  Layer.provide(SitesHandlersLive),
-  Layer.provide(SiteGeocoder.Default),
-  Layer.provide(JobsService.Default),
-  Layer.provide(SitesService.Default)
+      return handlers
+        .handle("listServiceAreas", () =>
+          configurationService.listServiceAreas()
+        )
+        .handle("createServiceArea", ({ payload }) =>
+          configurationService.createServiceArea(payload)
+        )
+        .handle("updateServiceArea", ({ path, payload }) =>
+          configurationService.updateServiceArea(path.serviceAreaId, payload)
+        );
+    })
+);
+
+const RateCardsHandlersLive = HttpApiBuilder.group(
+  JobsApi,
+  "rateCards",
+  (handlers) =>
+    Effect.gen(function* () {
+      const configurationService = yield* ConfigurationService;
+
+      return handlers
+        .handle("listRateCards", () => configurationService.listRateCards())
+        .handle("createRateCard", ({ payload }) =>
+          configurationService.createRateCard(payload)
+        )
+        .handle("updateRateCard", ({ path, payload }) =>
+          configurationService.updateRateCard(path.rateCardId, payload)
+        );
+    })
+);
+
+const JobsCorsLive = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const config = yield* loadAuthenticationConfig;
+
+    return HttpApiBuilder.middlewareCors({
+      allowedOrigins: (origin) =>
+        matchesTrustedOrigin(origin, config.trustedOrigins),
+      credentials: true,
+    });
+  })
+);
+
+const JobsHandlerGroupsLive = Layer.mergeAll(
+  JobsHandlersLive,
+  SitesHandlersLive,
+  ServiceAreasHandlersLive,
+  RateCardsHandlersLive
+);
+
+const JobsServicesLive = Layer.mergeAll(
+  JobsService.Default,
+  SitesService.Default,
+  ConfigurationService.Default,
+  SiteGeocoder.Default
+);
+
+export const JobsHttpLive = HttpApiBuilder.api(JobsApi).pipe(
+  Layer.provide(JobsCorsLive),
+  Layer.provide(JobsHandlerGroupsLive),
+  Layer.provide(JobsServicesLive)
 );

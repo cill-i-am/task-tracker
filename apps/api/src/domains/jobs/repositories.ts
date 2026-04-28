@@ -20,7 +20,6 @@ import {
   JobListItemSchema,
   JobMemberOptionSchema,
   OrganizationActivityCursorInvalidError,
-  JobRegionOptionSchema,
   JobListResponseSchema,
   JobNotFoundError,
   JobSchema,
@@ -31,7 +30,12 @@ import {
   OrganizationActivityListResponseSchema,
   OrganizationId as OrganizationIdSchema,
   OrganizationMemberNotFoundError,
-  RegionNotFoundError,
+  RATE_CARD_NOT_FOUND_ERROR_TAG,
+  RateCardNotFoundError,
+  RateCardSchema,
+  ServiceAreaNotFoundError,
+  ServiceAreaOptionSchema,
+  ServiceAreaSchema,
   SiteNotFoundError,
   SiteId as SiteIdSchema,
   WorkItemId as WorkItemIdSchema,
@@ -56,7 +60,9 @@ import type {
   JobListQuery,
   JobMemberOption,
   JobPriority,
-  JobRegionOption,
+  RateCard,
+  RateCardIdType as RateCardId,
+  RateCardLineInput,
   JobStatus,
   JobSiteOption,
   JobTitle,
@@ -67,7 +73,9 @@ import type {
   OrganizationActivityListResponse,
   OrganizationActivityQuery,
   OrganizationIdType as OrganizationId,
-  RegionIdType as RegionId,
+  ServiceArea,
+  ServiceAreaIdType as ServiceAreaId,
+  ServiceAreaOption,
   SiteCountry,
   SiteGeocodingProvider,
   SiteIdType as SiteId,
@@ -82,6 +90,9 @@ import {
   generateCommentId,
   generateContactId,
   generateCostLineId,
+  generateRateCardId,
+  generateRateCardLineId,
+  generateServiceAreaId,
   generateSiteId,
   generateVisitId,
   generateWorkItemId,
@@ -179,9 +190,32 @@ interface JobMemberOptionRow {
   readonly name: string | null;
 }
 
-interface JobRegionOptionRow {
+interface ServiceAreaRow {
+  readonly description: string | null;
   readonly id: string;
   readonly name: string;
+}
+
+interface ServiceAreaOptionRow {
+  readonly id: string;
+  readonly name: string;
+}
+
+interface RateCardRow {
+  readonly created_at: Date;
+  readonly id: string;
+  readonly name: string;
+  readonly updated_at: Date;
+}
+
+interface RateCardLineRow {
+  readonly id: string;
+  readonly kind: string;
+  readonly name: string;
+  readonly position: number;
+  readonly rate_card_id: string;
+  readonly unit: string;
+  readonly value: number | string;
 }
 
 interface JobSiteOptionRow {
@@ -197,8 +231,8 @@ interface JobSiteOptionRow {
   readonly latitude: number;
   readonly longitude: number;
   readonly name: string;
-  readonly region_id: string | null;
-  readonly region_name: string | null;
+  readonly service_area_id: string | null;
+  readonly service_area_name: string | null;
   readonly town: string | null;
 }
 
@@ -297,7 +331,7 @@ export interface CreateSiteRecordInput {
   readonly latitude: number;
   readonly name: string;
   readonly organizationId: OrganizationId;
-  readonly regionId?: RegionId;
+  readonly serviceAreaId?: ServiceAreaId;
   readonly longitude: number;
   readonly town?: string;
 }
@@ -314,8 +348,30 @@ export interface UpdateSiteRecordInput {
   readonly latitude: number;
   readonly longitude: number;
   readonly name: string;
-  readonly regionId?: RegionId;
+  readonly serviceAreaId?: ServiceAreaId;
   readonly town?: string;
+}
+
+export interface CreateServiceAreaRecordInput {
+  readonly description?: string;
+  readonly name: string;
+  readonly organizationId: OrganizationId;
+}
+
+export interface UpdateServiceAreaRecordInput {
+  readonly description?: string | null;
+  readonly name?: string;
+}
+
+export interface CreateRateCardRecordInput {
+  readonly lines: readonly RateCardLineInput[];
+  readonly name: string;
+  readonly organizationId: OrganizationId;
+}
+
+export interface UpdateRateCardRecordInput {
+  readonly lines?: readonly RateCardLineInput[];
+  readonly name?: string;
 }
 
 export interface CreateContactRecordInput {
@@ -361,10 +417,14 @@ const decodeJobListCursor = Schema.decodeUnknownSync(JobListCursorSchema);
 const decodeJobListItem = Schema.decodeUnknownSync(JobListItemSchema);
 const decodeJobMemberOption = Schema.decodeUnknownSync(JobMemberOptionSchema);
 const decodeJobContactOption = Schema.decodeUnknownSync(JobContactOptionSchema);
-const decodeJobRegionOption = Schema.decodeUnknownSync(JobRegionOptionSchema);
 const decodeJobListResponse = Schema.decodeUnknownSync(JobListResponseSchema);
 const decodeJobSiteOption = Schema.decodeUnknownSync(JobSiteOptionSchema);
 const decodeJobVisit = Schema.decodeUnknownSync(JobVisitSchema);
+const decodeRateCard = Schema.decodeUnknownSync(RateCardSchema);
+const decodeServiceArea = Schema.decodeUnknownSync(ServiceAreaSchema);
+const decodeServiceAreaOption = Schema.decodeUnknownSync(
+  ServiceAreaOptionSchema
+);
 const decodeSiteId = Schema.decodeUnknownSync(SiteIdSchema);
 const decodeWorkItemId = Schema.decodeUnknownSync(WorkItemIdSchema);
 const decodeIsoDateTimeString = Schema.decodeUnknownSync(
@@ -573,7 +633,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
         const limit = clampJobListLimit(query.limit ?? boundedDefaultListLimit);
         const clauses = [sql`work_items.organization_id = ${organizationId}`];
         const sitesJoin =
-          query.regionId === undefined
+          query.serviceAreaId === undefined
             ? sql``
             : sql`left join sites on sites.id = work_items.site_id`;
 
@@ -597,8 +657,8 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           clauses.push(sql`work_items.site_id = ${query.siteId}`);
         }
 
-        if (query.regionId !== undefined) {
-          clauses.push(sql`sites.region_id = ${query.regionId}`);
+        if (query.serviceAreaId !== undefined) {
+          clauses.push(sql`sites.service_area_id = ${query.serviceAreaId}`);
         }
 
         if (query.cursor !== undefined) {
@@ -944,7 +1004,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           insert into work_items ${sql.insert(insertValues).returning("*")}
         `;
 
-        return mapJobRow(getRequiredRow(rows, "inserted work item"));
+        const row = yield* getRequiredRow(rows, "inserted work item");
+
+        return mapJobRow(row);
       });
 
       const patch = Effect.fn("JobsRepository.patch")(function* (
@@ -1097,9 +1159,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             .returning("*")}
         `;
 
-        return mapJobCommentRow(
-          getRequiredRow(rows, "inserted work item comment")
-        );
+        const row = yield* getRequiredRow(rows, "inserted work item comment");
+
+        return mapJobCommentRow(row);
       });
 
       const addActivity = Effect.fn("JobsRepository.addActivity")(function* (
@@ -1130,9 +1192,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             .returning("*")}
         `;
 
-        return mapJobActivityRow(
-          getRequiredRow(rows, "inserted work item activity")
-        );
+        const row = yield* getRequiredRow(rows, "inserted work item activity");
+
+        return mapJobActivityRow(row);
       });
 
       const addVisit = Effect.fn("JobsRepository.addVisit")(function* (
@@ -1162,7 +1224,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             .returning("*")}
         `;
 
-        return mapJobVisitRow(getRequiredRow(rows, "inserted work item visit"));
+        const row = yield* getRequiredRow(rows, "inserted work item visit");
+
+        return mapJobVisitRow(row);
       });
 
       const addCostLine = Effect.fn("JobsRepository.addCostLine")(function* (
@@ -1192,9 +1256,12 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
               quantity: input.quantity,
               unitPriceMinor: input.unitPriceMinor,
             });
+            const subtotalRow = yield* getRequiredRow(
+              subtotalRows,
+              "work item cost line subtotal"
+            );
             const currentSubtotalMinor = Number(
-              getRequiredRow(subtotalRows, "work item cost line subtotal")
-                .subtotal_minor ?? 0
+              subtotalRow.subtotal_minor ?? 0
             );
 
             if (
@@ -1226,9 +1293,12 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
                 .returning("*")}
             `;
 
-            return mapJobCostLineRow(
-              getRequiredRow(rows, "inserted work item cost line")
+            const row = yield* getRequiredRow(
+              rows,
+              "inserted work item cost line"
             );
+
+            return mapJobCostLineRow(row);
           })
         );
       });
@@ -1261,29 +1331,32 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
     effect: Effect.gen(function* SitesRepositoryLive() {
       const sql = yield* SqlClient.SqlClient;
 
-      const ensureRegionInOrganization = Effect.fn(
-        "SitesRepository.ensureRegionInOrganization"
-      )(function* (organizationId: OrganizationId, regionId: RegionId) {
+      const ensureServiceAreaInOrganization = Effect.fn(
+        "SitesRepository.ensureServiceAreaInOrganization"
+      )(function* (
+        organizationId: OrganizationId,
+        serviceAreaId: ServiceAreaId
+      ) {
         const rows = yield* sql<IdRow>`
           select id
-          from service_regions
+          from service_areas
           where organization_id = ${organizationId}
-            and id = ${regionId}
+            and id = ${serviceAreaId}
             and archived_at is null
           limit 1
         `;
 
         if (rows[0] === undefined) {
           return yield* Effect.fail(
-            new RegionNotFoundError({
-              message: "Region does not exist in the organization",
+            new ServiceAreaNotFoundError({
+              message: "Service area does not exist in the organization",
               organizationId,
-              regionId,
+              serviceAreaId,
             })
           );
         }
 
-        return regionId;
+        return serviceAreaId;
       });
 
       const findById = Effect.fn("SitesRepository.findById")(function* (
@@ -1304,10 +1377,10 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
       const create = Effect.fn("SitesRepository.create")(function* (
         input: CreateSiteRecordInput
       ) {
-        if (input.regionId !== undefined) {
-          yield* ensureRegionInOrganization(
+        if (input.serviceAreaId !== undefined) {
+          yield* ensureServiceAreaInOrganization(
             input.organizationId,
-            input.regionId
+            input.serviceAreaId
           );
         }
 
@@ -1324,8 +1397,8 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           organization_id: input.organizationId,
         };
 
-        if (input.regionId !== undefined) {
-          values.region_id = input.regionId;
+        if (input.serviceAreaId !== undefined) {
+          values.service_area_id = input.serviceAreaId;
         }
 
         if (input.addressLine2 !== undefined) {
@@ -1348,7 +1421,9 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           insert into sites ${sql.insert(values).returning("id")}
         `;
 
-        return decodeSiteId(getRequiredRow(rows, "inserted site id").id);
+        const row = yield* getRequiredRow(rows, "inserted site id");
+
+        return decodeSiteId(row.id);
       });
 
       const update = Effect.fn("SitesRepository.update")(function* (
@@ -1356,11 +1431,14 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
         siteId: SiteId,
         input: UpdateSiteRecordInput
       ) {
-        if (input.regionId !== undefined) {
-          yield* ensureRegionInOrganization(organizationId, input.regionId);
+        if (input.serviceAreaId !== undefined) {
+          yield* ensureServiceAreaInOrganization(
+            organizationId,
+            input.serviceAreaId
+          );
         }
 
-        const rows = yield* sql<JobSiteOptionRow>`
+        const rows = yield* sql<IdRow>`
           update sites
           set ${sql.update({
             access_notes: input.accessNotes ?? null,
@@ -1374,26 +1452,14 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
             latitude: input.latitude,
             longitude: input.longitude,
             name: input.name,
-            region_id: input.regionId ?? null,
+            service_area_id: input.serviceAreaId ?? null,
             town: input.town ?? null,
             updated_at: new Date(),
           })}
           where organization_id = ${organizationId}
             and id = ${siteId}
             and archived_at is null
-          returning
-            access_notes,
-            address_line_1,
-            address_line_2,
-            county,
-            eircode,
-            id,
-            latitude,
-            longitude,
-            name,
-            region_id,
-            null::text as region_name,
-            town
+          returning id
         `;
 
         if (rows[0] === undefined) {
@@ -1401,20 +1467,6 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
         }
 
         return yield* getOptionById(organizationId, siteId);
-      });
-
-      const listRegions = Effect.fn("SitesRepository.listRegions")(function* (
-        organizationId: OrganizationId
-      ) {
-        const rows = yield* sql<JobRegionOptionRow>`
-          select id, name
-          from service_regions
-          where organization_id = ${organizationId}
-            and archived_at is null
-          order by name asc, id asc
-        `;
-
-        return rows.map(mapJobRegionOptionRow);
       });
 
       const listOptions = Effect.fn("SitesRepository.listOptions")(function* (
@@ -1434,11 +1486,11 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
             sites.latitude,
             sites.longitude,
             sites.name,
-            service_regions.id as region_id,
-            service_regions.name as region_name,
+            service_areas.id as service_area_id,
+            service_areas.name as service_area_name,
             sites.town
           from sites
-          left join service_regions on service_regions.id = sites.region_id
+          left join service_areas on service_areas.id = sites.service_area_id
           where sites.organization_id = ${organizationId}
             and sites.archived_at is null
           order by sites.name asc nulls last, sites.created_at asc, sites.id asc
@@ -1463,11 +1515,11 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
               sites.latitude,
               sites.longitude,
               sites.name,
-              service_regions.id as region_id,
-              service_regions.name as region_name,
+              service_areas.id as service_area_id,
+              service_areas.name as service_area_name,
               sites.town
             from sites
-            left join service_regions on service_regions.id = sites.region_id
+            left join service_areas on service_areas.id = sites.service_area_id
             where sites.organization_id = ${organizationId}
               and sites.id = ${siteId}
               and sites.archived_at is null
@@ -1548,12 +1600,304 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
 
       return {
         create,
-        ensureRegionInOrganization,
+        ensureServiceAreaInOrganization,
         findById,
         getOptionById,
         linkContact,
         listOptions,
-        listRegions,
+        update,
+      };
+    }),
+  }
+) {}
+
+export class ConfigurationRepository extends Effect.Service<ConfigurationRepository>()(
+  "@task-tracker/domains/jobs/ConfigurationRepository",
+  {
+    accessors: true,
+    effect: Effect.gen(function* ConfigurationRepositoryLive() {
+      const sql = yield* SqlClient.SqlClient;
+
+      const listServiceAreas = Effect.fn(
+        "ConfigurationRepository.listServiceAreas"
+      )(function* (organizationId: OrganizationId) {
+        const rows = yield* sql<ServiceAreaRow>`
+          select id, name, description
+          from service_areas
+          where organization_id = ${organizationId}
+            and archived_at is null
+          order by name asc, id asc
+        `;
+
+        return rows.map(mapServiceAreaRow);
+      });
+
+      const listServiceAreaOptions = Effect.fn(
+        "ConfigurationRepository.listServiceAreaOptions"
+      )(function* (organizationId: OrganizationId) {
+        const rows = yield* sql<ServiceAreaOptionRow>`
+          select id, name
+          from service_areas
+          where organization_id = ${organizationId}
+            and archived_at is null
+          order by name asc, id asc
+        `;
+
+        return rows.map(mapServiceAreaOptionRow);
+      });
+
+      const createServiceArea = Effect.fn(
+        "ConfigurationRepository.createServiceArea"
+      )(function* (input: CreateServiceAreaRecordInput) {
+        const rows = yield* sql<ServiceAreaRow>`
+          insert into service_areas ${sql
+            .insert({
+              description: input.description ?? null,
+              id: generateServiceAreaId(),
+              name: input.name,
+              organization_id: input.organizationId,
+              slug: slugifyName(input.name),
+            })
+            .returning("*")}
+        `;
+
+        const row = yield* getRequiredRow(rows, "inserted service area");
+
+        return mapServiceAreaRow(row);
+      });
+
+      const updateServiceArea = Effect.fn(
+        "ConfigurationRepository.updateServiceArea"
+      )(function* (
+        organizationId: OrganizationId,
+        serviceAreaId: ServiceAreaId,
+        input: UpdateServiceAreaRecordInput
+      ) {
+        const values: Record<string, unknown> = {
+          updated_at: new Date(),
+        };
+
+        if (input.name !== undefined) {
+          values.name = input.name;
+          values.slug = slugifyName(input.name);
+        }
+
+        if (input.description !== undefined) {
+          values.description = input.description;
+        }
+
+        const rows = yield* sql<ServiceAreaRow>`
+          update service_areas
+          set ${sql.update(values)}
+          where organization_id = ${organizationId}
+            and id = ${serviceAreaId}
+            and archived_at is null
+          returning *
+        `;
+
+        if (rows[0] === undefined) {
+          return yield* Effect.fail(
+            new ServiceAreaNotFoundError({
+              message: "Service area does not exist in the organization",
+              organizationId,
+              serviceAreaId,
+            })
+          );
+        }
+
+        return mapServiceAreaRow(rows[0]);
+      });
+
+      return {
+        createServiceArea,
+        listServiceAreaOptions,
+        listServiceAreas,
+        updateServiceArea,
+      };
+    }),
+  }
+) {}
+
+export class RateCardsRepository extends Effect.Service<RateCardsRepository>()(
+  "@task-tracker/domains/jobs/RateCardsRepository",
+  {
+    accessors: true,
+    effect: Effect.gen(function* RateCardsRepositoryLive() {
+      const sql = yield* SqlClient.SqlClient;
+
+      const list = Effect.fn("RateCardsRepository.list")(function* (
+        organizationId: OrganizationId
+      ) {
+        const cards = yield* sql<RateCardRow>`
+          select id, name, created_at, updated_at
+          from rate_cards
+          where organization_id = ${organizationId}
+            and archived_at is null
+          order by updated_at desc, id desc
+        `;
+
+        if (cards.length === 0) {
+          return [];
+        }
+
+        const lines = yield* sql<RateCardLineRow>`
+          select
+            rate_card_lines.id,
+            rate_card_lines.rate_card_id,
+            rate_card_lines.kind,
+            rate_card_lines.name,
+            rate_card_lines.position,
+            rate_card_lines.unit,
+            rate_card_lines.value
+          from rate_card_lines
+          join rate_cards on rate_cards.id = rate_card_lines.rate_card_id
+          where rate_cards.organization_id = ${organizationId}
+            and rate_cards.archived_at is null
+          order by rate_card_lines.position asc, rate_card_lines.id asc
+        `;
+        const linesByRateCardId = groupRateCardLinesByRateCardId(lines);
+
+        return cards.map((card) =>
+          mapRateCardRows(card, linesByRateCardId.get(card.id) ?? [])
+        );
+      });
+
+      const create = Effect.fn("RateCardsRepository.create")(function* (
+        input: CreateRateCardRecordInput
+      ) {
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            const rateCardId = generateRateCardId();
+            const rows = yield* sql<RateCardRow>`
+              insert into rate_cards ${sql
+                .insert({
+                  id: rateCardId,
+                  name: input.name,
+                  organization_id: input.organizationId,
+                })
+                .returning("*")}
+            `;
+            yield* getRequiredRow(rows, "inserted rate card");
+
+            yield* insertRateCardLines(rateCardId, input.lines);
+
+            return yield* loadRateCard(input.organizationId, rateCardId).pipe(
+              Effect.catchTag(RATE_CARD_NOT_FOUND_ERROR_TAG, (error) =>
+                Effect.die(error)
+              )
+            );
+          })
+        );
+      });
+
+      const update = Effect.fn("RateCardsRepository.update")(function* (
+        organizationId: OrganizationId,
+        rateCardId: RateCardId,
+        input: UpdateRateCardRecordInput
+      ) {
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            const values: Record<string, unknown> = {
+              updated_at: new Date(),
+            };
+
+            if (input.name !== undefined) {
+              values.name = input.name;
+            }
+
+            const rows = yield* sql<RateCardRow>`
+              update rate_cards
+              set ${sql.update(values)}
+              where organization_id = ${organizationId}
+                and id = ${rateCardId}
+                and archived_at is null
+              returning *
+            `;
+
+            if (rows[0] === undefined) {
+              return yield* Effect.fail(
+                new RateCardNotFoundError({
+                  message: "Rate card does not exist in the organization",
+                  organizationId,
+                  rateCardId,
+                })
+              );
+            }
+
+            if (input.lines !== undefined) {
+              yield* sql`
+                delete from rate_card_lines
+                where rate_card_id = ${rateCardId}
+              `;
+              yield* insertRateCardLines(rateCardId, input.lines);
+            }
+
+            return yield* loadRateCard(organizationId, rateCardId);
+          })
+        );
+      });
+
+      const loadRateCard = Effect.fn("RateCardsRepository.loadRateCard")(
+        function* (organizationId: OrganizationId, rateCardId: RateCardId) {
+          const cardRows = yield* sql<RateCardRow>`
+            select id, name, created_at, updated_at
+            from rate_cards
+            where organization_id = ${organizationId}
+              and id = ${rateCardId}
+              and archived_at is null
+            limit 1
+          `;
+          const [card] = cardRows;
+
+          if (card === undefined) {
+            return yield* Effect.fail(
+              new RateCardNotFoundError({
+                message: "Rate card does not exist in the organization",
+                organizationId,
+                rateCardId,
+              })
+            );
+          }
+
+          const lines = yield* sql<RateCardLineRow>`
+            select id, rate_card_id, kind, name, position, unit, value
+            from rate_card_lines
+            where rate_card_id = ${rateCardId}
+            order by position asc, id asc
+          `;
+
+          return mapRateCardRows(card, lines);
+        }
+      );
+
+      const insertRateCardLines = Effect.fn(
+        "RateCardsRepository.insertRateCardLines"
+      )(function* (
+        rateCardId: RateCardId,
+        lines: readonly RateCardLineInput[]
+      ) {
+        if (lines.length === 0) {
+          return;
+        }
+
+        yield* sql`
+          insert into rate_card_lines ${sql.insert(
+            lines.map((line) => ({
+              id: generateRateCardLineId(),
+              kind: line.kind,
+              name: line.name,
+              position: line.position,
+              rate_card_id: rateCardId,
+              unit: line.unit,
+              value: line.value.toFixed(2),
+            }))
+          )}
+        `;
+      });
+
+      return {
+        create,
+        list,
         update,
       };
     }),
@@ -1609,7 +1953,9 @@ export class ContactsRepository extends Effect.Service<ContactsRepository>()(
           insert into contacts ${sql.insert(values).returning("id")}
         `;
 
-        return decodeContactId(getRequiredRow(rows, "inserted contact id").id);
+        const row = yield* getRequiredRow(rows, "inserted contact id");
+
+        return decodeContactId(row.id);
       });
 
       const listOptions = Effect.fn("ContactsRepository.listOptions")(
@@ -1642,9 +1988,11 @@ export class ContactsRepository extends Effect.Service<ContactsRepository>()(
 ) {}
 
 export const JobsRepositoriesLive = Layer.mergeAll(
+  ConfigurationRepository.Default,
   JobsRepository.Default,
   SitesRepository.Default,
-  ContactsRepository.Default
+  ContactsRepository.Default,
+  RateCardsRepository.Default
 );
 
 export const withJobsTransaction = <Value, Error, Requirements>(
@@ -1702,11 +2050,56 @@ function mapJobMemberOptionRow(row: JobMemberOptionRow): JobMemberOption {
   });
 }
 
-function mapJobRegionOptionRow(row: JobRegionOptionRow): JobRegionOption {
-  return decodeJobRegionOption({
+function mapServiceAreaRow(row: ServiceAreaRow): ServiceArea {
+  return decodeServiceArea({
+    description: nullableToUndefined(row.description),
     id: row.id,
     name: row.name,
   });
+}
+
+function mapServiceAreaOptionRow(row: ServiceAreaOptionRow): ServiceAreaOption {
+  return decodeServiceAreaOption({
+    id: row.id,
+    name: row.name,
+  });
+}
+
+function mapRateCardRows(
+  card: RateCardRow,
+  lines: readonly RateCardLineRow[]
+): RateCard {
+  return decodeRateCard({
+    createdAt: card.created_at.toISOString(),
+    id: card.id,
+    lines: lines.map((line) => ({
+      id: line.id,
+      kind: line.kind,
+      name: line.name,
+      position: line.position,
+      rateCardId: line.rate_card_id,
+      unit: line.unit,
+      value: typeof line.value === "number" ? line.value : Number(line.value),
+    })),
+    name: card.name,
+    updatedAt: card.updated_at.toISOString(),
+  });
+}
+
+function groupRateCardLinesByRateCardId(lines: readonly RateCardLineRow[]) {
+  const linesByRateCardId = new Map<string, RateCardLineRow[]>();
+
+  for (const line of lines) {
+    const current = linesByRateCardId.get(line.rate_card_id);
+
+    if (current === undefined) {
+      linesByRateCardId.set(line.rate_card_id, [line]);
+    } else {
+      current.push(line);
+    }
+  }
+
+  return linesByRateCardId;
 }
 
 function mapJobSiteOptionRow(row: JobSiteOptionRow): JobSiteOption {
@@ -1723,8 +2116,8 @@ function mapJobSiteOptionRow(row: JobSiteOptionRow): JobSiteOption {
     name: row.name,
     latitude: row.latitude,
     longitude: row.longitude,
-    regionId: nullableToUndefined(row.region_id),
-    regionName: nullableToUndefined(row.region_name),
+    serviceAreaId: nullableToUndefined(row.service_area_id),
+    serviceAreaName: nullableToUndefined(row.service_area_name),
     town: nullableToUndefined(row.town),
   });
 }
@@ -1934,14 +2327,27 @@ function normalizeOptionName(value: string | null, fallback: string): string {
   return fallback;
 }
 
-function getRequiredRow<Value>(rows: readonly Value[], label: string): Value {
+function slugifyName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-+|-+$/g, "");
+
+  return slug.length === 0 ? "service-area" : slug;
+}
+
+function getRequiredRow<Value>(
+  rows: readonly Value[],
+  label: string
+): Effect.Effect<Value> {
   const [row] = rows;
 
   if (row === undefined) {
-    throw new Error(`Expected ${label} row to be returned`);
+    return Effect.die(new Error(`Expected ${label} row to be returned`));
   }
 
-  return row;
+  return Effect.succeed(row);
 }
 
 function parseIsoDateTime(value: string): Date {

@@ -2,7 +2,7 @@ import { RegistryProvider } from "@effect-atom/atom-react";
 import { decodeOrganizationId } from "@task-tracker/identity-core";
 import type {
   JobOptionsResponse,
-  RegionIdType,
+  ServiceAreaIdType,
   SiteIdType,
   UserIdType,
 } from "@task-tracker/jobs-core";
@@ -24,7 +24,8 @@ import {
 
 import { SitesPage } from "./sites-page";
 
-const regionId = "33333333-3333-4333-8333-333333333333" as RegionIdType;
+const serviceAreaId =
+  "33333333-3333-4333-8333-333333333333" as ServiceAreaIdType;
 const siteId = "55555555-5555-4555-8555-555555555555" as SiteIdType;
 const userId = "user_123" as UserIdType;
 const organizationId = decodeOrganizationId("org_123");
@@ -32,9 +33,9 @@ const organizationId = decodeOrganizationId("org_123");
 const options: JobOptionsResponse = {
   contacts: [],
   members: [],
-  regions: [
+  serviceAreas: [
     {
-      id: regionId,
+      id: serviceAreaId,
       name: "Dublin",
     },
   ],
@@ -50,8 +51,8 @@ const options: JobOptionsResponse = {
       latitude: 53.3498,
       longitude: -6.2603,
       name: "Docklands Campus",
-      regionId,
-      regionName: "Dublin",
+      serviceAreaId,
+      serviceAreaName: "Dublin",
       town: "Dublin",
     },
   ],

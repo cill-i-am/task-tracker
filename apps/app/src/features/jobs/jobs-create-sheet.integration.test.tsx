@@ -359,7 +359,7 @@ function renderCreateSheet() {
               },
             ],
             members: [],
-            regions: [],
+            serviceAreas: [],
             sites: [
               {
                 addressLine1: "Depot Road",
@@ -372,8 +372,8 @@ function renderCreateSheet() {
                 latitude: 53.3498,
                 longitude: -6.2603,
                 name: "Depot",
-                regionId: undefined,
-                regionName: undefined,
+                serviceAreaId: undefined,
+                serviceAreaName: undefined,
               },
             ],
           }),

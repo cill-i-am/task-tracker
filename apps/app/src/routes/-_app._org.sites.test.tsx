@@ -57,7 +57,7 @@ describe("sites route loader", () => {
     { timeout: 10_000 },
     async () => {
       const siteOptions = {
-        regions: [],
+        serviceAreas: [],
         sites: [],
       };
 
@@ -79,7 +79,7 @@ describe("sites route loader", () => {
         options: {
           contacts: [],
           members: [],
-          regions: [],
+          serviceAreas: [],
           sites: [],
         },
         viewer: {
@@ -106,7 +106,7 @@ describe("sites route loader", () => {
           options={{
             contacts: [],
             members: [],
-            regions: [],
+            serviceAreas: [],
             sites: [
               {
                 addressLine1: "1 Custom House Quay",

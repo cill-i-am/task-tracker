@@ -6,6 +6,7 @@ import {
   JOB_PRIORITIES,
   JOB_STATUSES,
   MAX_JOB_COST_LINE_TAX_RATE_BASIS_POINTS,
+  RATE_CARD_LINE_KINDS,
 } from "@task-tracker/jobs-core";
 import { relations, sql } from "drizzle-orm";
 import {
@@ -47,6 +48,9 @@ const kindValuesSql = sql.raw(
 const activityEventTypeValuesSql = sql.raw(
   JOB_ACTIVITY_EVENT_TYPES.map((value) => `'${value}'`).join(", ")
 );
+const rateCardLineKindValuesSql = sql.raw(
+  RATE_CARD_LINE_KINDS.map((value) => `'${value}'`).join(", ")
+);
 const costLineTypeValuesSql = sql.raw(
   JOB_COST_LINE_TYPES.map((value) => `'${value}'`).join(", ")
 );
@@ -54,27 +58,80 @@ const maxJobCostLineTaxRateBasisPointsSql = sql.raw(
   String(MAX_JOB_COST_LINE_TAX_RATE_BASIS_POINTS)
 );
 
-export const serviceRegion = pgTable(
-  "service_regions",
+export const serviceArea = pgTable(
+  "service_areas",
   {
     id: uuid("id").primaryKey().$defaultFn(generateJobDomainUuid),
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    description: text("description"),
     slug: text("slug").notNull(),
     createdAt: jobsTimestamp("created_at"),
     updatedAt: jobsTimestamp("updated_at"),
     archivedAt: archivedAtColumn("archived_at"),
   },
   (table) => [
-    uniqueIndex("service_regions_organization_slug_idx").on(
+    uniqueIndex("service_areas_organization_slug_idx").on(
       table.organizationId,
       table.slug
     ),
-    index("service_regions_organization_name_idx").on(
+    index("service_areas_organization_name_idx").on(
       table.organizationId,
       table.name
+    ),
+  ]
+);
+
+export const rateCard = pgTable(
+  "rate_cards",
+  {
+    id: uuid("id").primaryKey().$defaultFn(generateJobDomainUuid),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: jobsTimestamp("created_at"),
+    updatedAt: jobsTimestamp("updated_at"),
+    archivedAt: archivedAtColumn("archived_at"),
+  },
+  (table) => [
+    index("rate_cards_organization_updated_at_idx").on(
+      table.organizationId,
+      table.updatedAt.desc(),
+      table.id.desc()
+    ),
+    uniqueIndex("rate_cards_organization_name_idx").on(
+      table.organizationId,
+      table.name
+    ),
+  ]
+);
+
+export const rateCardLine = pgTable(
+  "rate_card_lines",
+  {
+    id: uuid("id").primaryKey().$defaultFn(generateJobDomainUuid),
+    rateCardId: uuid("rate_card_id")
+      .notNull()
+      .references(() => rateCard.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    name: text("name").notNull(),
+    position: integer("position").notNull(),
+    unit: text("unit").notNull(),
+    value: numeric("value", { precision: 12, scale: 2 }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("rate_card_lines_rate_card_position_unique_idx").on(
+      table.rateCardId,
+      table.position
+    ),
+    check("rate_card_lines_value_non_negative_chk", sql`${table.value} >= 0`),
+    check("rate_card_lines_position_positive_chk", sql`${table.position} > 0`),
+    check(
+      "rate_card_lines_kind_chk",
+      sql`${table.kind} in (${rateCardLineKindValuesSql})`
     ),
   ]
 );
@@ -86,7 +143,7 @@ export const site = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    regionId: uuid("region_id").references(() => serviceRegion.id, {
+    serviceAreaId: uuid("service_area_id").references(() => serviceArea.id, {
       onDelete: "set null",
     }),
     name: text("name").notNull(),
@@ -111,9 +168,9 @@ export const site = pgTable(
       table.updatedAt.desc(),
       table.id.desc()
     ),
-    index("sites_organization_region_idx").on(
+    index("sites_organization_service_area_idx").on(
       table.organizationId,
-      table.regionId
+      table.serviceAreaId
     ),
     index("sites_organization_active_name_idx")
       .on(
@@ -410,6 +467,29 @@ export const workItemVisit = pgTable(
   ]
 );
 
+export const serviceAreaRelations = relations(serviceArea, ({ many, one }) => ({
+  organization: one(organization, {
+    fields: [serviceArea.organizationId],
+    references: [organization.id],
+  }),
+  sites: many(site),
+}));
+
+export const rateCardRelations = relations(rateCard, ({ many, one }) => ({
+  lines: many(rateCardLine),
+  organization: one(organization, {
+    fields: [rateCard.organizationId],
+    references: [organization.id],
+  }),
+}));
+
+export const rateCardLineRelations = relations(rateCardLine, ({ one }) => ({
+  rateCard: one(rateCard, {
+    fields: [rateCardLine.rateCardId],
+    references: [rateCard.id],
+  }),
+}));
+
 export const workItemCostLine = pgTable(
   "work_item_cost_lines",
   {
@@ -465,26 +545,15 @@ export const workItemCostLine = pgTable(
   ]
 );
 
-export const serviceRegionRelations = relations(
-  serviceRegion,
-  ({ many, one }) => ({
-    organization: one(organization, {
-      fields: [serviceRegion.organizationId],
-      references: [organization.id],
-    }),
-    sites: many(site),
-  })
-);
-
 export const siteRelations = relations(site, ({ many, one }) => ({
   contacts: many(siteContact),
   organization: one(organization, {
     fields: [site.organizationId],
     references: [organization.id],
   }),
-  region: one(serviceRegion, {
-    fields: [site.regionId],
-    references: [serviceRegion.id],
+  serviceArea: one(serviceArea, {
+    fields: [site.serviceAreaId],
+    references: [serviceArea.id],
   }),
   workItems: many(workItem),
 }));
@@ -591,7 +660,9 @@ export const workItemCostLineRelations = relations(
 
 export const jobsSchema = {
   contact,
-  serviceRegion,
+  rateCard,
+  rateCardLine,
+  serviceArea,
   site,
   siteContact,
   workItem,

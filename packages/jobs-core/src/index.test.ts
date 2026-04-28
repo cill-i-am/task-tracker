@@ -9,6 +9,9 @@ import {
   calculateJobCostLineTotalMinor,
   calculateJobCostSummary,
   CreateJobInputSchema,
+  CreateRateCardInputSchema,
+  CreateServiceAreaInputSchema,
+  CreateServiceAreaResponseSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
   JobActivityBlockedReasonChangedPayloadSchema,
@@ -18,6 +21,7 @@ import {
   JobListQuerySchema,
   JobMemberOptionsResponseSchema,
   JobPrioritySchema,
+  JobOptionsResponseSchema,
   JobSiteOptionSchema,
   JobStatusSchema,
   JobsApi,
@@ -30,9 +34,16 @@ import {
   OrganizationActivityListResponseSchema,
   OrganizationActivityQuerySchema,
   PatchJobInputSchema,
+  RateCardSchema,
+  RateCardsApiGroup,
+  ServiceAreasApiGroup,
+  ServiceAreaOptionSchema,
+  ServiceAreaSchema,
   SitesOptionsResponseSchema,
   SitesApiGroup,
   SiteGeocodingFailedError,
+  UpdateServiceAreaInputSchema,
+  UpdateServiceAreaResponseSchema,
   UserId,
   VisitDurationIncrementError,
   WorkItemId,
@@ -41,6 +52,181 @@ import {
 const { describe, expect, it } = Vitest;
 
 describe("jobs-core", () => {
+  it("decodes service area contracts", () => {
+    const serviceArea = {
+      description: "North city and hospitals",
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "North Dublin",
+    };
+
+    expect(
+      Schema.decodeUnknownSync(ServiceAreaSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
+    expect(
+      Schema.decodeUnknownSync(CreateServiceAreaResponseSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
+    expect(
+      Schema.decodeUnknownSync(UpdateServiceAreaResponseSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
+
+    expect(
+      Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
+        description: "  Retail sites  ",
+        name: "  Retail  ",
+      })
+    ).toStrictEqual({
+      description: "Retail sites",
+      name: "Retail",
+    });
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
+        name: "",
+      })
+    ).toThrow(/Expected/);
+
+    expect(
+      Schema.decodeUnknownSync(UpdateServiceAreaInputSchema)({
+        description: null,
+        name: "  Retail Core  ",
+      })
+    ).toStrictEqual({
+      description: null,
+      name: "Retail Core",
+    });
+
+    expect(
+      Schema.decodeUnknownSync(ServiceAreaOptionSchema)({
+        id: serviceArea.id,
+        name: serviceArea.name,
+      })
+    ).toStrictEqual({
+      id: serviceArea.id,
+      name: serviceArea.name,
+    });
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
+        name: "A".repeat(121),
+      })
+    ).toThrow(/maxLength/);
+  }, 5000);
+
+  it("decodes rate card input contracts", () => {
+    const decoded = Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+      lines: [
+        {
+          kind: "labour",
+          name: "  Labour  ",
+          position: 1,
+          unit: "hour",
+          value: 85,
+        },
+        {
+          kind: "material_markup",
+          name: "Materials markup",
+          position: 2,
+          unit: "percent",
+          value: 15,
+        },
+      ],
+      name: "  Standard  ",
+    });
+
+    expect(decoded.name).toBe("Standard");
+    expect(decoded.lines[0]?.name).toBe("Labour");
+    expect(decoded.lines[1]?.kind).toBe("material_markup");
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: [
+          {
+            kind: "custom",
+            name: "Bad",
+            position: 1,
+            unit: "hour",
+            value: -1,
+          },
+        ],
+        name: "Standard",
+      })
+    ).toThrow(/greaterThanOrEqualTo/);
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: [
+          {
+            kind: "labour",
+            name: "Labour",
+            position: 1,
+            unit: "hour",
+            value: 85,
+          },
+          {
+            kind: "callout",
+            name: "Callout",
+            position: 1,
+            unit: "visit",
+            value: 120,
+          },
+        ],
+        name: "Standard",
+      })
+    ).toThrow(/positions must be unique/);
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: Array.from({ length: 51 }, (_, index) => ({
+          kind: "custom",
+          name: `Line ${index + 1}`,
+          position: index + 1,
+          unit: "each",
+          value: index + 1,
+        })),
+        name: "Standard",
+      })
+    ).toThrow(/maxItems/);
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: [
+          {
+            kind: "custom",
+            name: "A".repeat(121),
+            position: 1,
+            unit: "each",
+            value: 1,
+          },
+        ],
+        name: "Standard",
+      })
+    ).toThrow(/maxLength/);
+  }, 5000);
+
+  it("decodes rate card response contracts", () => {
+    const rateCard = {
+      id: "550e8400-e29b-41d4-a716-446655440020",
+      name: "Standard",
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T11:00:00.000Z",
+      lines: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440021",
+          rateCardId: "550e8400-e29b-41d4-a716-446655440020",
+          kind: "callout",
+          name: "Callout",
+          position: 1,
+          unit: "visit",
+          value: 120,
+        },
+      ],
+    };
+
+    expect(Schema.decodeUnknownSync(RateCardSchema)(rateCard)).toStrictEqual(
+      rateCard
+    );
+  }, 5000);
+
   it("exports the closed job enums", () => {
     expect(ParseResult.decodeUnknownSync(JobStatusSchema)("in_progress")).toBe(
       "in_progress"
@@ -705,8 +891,8 @@ describe("jobs-core", () => {
       longitude: -6.2603,
       geocodingProvider: "google",
       geocodedAt: "2026-04-22T10:00:00.000Z",
-      regionId: "550e8400-e29b-41d4-a716-446655440011",
-      regionName: "Dublin",
+      serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+      serviceAreaName: "Dublin",
     };
 
     expect(
@@ -725,8 +911,8 @@ describe("jobs-core", () => {
       longitude: -6.2603,
       geocodingProvider: "google",
       geocodedAt: "2026-04-22T10:00:00.000Z",
-      regionId: "550e8400-e29b-41d4-a716-446655440011",
-      regionName: "Dublin",
+      serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+      serviceAreaName: "Dublin",
     });
     expect(
       ParseResult.decodeUnknownSync(CreateSiteResponseSchema)(siteOption)
@@ -749,6 +935,10 @@ describe("jobs-core", () => {
       "/jobs/{workItemId}/comments",
       "/jobs/{workItemId}/visits",
       "/jobs/{workItemId}/cost-lines",
+      "/service-areas",
+      "/service-areas/{serviceAreaId}",
+      "/rate-cards",
+      "/rate-cards/{rateCardId}",
       "/sites/options",
       "/sites",
       "/sites/{siteId}",
@@ -770,6 +960,42 @@ describe("jobs-core", () => {
       "sites.getSiteOptions"
     );
     expect(spec.paths["/sites"]?.post?.operationId).toBe("sites.createSite");
+  }, 5000);
+
+  it("surfaces the rate cards api contract with the expected paths", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+
+    expect(spec.paths["/rate-cards"]?.get?.operationId).toBe(
+      "rateCards.listRateCards"
+    );
+    expect(spec.paths["/rate-cards"]?.post?.operationId).toBe(
+      "rateCards.createRateCard"
+    );
+    expect(spec.paths["/rate-cards"]?.post?.responses["201"]).toBeDefined();
+    expect(spec.paths["/rate-cards/{rateCardId}"]?.patch?.operationId).toBe(
+      "rateCards.updateRateCard"
+    );
+    expect(
+      spec.paths["/rate-cards/{rateCardId}"]?.patch?.responses["404"]
+    ).toBeDefined();
+  }, 5000);
+
+  it("surfaces the service areas api contract with the expected paths", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+
+    expect(spec.paths["/service-areas"]?.get?.operationId).toBe(
+      "serviceAreas.listServiceAreas"
+    );
+    expect(spec.paths["/service-areas"]?.post?.operationId).toBe(
+      "serviceAreas.createServiceArea"
+    );
+    expect(spec.paths["/service-areas"]?.post?.responses["201"]).toBeDefined();
+    expect(
+      spec.paths["/service-areas/{serviceAreaId}"]?.patch?.operationId
+    ).toBe("serviceAreas.updateServiceArea");
+    expect(
+      spec.paths["/service-areas/{serviceAreaId}"]?.patch?.responses["404"]
+    ).toBeDefined();
   }, 5000);
 
   it("surfaces the job cost line api contract", () => {
@@ -807,13 +1033,15 @@ describe("jobs-core", () => {
 
   it("exports the shared api group", () => {
     expect(JobsApiGroup.identifier).toBe("jobs");
+    expect(RateCardsApiGroup.identifier).toBe("rateCards");
+    expect(ServiceAreasApiGroup.identifier).toBe("serviceAreas");
     expect(SitesApiGroup.identifier).toBe("sites");
   }, 5000);
 
   it("exports a lean sites options response", () => {
     expect(
       ParseResult.decodeUnknownSync(SitesOptionsResponseSchema)({
-        regions: [
+        serviceAreas: [
           {
             id: "550e8400-e29b-41d4-a716-446655440011",
             name: "Dublin",
@@ -835,7 +1063,7 @@ describe("jobs-core", () => {
         ],
       })
     ).toStrictEqual({
-      regions: [
+      serviceAreas: [
         {
           id: "550e8400-e29b-41d4-a716-446655440011",
           name: "Dublin",
@@ -855,6 +1083,62 @@ describe("jobs-core", () => {
           geocodedAt: "2026-04-22T10:00:00.000Z",
         },
       ],
+    });
+  }, 5000);
+
+  it("exports service areas in job options", () => {
+    expect(
+      ParseResult.decodeUnknownSync(JobOptionsResponseSchema)({
+        members: [],
+        serviceAreas: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440011",
+            name: "Dublin",
+          },
+        ],
+        sites: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440010",
+            name: "Docklands Campus",
+            serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+            serviceAreaName: "Dublin",
+            addressLine1: "1 Custom House Quay",
+            county: "Dublin",
+            country: "IE",
+            eircode: "D01 X2X2",
+            latitude: 53.3498,
+            longitude: -6.2603,
+            geocodingProvider: "google",
+            geocodedAt: "2026-04-22T10:00:00.000Z",
+          },
+        ],
+        contacts: [],
+      })
+    ).toStrictEqual({
+      members: [],
+      serviceAreas: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440011",
+          name: "Dublin",
+        },
+      ],
+      sites: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440010",
+          name: "Docklands Campus",
+          serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+          serviceAreaName: "Dublin",
+          addressLine1: "1 Custom House Quay",
+          county: "Dublin",
+          country: "IE",
+          eircode: "D01 X2X2",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          geocodingProvider: "google",
+          geocodedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      contacts: [],
     });
   }, 5000);
 

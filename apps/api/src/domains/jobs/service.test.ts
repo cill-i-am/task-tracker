@@ -1,4 +1,5 @@
 import { HttpServerRequest } from "@effect/platform";
+import { SqlError } from "@effect/sql/SqlError";
 import {
   ActivityId,
   BlockedReasonRequiredError,
@@ -8,8 +9,9 @@ import {
   JobAccessDeniedError,
   JobCostSummaryLimitExceededError,
   JobSchema,
+  JobStorageError,
   OrganizationMemberNotFoundError,
-  RegionNotFoundError,
+  ServiceAreaNotFoundError,
   VisitId,
   VisitDurationIncrementError,
   WorkItemId,
@@ -25,13 +27,13 @@ import type {
   JobListResponse,
   JobMemberOption,
   JobOptionsResponse,
-  JobRegionOption,
+  ServiceArea,
   JobSiteOption,
   JobVisit,
   OrganizationActivityListResponse,
   OrganizationActivityQuery,
   OrganizationIdType as OrganizationId,
-  RegionIdType as RegionId,
+  ServiceAreaIdType as ServiceAreaId,
   SiteIdType as SiteId,
   UserId,
 } from "@task-tracker/jobs-core";
@@ -50,6 +52,7 @@ import { JobsAuthorization } from "./authorization.js";
 import { CurrentJobsActor } from "./current-jobs-actor.js";
 import type { JobsActor } from "./current-jobs-actor.js";
 import {
+  ConfigurationRepository,
   ContactsRepository,
   JobsRepository,
   SitesRepository,
@@ -69,7 +72,7 @@ const workItemId = decodeWorkItemId("11111111-1111-4111-8111-111111111111");
 const siteId = "22222222-2222-4222-8222-222222222222" as SiteId;
 const contactId = "33333333-3333-4333-8333-333333333333" as ContactId;
 const actorUserId = "44444444-4444-4444-8444-444444444444" as UserId;
-const regionId = "99999999-9999-4999-8999-999999999999" as RegionId;
+const serviceAreaId = "99999999-9999-4999-8999-999999999999" as ServiceAreaId;
 const visitId = decodeVisitId("55555555-5555-4555-8555-555555555555");
 const costLineId = decodeCostLineId("99999999-9999-4999-8999-999999999998");
 const geocodedAt = "2026-04-22T10:00:00.000Z";
@@ -119,7 +122,8 @@ interface JobsServiceHarnessOptions {
   readonly actor?: JobsActor;
   readonly costLineFailure?: JobCostSummaryLimitExceededError;
   readonly lockedJob?: Job;
-  readonly regionFailure?: RegionNotFoundError;
+  readonly serviceAreaFailure?: ServiceAreaNotFoundError;
+  readonly serviceAreaStorageFailure?: SqlError;
   readonly transactionFailure?: OrganizationMemberNotFoundError;
 }
 
@@ -130,7 +134,7 @@ interface JobsServiceHarness {
     addVisit: number;
     create: number;
     createSite: number;
-    ensureRegion: number;
+    ensureServiceArea: number;
     findByIdForUpdate: number;
     geocode: number;
     linkContact: number;
@@ -154,7 +158,7 @@ function makeHarness(
     addVisit: 0,
     create: 0,
     createSite: 0,
-    ensureRegion: 0,
+    ensureServiceArea: 0,
     findByIdForUpdate: 0,
     geocode: 0,
     linkContact: 0,
@@ -350,7 +354,7 @@ function makeHarness(
       readonly longitude: number;
       readonly name: string;
       readonly organizationId: OrganizationId;
-      readonly regionId?: RegionId;
+      readonly serviceAreaId?: ServiceAreaId;
       readonly town?: string;
     }) =>
       Effect.sync(() => {
@@ -371,20 +375,24 @@ function makeHarness(
 
         return siteId;
       }),
-    ensureRegionInOrganization: (
+    ensureServiceAreaInOrganization: (
       organizationId: OrganizationId,
-      requestedRegionId: RegionId
+      requestedServiceAreaId: ServiceAreaId
     ) =>
       Effect.gen(function* () {
-        calls.ensureRegion += 1;
+        calls.ensureServiceArea += 1;
         expect(organizationId).toBe(actor.organizationId);
-        expect(requestedRegionId).toBe(regionId);
+        expect(requestedServiceAreaId).toBe(serviceAreaId);
 
-        if (options.regionFailure !== undefined) {
-          return yield* Effect.fail(options.regionFailure);
+        if (options.serviceAreaFailure !== undefined) {
+          return yield* Effect.fail(options.serviceAreaFailure);
         }
 
-        return requestedRegionId;
+        if (options.serviceAreaStorageFailure !== undefined) {
+          return yield* Effect.fail(options.serviceAreaStorageFailure);
+        }
+
+        return requestedServiceAreaId;
       }),
     findById: (_organizationId: OrganizationId, _siteId: SiteId) =>
       Effect.succeed(Option.some(siteId)),
@@ -401,13 +409,25 @@ function makeHarness(
       }).pipe(Effect.as(undefinedValue)),
     listOptions: (_organizationId: OrganizationId) =>
       Effect.succeed([] satisfies readonly JobSiteOption[]),
-    listRegions: (_organizationId: OrganizationId) =>
-      Effect.succeed([] satisfies readonly JobRegionOption[]),
     update: (
       _organizationId: OrganizationId,
       _siteId: SiteId,
       _input: unknown
     ) => Effect.succeed(Option.none()),
+  });
+
+  const configurationRepository = ConfigurationRepository.make({
+    createServiceArea: (_input: unknown) =>
+      Effect.die(new Error("Unexpected repository call: createServiceArea")),
+    listServiceAreaOptions: (_organizationId: OrganizationId) =>
+      Effect.succeed([] satisfies JobOptionsResponse["serviceAreas"]),
+    listServiceAreas: (_organizationId: OrganizationId) =>
+      Effect.succeed([] satisfies readonly ServiceArea[]),
+    updateServiceArea: (
+      _organizationId: OrganizationId,
+      _serviceAreaId: ServiceAreaId,
+      _input: unknown
+    ) => Effect.die(new Error("Unexpected repository call: updateServiceArea")),
   });
 
   const contactsRepository = ContactsRepository.make({
@@ -435,6 +455,7 @@ function makeHarness(
   const repositoriesLayer = Layer.mergeAll(
     Layer.succeed(JobsRepository, jobsRepository),
     Layer.succeed(SitesRepository, sitesRepository),
+    Layer.succeed(ConfigurationRepository, configurationRepository),
     Layer.succeed(ContactsRepository, contactsRepository),
     Layer.succeed(SiteGeocoder, siteGeocoder)
   );
@@ -596,16 +617,16 @@ describe("jobs service", () => {
     expect(harness.calls.addActivity).toBe(1);
   }, 10_000);
 
-  it("validates inline site regions before geocoding", async () => {
+  it("validates inline site service areas before geocoding", async () => {
     const actor = makeActor("owner");
-    const failure = new RegionNotFoundError({
-      message: "Region does not exist in the organization",
+    const failure = new ServiceAreaNotFoundError({
+      message: "Service area does not exist in the organization",
       organizationId: actor.organizationId,
-      regionId,
+      serviceAreaId,
     });
     const harness = makeHarness({
       actor,
-      regionFailure: failure,
+      serviceAreaFailure: failure,
     });
 
     const exit = await runJobsServiceExit(
@@ -616,7 +637,7 @@ describe("jobs service", () => {
           site: {
             input: {
               ...inlineSiteInput,
-              regionId,
+              serviceAreaId,
             },
             kind: "create",
           },
@@ -627,7 +648,44 @@ describe("jobs service", () => {
     );
 
     expect(getFailure(exit)).toStrictEqual(failure);
-    expect(harness.calls.ensureRegion).toBe(1);
+    expect(harness.calls.ensureServiceArea).toBe(1);
+    expect(harness.calls.geocode).toBe(0);
+    expect(harness.calls.createSite).toBe(0);
+    expect(harness.calls.create).toBe(0);
+    expect(harness.calls.addActivity).toBe(0);
+  }, 10_000);
+
+  it("maps inline site service area storage failures before geocoding", async () => {
+    const harness = makeHarness({
+      serviceAreaStorageFailure: new SqlError({
+        message: "database unavailable",
+      }),
+    });
+
+    const exit = await runJobsServiceExit(
+      Effect.gen(function* () {
+        const jobs = yield* JobsService;
+
+        return yield* jobs.create({
+          site: {
+            input: {
+              ...inlineSiteInput,
+              serviceAreaId,
+            },
+            kind: "create",
+          },
+          title: "Replace circulation pump",
+        });
+      }),
+      harness
+    );
+
+    expect(getFailure(exit)).toBeInstanceOf(JobStorageError);
+    expect(getFailure(exit)).toMatchObject({
+      cause: "database unavailable",
+      message: "Jobs storage operation failed",
+    });
+    expect(harness.calls.ensureServiceArea).toBe(1);
     expect(harness.calls.geocode).toBe(0);
     expect(harness.calls.createSite).toBe(0);
     expect(harness.calls.create).toBe(0);

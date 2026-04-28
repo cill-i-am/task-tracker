@@ -432,11 +432,14 @@ function JobsCommandToolbar({
       readonly id: UserIdType;
       readonly name: string;
     }[];
-    readonly regions: readonly { readonly id: string; readonly name: string }[];
+    readonly serviceAreas: readonly {
+      readonly id: string;
+      readonly name: string;
+    }[];
     readonly sites: readonly {
       readonly id: string;
       readonly name: string;
-      readonly regionId?: string | undefined;
+      readonly serviceAreaId?: string | undefined;
     }[];
   };
   readonly savedViews: readonly JobSavedView[];
@@ -521,9 +524,9 @@ function JobsCommandToolbar({
               { label: "All sites", value: "all" },
               ...optionsState.sites
                 .filter((site) =>
-                  filters.regionId === "all"
+                  filters.serviceAreaId === "all"
                     ? true
-                    : site.regionId === filters.regionId
+                    : site.serviceAreaId === filters.serviceAreaId
                 )
                 .map((site) => ({
                   label: site.name,
@@ -544,10 +547,10 @@ function JobsCommandToolbar({
                 label: `Coordinator: ${member.name}`,
                 value: `coordinator:${member.id}`,
               })),
-              { label: "All regions", value: "region:all" },
-              ...optionsState.regions.map((region) => ({
-                label: `Region: ${region.name}`,
-                value: `region:${region.id}`,
+              { label: "All service areas", value: "serviceArea:all" },
+              ...optionsState.serviceAreas.map((serviceArea) => ({
+                label: `Service area: ${serviceArea.name}`,
+                value: `serviceArea:${serviceArea.id}`,
               })),
             ]}
             onValueChange={(value) => {
@@ -560,9 +563,9 @@ function JobsCommandToolbar({
                 return;
               }
 
-              if (kind === "region") {
+              if (kind === "serviceArea") {
                 onFiltersChange({
-                  regionId: nextValue as JobsListFilters["regionId"],
+                  serviceAreaId: nextValue as JobsListFilters["serviceAreaId"],
                   siteId:
                     nextValue === "all"
                       ? filters.siteId
@@ -887,8 +890,17 @@ function JobIssueTableRow({
       <TableCell>
         <PriorityBadge priority={job.priority} />
       </TableCell>
-      <TableCell className="max-w-48 truncate text-muted-foreground">
-        {site?.name ?? "No site"}
+      <TableCell className="max-w-48 text-muted-foreground">
+        {site ? (
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate">{site.name}</span>
+            {site.serviceAreaName ? (
+              <span className="truncate text-xs">{site.serviceAreaName}</span>
+            ) : null}
+          </span>
+        ) : (
+          "No site"
+        )}
       </TableCell>
       <TableCell className="max-w-40 truncate text-muted-foreground">
         {assignee?.name ?? "Unassigned"}
@@ -935,6 +947,12 @@ function JobIssueRow({
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>{site?.name ?? "No site"}</span>
+          {site?.serviceAreaName ? (
+            <>
+              <span>/</span>
+              <span>{site.serviceAreaName}</span>
+            </>
+          ) : null}
           <span>/</span>
           <span>{assignee?.name ?? "Unassigned"}</span>
           <span>/</span>
@@ -1049,7 +1067,7 @@ function buildActiveFilterBadges(
   filters: JobsListFilters,
   lookup: {
     readonly memberById: ReadonlyMap<string, { readonly name: string }>;
-    readonly regionById: ReadonlyMap<string, { readonly name: string }>;
+    readonly serviceAreaById: ReadonlyMap<string, { readonly name: string }>;
     readonly siteById: ReadonlyMap<string, { readonly name: string }>;
   }
 ): readonly ActiveFilterBadge[] {
@@ -1099,10 +1117,10 @@ function buildActiveFilterBadges(
     });
   }
 
-  if (filters.regionId !== defaultJobsListFilters.regionId) {
+  if (filters.serviceAreaId !== defaultJobsListFilters.serviceAreaId) {
     badges.push({
-      key: "regionId",
-      label: `Region: ${lookup.regionById.get(filters.regionId)?.name ?? "Unknown"}`,
+      key: "serviceAreaId",
+      label: `Service area: ${lookup.serviceAreaById.get(filters.serviceAreaId)?.name ?? "Unknown"}`,
     });
   }
 

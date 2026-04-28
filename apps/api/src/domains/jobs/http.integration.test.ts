@@ -1,10 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  CreateRateCardResponseSchema,
+  CreateServiceAreaResponseSchema,
   CreateSiteResponseSchema,
   JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG,
-  REGION_NOT_FOUND_ERROR_TAG,
+  JobOptionsResponseSchema,
+  RateCardListResponseSchema,
+  SERVICE_AREA_NOT_FOUND_ERROR_TAG,
+  ServiceAreaListResponseSchema,
   SitesOptionsResponseSchema,
+  UpdateServiceAreaResponseSchema,
 } from "@task-tracker/jobs-core";
 import { ParseResult } from "effect";
 import type { Pool } from "pg";
@@ -242,15 +248,180 @@ describe("jobs http integration", () => {
       const options = (await optionsResponse.json()) as {
         readonly contacts: readonly unknown[];
         readonly members: readonly { name: string }[];
-        readonly regions: readonly unknown[];
+        readonly serviceAreas: readonly unknown[];
         readonly sites: readonly unknown[];
       };
       expect(options.members.map((member) => member.name)).toStrictEqual(
         expect.arrayContaining(["Owner User", "Member User"])
       );
-      expect(options.regions).toHaveLength(0);
+      expect(options.serviceAreas).toHaveLength(0);
       expect(options.sites).toHaveLength(0);
       expect(options.contacts).toHaveLength(0);
+
+      const createServiceAreaResponse = await api.handler(
+        makeJsonRequest(
+          "/service-areas",
+          {
+            description: "City centre jobs",
+            name: "Dublin",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(createServiceAreaResponse.status).toBe(201);
+      const createdServiceArea = ParseResult.decodeUnknownSync(
+        CreateServiceAreaResponseSchema
+      )(await createServiceAreaResponse.json());
+      expect(createdServiceArea).toMatchObject({
+        description: "City centre jobs",
+        name: "Dublin",
+      });
+
+      const listServiceAreasResponse = await api.handler(
+        makeRequest("/service-areas", {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(listServiceAreasResponse.status).toBe(200);
+      const serviceAreas = ParseResult.decodeUnknownSync(
+        ServiceAreaListResponseSchema
+      )(await listServiceAreasResponse.json());
+      expect(serviceAreas.items).toContainEqual(createdServiceArea);
+
+      const clearServiceAreaDescriptionResponse = await api.handler(
+        makeJsonRequest(
+          `/service-areas/${createdServiceArea.id}`,
+          {
+            description: null,
+          },
+          {
+            cookieJar: ownerCookieJar,
+            method: "PATCH",
+          }
+        )
+      );
+      expect(clearServiceAreaDescriptionResponse.status).toBe(200);
+      const clearedServiceArea = ParseResult.decodeUnknownSync(
+        UpdateServiceAreaResponseSchema
+      )(await clearServiceAreaDescriptionResponse.json());
+      expect(clearedServiceArea).toMatchObject({
+        id: createdServiceArea.id,
+        name: "Dublin",
+      });
+      expect(clearedServiceArea.description).toBeUndefined();
+
+      const memberCreateServiceAreaResponse = await api.handler(
+        makeJsonRequest(
+          "/service-areas",
+          {
+            name: "Member Area",
+          },
+          {
+            cookieJar: memberCookieJar,
+          }
+        )
+      );
+      expect(memberCreateServiceAreaResponse.status).toBe(403);
+
+      const memberListServiceAreasResponse = await api.handler(
+        makeRequest("/service-areas", {
+          cookieJar: memberCookieJar,
+        })
+      );
+      expect(memberListServiceAreasResponse.status).toBe(403);
+
+      const memberOptionsBeforeSiteResponse = await api.handler(
+        makeRequest("/jobs/options", {
+          cookieJar: memberCookieJar,
+        })
+      );
+      expect(memberOptionsBeforeSiteResponse.status).toBe(200);
+      await expect(
+        memberOptionsBeforeSiteResponse.json()
+      ).resolves.toMatchObject({
+        serviceAreas: [],
+      });
+
+      const duplicateRateCardPositionResponse = await api.handler(
+        makeJsonRequest(
+          "/rate-cards",
+          {
+            lines: [
+              {
+                kind: "callout",
+                name: "Standard callout",
+                position: 1,
+                unit: "visit",
+                value: 125,
+              },
+              {
+                kind: "labour",
+                name: "Labour",
+                position: 1,
+                unit: "hour",
+                value: 85,
+              },
+            ],
+            name: "Invalid duplicate positions",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(duplicateRateCardPositionResponse.status).toBe(400);
+
+      const createRateCardResponse = await api.handler(
+        makeJsonRequest(
+          "/rate-cards",
+          {
+            lines: [
+              {
+                kind: "callout",
+                name: "Standard callout",
+                position: 1,
+                unit: "visit",
+                value: 125,
+              },
+            ],
+            name: "Standard",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(createRateCardResponse.status).toBe(201);
+      const createdRateCard = ParseResult.decodeUnknownSync(
+        CreateRateCardResponseSchema
+      )(await createRateCardResponse.json());
+      expect(createdRateCard).toMatchObject({
+        name: "Standard",
+      });
+      expect(createdRateCard.lines[0]).toMatchObject({
+        name: "Standard callout",
+        value: 125,
+      });
+
+      const listRateCardsResponse = await api.handler(
+        makeRequest("/rate-cards", {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(listRateCardsResponse.status).toBe(200);
+      const rateCards = ParseResult.decodeUnknownSync(
+        RateCardListResponseSchema
+      )(await listRateCardsResponse.json());
+      expect(rateCards.items).toContainEqual(createdRateCard);
+
+      const memberListRateCardsResponse = await api.handler(
+        makeRequest("/rate-cards", {
+          cookieJar: memberCookieJar,
+        })
+      );
+      expect(memberListRateCardsResponse.status).toBe(403);
 
       const createSiteResponse = await api.handler(
         makeJsonRequest(
@@ -261,6 +432,7 @@ describe("jobs http integration", () => {
             county: "Dublin",
             eircode: "D01 X2X2",
             name: "Docklands Campus",
+            serviceAreaId: createdServiceArea.id,
             town: "Dublin",
           },
           {
@@ -274,6 +446,8 @@ describe("jobs http integration", () => {
       )(await createSiteResponse.json());
       expect(createdSite).toMatchObject({
         name: "Docklands Campus",
+        serviceAreaId: createdServiceArea.id,
+        serviceAreaName: "Dublin",
       });
 
       const siteOptionsAfterSiteResponse = await api.handler(
@@ -290,6 +464,30 @@ describe("jobs http integration", () => {
           id: createdSite.id,
           name: "Docklands Campus",
         })
+      );
+      expect(siteOptionsAfterSite.serviceAreas).toContainEqual({
+        id: createdServiceArea.id,
+        name: "Dublin",
+      });
+      expect(JSON.stringify(siteOptionsAfterSite.serviceAreas)).not.toContain(
+        "description"
+      );
+
+      const memberOptionsAfterSiteResponse = await api.handler(
+        makeRequest("/jobs/options", {
+          cookieJar: memberCookieJar,
+        })
+      );
+      expect(memberOptionsAfterSiteResponse.status).toBe(200);
+      const memberOptionsAfterSite = ParseResult.decodeUnknownSync(
+        JobOptionsResponseSchema
+      )(await memberOptionsAfterSiteResponse.json());
+      expect(memberOptionsAfterSite.serviceAreas).toContainEqual({
+        id: createdServiceArea.id,
+        name: "Dublin",
+      });
+      expect(JSON.stringify(memberOptionsAfterSite.serviceAreas)).not.toContain(
+        "description"
       );
 
       const invalidSitePayloadResponse = await api.handler(
@@ -308,7 +506,7 @@ describe("jobs http integration", () => {
       );
       expect(invalidSitePayloadResponse.status).toBe(400);
 
-      const missingRegionResponse = await api.handler(
+      const missingAreaResponse = await api.handler(
         makeJsonRequest(
           "/sites",
           {
@@ -316,17 +514,17 @@ describe("jobs http integration", () => {
             country: "IE",
             county: "Dublin",
             eircode: "D01 X2X2",
-            name: "Missing Region Site",
-            regionId: "55555555-5555-4555-8555-555555555555",
+            name: "Missing Area Site",
+            serviceAreaId: "55555555-5555-4555-8555-555555555555",
           },
           {
             cookieJar: ownerCookieJar,
           }
         )
       );
-      expect(missingRegionResponse.status).toBe(404);
-      await expect(missingRegionResponse.json()).resolves.toMatchObject({
-        _tag: REGION_NOT_FOUND_ERROR_TAG,
+      expect(missingAreaResponse.status).toBe(404);
+      await expect(missingAreaResponse.json()).resolves.toMatchObject({
+        _tag: SERVICE_AREA_NOT_FOUND_ERROR_TAG,
       });
 
       const memberCreateSiteResponse = await api.handler(

@@ -66,7 +66,7 @@ describe("jobs route loader", () => {
       const options = {
         contacts: [],
         members: [],
-        regions: [],
+        serviceAreas: [],
         sites: [],
       };
 
@@ -124,7 +124,7 @@ describe("jobs route loader", () => {
         options: {
           contacts: [],
           members: [],
-          regions: [],
+          serviceAreas: [],
           sites: [],
         },
         viewer: {
@@ -185,7 +185,7 @@ describe("jobs route loader", () => {
           options={{
             contacts: [],
             members: [],
-            regions: [],
+            serviceAreas: [],
             sites: [],
           }}
           viewer={{
@@ -236,7 +236,7 @@ describe("jobs route loader", () => {
           options={{
             contacts: [],
             members: [],
-            regions: [],
+            serviceAreas: [],
             sites: [],
           }}
           viewer={{

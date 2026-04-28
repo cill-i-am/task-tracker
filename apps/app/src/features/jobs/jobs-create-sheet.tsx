@@ -30,7 +30,7 @@ import type {
   CreateJobInput,
   JobPriority,
   JobContactOption,
-  JobRegionOption,
+  ServiceAreaOption,
   JobSiteOption,
   SiteIdType,
 } from "@task-tracker/jobs-core";
@@ -74,7 +74,7 @@ import { AuthFormField } from "#/features/auth/auth-form-field";
 import {
   SiteCreateFields,
   buildCreateSiteInputFromDraft,
-  buildSiteRegionSelectionGroups,
+  buildSiteServiceAreaSelectionGroups,
   defaultSiteCreateDraft,
   hasSiteCreateFieldErrors,
   toOptionalTrimmedString,
@@ -191,8 +191,8 @@ export function JobsCreateSheet() {
       : resolveSelectedOptionId(options.sites, values.siteSelection);
   const contactGroups = deriveContactsForSite(options.contacts, selectedSiteId);
   const prioritySelectionGroups = buildPrioritySelectionGroups();
-  const siteRegionSelectionGroups = buildSiteRegionSelectionGroups(
-    options.regions
+  const siteServiceAreaSelectionGroups = buildSiteServiceAreaSelectionGroups(
+    options.serviceAreas
   );
   const siteSelectionGroups = buildSiteSelectionGroups(options.sites);
   const contactSelectionGroups = buildContactSelectionGroups(contactGroups);
@@ -250,7 +250,7 @@ export function JobsCreateSheet() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const nextErrors = validate(values, options.regions);
+    const nextErrors = validate(values, options.serviceAreas);
     setFieldErrors(nextErrors);
 
     if (hasFieldErrors(nextErrors)) {
@@ -284,7 +284,11 @@ export function JobsCreateSheet() {
       return;
     }
 
-    const payload = buildCreateJobInput(values, selectionIds, options.regions);
+    const payload = buildCreateJobInput(
+      values,
+      selectionIds,
+      options.serviceAreas
+    );
     const exit = await createJob(payload);
 
     if (Exit.isSuccess(exit)) {
@@ -616,26 +620,26 @@ export function JobsCreateSheet() {
               draft={values.siteDraft}
               errors={fieldErrors.site ?? {}}
               idPrefix="new-site"
-              regionGroups={siteRegionSelectionGroups}
+              serviceAreaGroups={siteServiceAreaSelectionGroups}
               onDraftChange={(siteDraft) =>
                 setValues((current) => ({
                   ...current,
                   siteDraft,
                 }))
               }
-              onRegionSelectionChange={(nextValue) => {
+              onServiceAreaSelectionChange={(nextValue) => {
                 setFieldErrors((current) => ({
                   ...current,
                   site: {
                     ...current.site,
-                    regionSelection: undefined,
+                    serviceAreaSelection: undefined,
                   },
                 }));
                 setValues((current) => ({
                   ...current,
                   siteDraft: {
                     ...current.siteDraft,
-                    regionSelection: nextValue,
+                    serviceAreaSelection: nextValue,
                   },
                 }));
               }}
@@ -969,12 +973,12 @@ function buildContactSelectionGroups(
 
 function validate(
   values: JobsCreateFormState,
-  regions: readonly JobRegionOption[]
+  serviceAreas: readonly ServiceAreaOption[]
 ): JobsCreateFieldErrors {
   const validateInlineSite = values.siteSelection === INLINE_CREATE_VALUE;
   const validateInlineContact = values.contactSelection === INLINE_CREATE_VALUE;
   const siteErrors = validateInlineSite
-    ? validateSiteCreateDraft(values.siteDraft, regions, {
+    ? validateSiteCreateDraft(values.siteDraft, serviceAreas, {
         nameRequiredMessage: "Add the site name or pick an existing site.",
       })
     : undefined;
@@ -1089,13 +1093,13 @@ function isHandledCreateJobError(error: unknown) {
 function buildCreateJobInput(
   values: JobsCreateFormState,
   selectionIds: JobsCreateSelectionIds,
-  regions: readonly JobRegionOption[]
+  serviceAreas: readonly ServiceAreaOption[]
 ): CreateJobInput {
   return {
     contact: resolveCreateJobContactInput(values, selectionIds),
     externalReference: toOptionalTrimmedString(values.externalReference),
     priority: values.priority === "none" ? undefined : values.priority,
-    site: resolveCreateJobSiteInput(values, selectionIds, regions),
+    site: resolveCreateJobSiteInput(values, selectionIds, serviceAreas),
     title: values.title.trim(),
   };
 }
@@ -1136,7 +1140,7 @@ function resolveCreateJobContactInput(
 function resolveCreateJobSiteInput(
   values: JobsCreateFormState,
   selectionIds: JobsCreateSelectionIds,
-  regions: readonly JobRegionOption[]
+  serviceAreas: readonly ServiceAreaOption[]
 ): CreateJobInput["site"] {
   if (values.siteSelection === NONE_VALUE) {
     return undefined;
@@ -1145,7 +1149,7 @@ function resolveCreateJobSiteInput(
   if (values.siteSelection === INLINE_CREATE_VALUE) {
     return {
       kind: "create",
-      input: buildCreateSiteInputFromDraft(values.siteDraft, regions),
+      input: buildCreateSiteInputFromDraft(values.siteDraft, serviceAreas),
     };
   }
 
