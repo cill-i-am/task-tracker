@@ -6,6 +6,7 @@ import type {
   CreateJobInput,
   CreateJobResponse,
   JobContactOption,
+  JobLabelIdType,
   JobListCursorType,
   JobListQuery,
   JobListItem,
@@ -28,6 +29,7 @@ export type JobsStatusFilter = "active" | "all" | JobStatus;
 export interface JobsListFilters {
   readonly assigneeId: UserIdType | "all";
   readonly coordinatorId: UserIdType | "all";
+  readonly labelId: JobLabelIdType | "all";
   readonly priority: JobPriority | "all";
   readonly query: string;
   readonly regionId: RegionIdType | "all";
@@ -53,6 +55,7 @@ export interface JobsNotice {
 
 export const emptyJobOptions: JobOptionsResponse = {
   contacts: [],
+  labels: [],
   members: [],
   regions: [],
   sites: [],
@@ -61,6 +64,7 @@ export const emptyJobOptions: JobOptionsResponse = {
 export const defaultJobsListFilters: JobsListFilters = {
   assigneeId: "all",
   coordinatorId: "all",
+  labelId: "all",
   priority: "all",
   query: "",
   regionId: "all",
@@ -95,6 +99,7 @@ export const jobsLookupAtom = Atom.make((get) => {
       options.contacts.map((contact) => [contact.id, contact])
     ),
     memberById: new Map(options.members.map((member) => [member.id, member])),
+    labelById: new Map(options.labels.map((label) => [label.id, label])),
     regionById: new Map(options.regions.map((region) => [region.id, region])),
     siteById: new Map(options.sites.map((site) => [site.id, site])),
   };
@@ -105,57 +110,7 @@ export const visibleJobsAtom = Atom.make((get) => {
   const filters = get(jobsListFiltersAtom);
   const { siteById } = get(jobsLookupAtom);
 
-  return items.filter((item) => {
-    if (!matchesStatusFilter(item.status, filters.status)) {
-      return false;
-    }
-
-    if (
-      filters.assigneeId !== "all" &&
-      item.assigneeId !== filters.assigneeId
-    ) {
-      return false;
-    }
-
-    if (
-      filters.coordinatorId !== "all" &&
-      item.coordinatorId !== filters.coordinatorId
-    ) {
-      return false;
-    }
-
-    if (filters.priority !== "all" && item.priority !== filters.priority) {
-      return false;
-    }
-
-    if (filters.siteId !== "all" && item.siteId !== filters.siteId) {
-      return false;
-    }
-
-    if (filters.query.trim().length > 0) {
-      const siteName =
-        item.siteId === undefined ? undefined : siteById.get(item.siteId)?.name;
-      const searchable =
-        `${item.title} ${item.kind} ${siteName ?? ""}`.toLowerCase();
-
-      if (!searchable.includes(filters.query.trim().toLowerCase())) {
-        return false;
-      }
-    }
-
-    if (filters.regionId !== "all") {
-      const regionId =
-        item.siteId === undefined
-          ? undefined
-          : siteById.get(item.siteId)?.regionId;
-
-      if (regionId !== filters.regionId) {
-        return false;
-      }
-    }
-
-    return true;
-  });
+  return items.filter((item) => matchesJobListFilters(item, filters, siteById));
 }).pipe(Atom.keepAlive);
 
 export const jobsSummaryAtom = Atom.make((get) => {
@@ -392,6 +347,89 @@ function matchesStatusFilter(status: JobStatus, filter: JobsStatusFilter) {
   return status === filter;
 }
 
+function matchesJobListFilters(
+  item: JobListItem,
+  filters: JobsListFilters,
+  siteById: ReadonlyMap<
+    SiteIdType,
+    { readonly name: string; readonly regionId?: RegionIdType | undefined }
+  >
+) {
+  return (
+    matchesStatusFilter(item.status, filters.status) &&
+    matchesAssigneeFilter(item, filters) &&
+    matchesCoordinatorFilter(item, filters) &&
+    matchesPriorityFilter(item, filters) &&
+    matchesLabelFilter(item, filters) &&
+    matchesSiteFilter(item, filters) &&
+    matchesQueryFilter(item, filters.query, siteById) &&
+    matchesRegionFilter(item, filters.regionId, siteById)
+  );
+}
+
+function matchesAssigneeFilter(item: JobListItem, filters: JobsListFilters) {
+  return filters.assigneeId === "all" || item.assigneeId === filters.assigneeId;
+}
+
+function matchesCoordinatorFilter(item: JobListItem, filters: JobsListFilters) {
+  return (
+    filters.coordinatorId === "all" ||
+    item.coordinatorId === filters.coordinatorId
+  );
+}
+
+function matchesPriorityFilter(item: JobListItem, filters: JobsListFilters) {
+  return filters.priority === "all" || item.priority === filters.priority;
+}
+
+function matchesLabelFilter(item: JobListItem, filters: JobsListFilters) {
+  return (
+    filters.labelId === "all" ||
+    item.labels.some((label) => label.id === filters.labelId)
+  );
+}
+
+function matchesSiteFilter(item: JobListItem, filters: JobsListFilters) {
+  return filters.siteId === "all" || item.siteId === filters.siteId;
+}
+
+function matchesQueryFilter(
+  item: JobListItem,
+  query: string,
+  siteById: ReadonlyMap<SiteIdType, { readonly name: string }>
+) {
+  const trimmedQuery = query.trim().toLowerCase();
+
+  if (trimmedQuery.length === 0) {
+    return true;
+  }
+
+  const siteName =
+    item.siteId === undefined ? undefined : siteById.get(item.siteId)?.name;
+  const searchable =
+    `${item.title} ${item.kind} ${siteName ?? ""}`.toLowerCase();
+
+  return searchable.includes(trimmedQuery);
+}
+
+function matchesRegionFilter(
+  item: JobListItem,
+  regionId: JobsListFilters["regionId"],
+  siteById: ReadonlyMap<
+    SiteIdType,
+    { readonly regionId?: RegionIdType | undefined }
+  >
+) {
+  if (regionId === "all") {
+    return true;
+  }
+
+  const itemRegionId =
+    item.siteId === undefined ? undefined : siteById.get(item.siteId)?.regionId;
+
+  return itemRegionId === regionId;
+}
+
 type JobListItemSource = Pick<
   Job | CreateJobResponse,
   | "assigneeId"
@@ -400,6 +438,7 @@ type JobListItemSource = Pick<
   | "createdAt"
   | "id"
   | "kind"
+  | "labels"
   | "priority"
   | "siteId"
   | "status"
@@ -415,6 +454,7 @@ export function toJobListItem(job: JobListItemSource): JobListItem {
     createdAt: job.createdAt,
     id: job.id,
     kind: job.kind,
+    labels: job.labels,
     priority: job.priority,
     siteId: job.siteId,
     status: job.status,

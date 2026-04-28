@@ -82,6 +82,7 @@ describe("sites route loader", () => {
       await expect(loadSitesRouteData()).resolves.toStrictEqual({
         options: {
           contacts: [],
+          labels: [],
           members: [],
           regions: [],
           sites: [],
@@ -110,6 +111,7 @@ describe("sites route loader", () => {
           activeOrganizationId={organizationId}
           options={{
             contacts: [],
+            labels: [],
             members: [],
             regions: [],
             sites: [

@@ -342,6 +342,7 @@ function renderDetailSheet() {
                 createdAt: "2026-04-23T10:00:00.000Z",
                 id: workItemId,
                 kind: "job",
+                labels: [],
                 priority: "medium",
                 siteId,
                 status: "in_progress",
@@ -362,6 +363,7 @@ function renderDetailSheet() {
                 siteIds: [siteId],
               },
             ],
+            labels: [],
             members: [
               {
                 id: actorUserId,
@@ -451,6 +453,7 @@ function buildDetail(): JobDetailResponse {
       createdByUserId: actorUserId,
       id: workItemId,
       kind: "job",
+      labels: [],
       priority: "medium",
       siteId,
       status: "in_progress",

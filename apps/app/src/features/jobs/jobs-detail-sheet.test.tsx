@@ -668,6 +668,7 @@ function buildDetail(overrides?: {
       createdByUserId: actorUserId,
       id: workItemId,
       kind: "job" as const,
+      labels: [],
       priority: "medium" as const,
       siteId: overrides && "siteId" in overrides ? overrides.siteId : siteId,
       status,

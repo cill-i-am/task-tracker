@@ -270,6 +270,7 @@ function renderCreateSheet() {
                 createdAt: "2026-04-23T11:00:00.000Z",
                 id: existingJobId,
                 kind: "job",
+                labels: [],
                 priority: "none",
                 status: "new",
                 title: "Existing queue job",
@@ -289,6 +290,7 @@ function renderCreateSheet() {
                 siteIds: [depotSiteId],
               },
             ],
+            labels: [],
             members: [],
             regions: [],
             sites: [
@@ -350,6 +352,7 @@ function buildCreatedJob(title: string): CreateJobResponse {
     createdByUserId: "user_123" as UserIdType,
     id: "44444444-4444-4444-8444-444444444444" as WorkItemIdType,
     kind: "job",
+    labels: [],
     priority: "none",
     status: "new",
     title,

@@ -152,6 +152,7 @@ describe("job detail route", () => {
                 createdAt: "2026-04-23T10:00:00.000Z",
                 id: workItemId,
                 kind: "job",
+                labels: [],
                 priority: "medium",
                 siteId,
                 status: "in_progress",
@@ -169,6 +170,7 @@ describe("job detail route", () => {
                 siteIds: [siteId],
               },
             ],
+            labels: [],
             members: [
               {
                 id: actorUserId,
@@ -258,6 +260,7 @@ function buildDetail() {
       createdByUserId: actorUserId,
       id: workItemId,
       kind: "job" as const,
+      labels: [],
       priority: "medium" as const,
       siteId,
       status: "in_progress" as const,

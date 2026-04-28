@@ -15,7 +15,11 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import type { JobListItem, JobPriority } from "@task-tracker/jobs-core";
+import type {
+  JobLabel,
+  JobListItem,
+  JobPriority,
+} from "@task-tracker/jobs-core";
 import * as React from "react";
 
 import {
@@ -383,6 +387,7 @@ function JobsCommandToolbar({
   readonly onClearFilters: () => void;
   readonly onFiltersChange: (patch: Partial<JobsListFilters>) => void;
   readonly optionsState: {
+    readonly labels: readonly { readonly id: string; readonly name: string }[];
     readonly members: readonly { readonly id: string; readonly name: string }[];
     readonly regions: readonly { readonly id: string; readonly name: string }[];
     readonly sites: readonly {
@@ -447,6 +452,22 @@ function JobsCommandToolbar({
             onValueChange={(value) =>
               onFiltersChange({
                 priority: value as JobsListFilters["priority"],
+              })
+            }
+          />
+          <CommandFilter
+            label="Label"
+            value={filters.labelId}
+            options={[
+              { label: "All labels", value: "all" },
+              ...optionsState.labels.map((label) => ({
+                label: label.name,
+                value: label.id,
+              })),
+            ]}
+            onValueChange={(value) =>
+              onFiltersChange({
+                labelId: value as JobsListFilters["labelId"],
               })
             }
           />
@@ -756,6 +777,7 @@ function JobIssueTableRow({
             <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
           </span>
           <span className="min-w-0 truncate font-medium">{job.title}</span>
+          <JobLabelBadges labels={job.labels} />
           {site && hasSiteCoordinates(site) ? (
             <HugeiconsIcon
               icon={Location01Icon}
@@ -816,6 +838,7 @@ function JobIssueRow({
           <span className="truncate font-medium">{job.title}</span>
           <StatusBadge status={job.status} />
           <PriorityBadge priority={job.priority} />
+          <JobLabelBadges labels={job.labels} />
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>{site?.name ?? "No site"}</span>
@@ -913,6 +936,26 @@ function PriorityBadge({ priority }: { readonly priority: JobPriority }) {
   );
 }
 
+function JobLabelBadges({ labels }: { readonly labels: readonly JobLabel[] }) {
+  if (labels.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {labels.map((label) => (
+        <Badge
+          key={label.id}
+          variant="outline"
+          className="max-w-32 rounded-full text-muted-foreground"
+        >
+          <span className="truncate">{label.name}</span>
+        </Badge>
+      ))}
+    </>
+  );
+}
+
 function formatRelativeDate(value: string) {
   const date = new Date(value);
   const formatter = new Intl.DateTimeFormat("en", {
@@ -932,65 +975,125 @@ interface ActiveFilterBadge {
 function buildActiveFilterBadges(
   filters: JobsListFilters,
   lookup: {
+    readonly labelById: ReadonlyMap<string, { readonly name: string }>;
     readonly memberById: ReadonlyMap<string, { readonly name: string }>;
     readonly regionById: ReadonlyMap<string, { readonly name: string }>;
     readonly siteById: ReadonlyMap<string, { readonly name: string }>;
   }
 ): readonly ActiveFilterBadge[] {
-  const badges: ActiveFilterBadge[] = [];
+  return [
+    buildQueryFilterBadge(filters),
+    buildStatusFilterBadge(filters),
+    buildAssigneeFilterBadge(filters, lookup.memberById),
+    buildCoordinatorFilterBadge(filters, lookup.memberById),
+    buildPriorityFilterBadge(filters),
+    buildLabelFilterBadge(filters, lookup.labelById),
+    buildRegionFilterBadge(filters, lookup.regionById),
+    buildSiteFilterBadge(filters, lookup.siteById),
+  ].filter(isActiveFilterBadge);
+}
 
-  if (filters.query.trim().length > 0) {
-    badges.push({ key: "query", label: `Search: ${filters.query.trim()}` });
+function buildQueryFilterBadge(
+  filters: JobsListFilters
+): ActiveFilterBadge | undefined {
+  const query = filters.query.trim();
+
+  return query.length > 0
+    ? { key: "query", label: `Search: ${query}` }
+    : undefined;
+}
+
+function buildStatusFilterBadge(
+  filters: JobsListFilters
+): ActiveFilterBadge | undefined {
+  if (filters.status === defaultJobsListFilters.status) {
+    return undefined;
   }
 
-  if (filters.status !== defaultJobsListFilters.status) {
-    const selectedStatus = STATUS_FILTER_OPTIONS.find(
-      (option) => option.value === filters.status
-    );
+  const selectedStatus = STATUS_FILTER_OPTIONS.find(
+    (option) => option.value === filters.status
+  );
 
-    badges.push({
-      key: "status",
-      label: `Status: ${selectedStatus?.label ?? filters.status}`,
-    });
-  }
+  return {
+    key: "status",
+    label: `Status: ${selectedStatus?.label ?? filters.status}`,
+  };
+}
 
-  if (filters.assigneeId !== defaultJobsListFilters.assigneeId) {
-    badges.push({
-      key: "assigneeId",
-      label: `Assignee: ${lookup.memberById.get(filters.assigneeId)?.name ?? "Unknown"}`,
-    });
-  }
+function buildAssigneeFilterBadge(
+  filters: JobsListFilters,
+  memberById: ReadonlyMap<string, { readonly name: string }>
+): ActiveFilterBadge | undefined {
+  return filters.assigneeId === defaultJobsListFilters.assigneeId
+    ? undefined
+    : {
+        key: "assigneeId",
+        label: `Assignee: ${memberById.get(filters.assigneeId)?.name ?? "Unknown"}`,
+      };
+}
 
-  if (filters.coordinatorId !== defaultJobsListFilters.coordinatorId) {
-    badges.push({
-      key: "coordinatorId",
-      label: `Coordinator: ${lookup.memberById.get(filters.coordinatorId)?.name ?? "Unknown"}`,
-    });
-  }
+function buildCoordinatorFilterBadge(
+  filters: JobsListFilters,
+  memberById: ReadonlyMap<string, { readonly name: string }>
+): ActiveFilterBadge | undefined {
+  return filters.coordinatorId === defaultJobsListFilters.coordinatorId
+    ? undefined
+    : {
+        key: "coordinatorId",
+        label: `Coordinator: ${memberById.get(filters.coordinatorId)?.name ?? "Unknown"}`,
+      };
+}
 
-  if (
-    filters.priority !== defaultJobsListFilters.priority &&
-    filters.priority !== "all"
-  ) {
-    badges.push({
-      key: "priority",
-      label: `Priority: ${PRIORITY_LABELS[filters.priority] ?? "Unknown"}`,
-    });
-  }
+function buildPriorityFilterBadge(
+  filters: JobsListFilters
+): ActiveFilterBadge | undefined {
+  return filters.priority === defaultJobsListFilters.priority ||
+    filters.priority === "all"
+    ? undefined
+    : {
+        key: "priority",
+        label: `Priority: ${PRIORITY_LABELS[filters.priority] ?? "Unknown"}`,
+      };
+}
 
-  if (filters.regionId !== defaultJobsListFilters.regionId) {
-    badges.push({
-      key: "regionId",
-      label: `Region: ${lookup.regionById.get(filters.regionId)?.name ?? "Unknown"}`,
-    });
-  }
+function buildLabelFilterBadge(
+  filters: JobsListFilters,
+  labelById: ReadonlyMap<string, { readonly name: string }>
+): ActiveFilterBadge | undefined {
+  return filters.labelId === defaultJobsListFilters.labelId
+    ? undefined
+    : {
+        key: "labelId",
+        label: `Label: ${labelById.get(filters.labelId)?.name ?? "Unknown"}`,
+      };
+}
 
-  if (filters.siteId !== defaultJobsListFilters.siteId) {
-    badges.push({
-      key: "siteId",
-      label: `Site: ${lookup.siteById.get(filters.siteId)?.name ?? "Unknown"}`,
-    });
-  }
+function buildRegionFilterBadge(
+  filters: JobsListFilters,
+  regionById: ReadonlyMap<string, { readonly name: string }>
+): ActiveFilterBadge | undefined {
+  return filters.regionId === defaultJobsListFilters.regionId
+    ? undefined
+    : {
+        key: "regionId",
+        label: `Region: ${regionById.get(filters.regionId)?.name ?? "Unknown"}`,
+      };
+}
 
-  return badges;
+function buildSiteFilterBadge(
+  filters: JobsListFilters,
+  siteById: ReadonlyMap<string, { readonly name: string }>
+): ActiveFilterBadge | undefined {
+  return filters.siteId === defaultJobsListFilters.siteId
+    ? undefined
+    : {
+        key: "siteId",
+        label: `Site: ${siteById.get(filters.siteId)?.name ?? "Unknown"}`,
+      };
+}
+
+function isActiveFilterBadge(
+  badge: ActiveFilterBadge | undefined
+): badge is ActiveFilterBadge {
+  return badge !== undefined;
 }

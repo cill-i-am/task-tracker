@@ -29,6 +29,7 @@ const listResponse: JobListResponse = {
     {
       id: "11111111-1111-4111-8111-111111111111" as WorkItemIdType,
       kind: "job",
+      labels: [],
       title: "Inspect boiler",
       status: "new",
       priority: "none",
@@ -40,6 +41,7 @@ const listResponse: JobListResponse = {
 
 const optionsResponse: JobOptionsResponse = {
   contacts: [],
+  labels: [],
   members: [
     {
       id: "22222222-2222-4222-8222-222222222222" as UserIdType,
@@ -114,6 +116,7 @@ describe("server jobs helpers", () => {
         {
           id: "22222222-2222-4222-8222-222222222222" as WorkItemIdType,
           kind: "job",
+          labels: [],
           title: "Replace air valve",
           status: "triaged",
           priority: "high",

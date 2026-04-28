@@ -64,6 +64,7 @@ describe("jobs route loader", () => {
       };
       const options = {
         contacts: [],
+        labels: [],
         members: [],
         regions: [],
         sites: [],
@@ -127,6 +128,7 @@ describe("jobs route loader", () => {
         },
         options: {
           contacts: [],
+          labels: [],
           members: [],
           regions: [],
           sites: [],
@@ -178,6 +180,7 @@ describe("jobs route loader", () => {
                 createdAt: "2026-04-23T11:00:00.000Z",
                 id: "11111111-1111-4111-8111-111111111111" as WorkItemIdType,
                 kind: "job",
+                labels: [],
                 priority: "none",
                 status: "new",
                 title: "Inspect boiler",
@@ -188,6 +191,7 @@ describe("jobs route loader", () => {
           }}
           options={{
             contacts: [],
+            labels: [],
             members: [],
             regions: [],
             sites: [],
@@ -228,6 +232,7 @@ describe("jobs route loader", () => {
                 createdAt: "2026-04-23T11:00:00.000Z",
                 id: "11111111-1111-4111-8111-111111111111" as WorkItemIdType,
                 kind: "job",
+                labels: [],
                 priority: "none",
                 status: "new",
                 title: "Inspect boiler",
@@ -239,6 +244,7 @@ describe("jobs route loader", () => {
           listHotkeysEnabled
           options={{
             contacts: [],
+            labels: [],
             members: [],
             regions: [],
             sites: [],
