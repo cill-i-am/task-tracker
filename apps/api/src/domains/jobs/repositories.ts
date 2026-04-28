@@ -8,6 +8,7 @@ import {
   JobActivityPayloadSchema,
   JobActivitySchema,
   JobCommentSchema,
+  JobCostLineSchema,
   JobContactOptionSchema,
   JobDetailSchema,
   JobListCursor as JobListCursorSchema,
@@ -26,6 +27,8 @@ import {
   SiteNotFoundError,
   SiteId as SiteIdSchema,
   WorkItemId as WorkItemIdSchema,
+  calculateJobCostLineTotalMinor,
+  calculateJobCostSummary,
 } from "@task-tracker/jobs-core";
 import type {
   ContactIdType as ContactId,
@@ -33,6 +36,8 @@ import type {
   JobActivity,
   JobActivityPayload,
   JobComment,
+  JobCostLine,
+  JobCostLineType,
   JobContactOption,
   JobDetail,
   JobKind,
@@ -61,6 +66,7 @@ import {
   generateActivityId,
   generateCommentId,
   generateContactId,
+  generateCostLineId,
   generateSiteId,
   generateVisitId,
   generateWorkItemId,
@@ -116,6 +122,19 @@ interface WorkItemVisitRow {
   readonly note: string;
   readonly organization_id: string;
   readonly visit_date: Date | string;
+  readonly work_item_id: string;
+}
+
+interface WorkItemCostLineRow {
+  readonly author_user_id: string;
+  readonly created_at: Date;
+  readonly description: string;
+  readonly id: string;
+  readonly organization_id: string;
+  readonly quantity: string;
+  readonly tax_rate_basis_points: number | null;
+  readonly type: string;
+  readonly unit_price_minor: number;
   readonly work_item_id: string;
 }
 
@@ -212,6 +231,17 @@ export interface AddJobVisitRecordInput {
   readonly workItemId: WorkItemId;
 }
 
+export interface AddJobCostLineRecordInput {
+  readonly authorUserId: UserId;
+  readonly description: string;
+  readonly organizationId: OrganizationId;
+  readonly quantity: number;
+  readonly taxRateBasisPoints?: number;
+  readonly type: JobCostLineType;
+  readonly unitPriceMinor: number;
+  readonly workItemId: WorkItemId;
+}
+
 export interface CreateSiteRecordInput {
   readonly accessNotes?: string;
   readonly addressLine1: string;
@@ -268,6 +298,7 @@ const decodeJobActivityPayload = Schema.decodeUnknownSync(
 const decodeContactId = Schema.decodeUnknownSync(ContactIdSchema);
 const decodeOrganizationId = Schema.decodeUnknownSync(OrganizationIdSchema);
 const decodeJobComment = Schema.decodeUnknownSync(JobCommentSchema);
+const decodeJobCostLine = Schema.decodeUnknownSync(JobCostLineSchema);
 const decodeJobDetail = Schema.decodeUnknownSync(JobDetailSchema);
 const decodeJobListCursor = Schema.decodeUnknownSync(JobListCursorSchema);
 const decodeJobListItem = Schema.decodeUnknownSync(JobListItemSchema);
@@ -611,7 +642,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           return Option.none<JobDetail>();
         }
 
-        const [comments, activity, visits] = yield* Effect.all([
+        const [comments, activity, visits, costLines] = yield* Effect.all([
           sql<WorkItemCommentRow>`
             select *
             from work_item_comments
@@ -630,16 +661,22 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             where work_item_id = ${workItemId}
             order by visit_date desc, id desc
           `,
+          sql<WorkItemCostLineRow>`
+            select *
+            from work_item_cost_lines
+            where work_item_id = ${workItemId}
+            order by created_at desc, id desc
+          `,
         ]);
+
+        const mappedCostLines = costLines.map(mapJobCostLineRow);
 
         return Option.some(
           decodeJobDetail({
             activity: activity.map(mapJobActivityRow),
             comments: comments.map(mapJobCommentRow),
-            costLines: [],
-            costSummary: {
-              subtotalMinor: 0,
-            },
+            costLines: mappedCostLines,
+            costSummary: calculateJobCostSummary(mappedCostLines),
             job,
             visits: visits.map(mapJobVisitRow),
           })
@@ -925,9 +962,46 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
         return mapJobVisitRow(getRequiredRow(rows, "inserted work item visit"));
       });
 
+      const addCostLine = Effect.fn("JobsRepository.addCostLine")(function* (
+        input: AddJobCostLineRecordInput
+      ) {
+        yield* ensureWorkItemOrganizationMatches(
+          input.organizationId,
+          input.workItemId
+        );
+        yield* ensureOrganizationMember(
+          input.organizationId,
+          input.authorUserId,
+          {
+            forUpdate: true,
+          }
+        );
+
+        const rows = yield* sql<WorkItemCostLineRow>`
+          insert into work_item_cost_lines ${sql
+            .insert({
+              author_user_id: input.authorUserId,
+              description: input.description,
+              id: generateCostLineId(),
+              organization_id: input.organizationId,
+              quantity: input.quantity.toFixed(2),
+              tax_rate_basis_points: input.taxRateBasisPoints ?? null,
+              type: input.type,
+              unit_price_minor: input.unitPriceMinor,
+              work_item_id: input.workItemId,
+            })
+            .returning("*")}
+        `;
+
+        return mapJobCostLineRow(
+          getRequiredRow(rows, "inserted work item cost line")
+        );
+      });
+
       return {
         addActivity,
         addComment,
+        addCostLine,
         addVisit,
         create,
         findById,
@@ -1477,6 +1551,27 @@ function mapJobVisitRow(row: WorkItemVisitRow): JobVisit {
     id: row.id,
     note: row.note,
     visitDate: formatPgDate(row.visit_date),
+    workItemId: row.work_item_id,
+  });
+}
+
+function mapJobCostLineRow(row: WorkItemCostLineRow): JobCostLine {
+  const quantity = Number(row.quantity);
+  const unitPriceMinor = row.unit_price_minor;
+
+  return decodeJobCostLine({
+    authorUserId: row.author_user_id,
+    createdAt: row.created_at.toISOString(),
+    description: row.description,
+    id: row.id,
+    lineTotalMinor: calculateJobCostLineTotalMinor({
+      quantity,
+      unitPriceMinor,
+    }),
+    quantity,
+    taxRateBasisPoints: nullableToUndefined(row.tax_rate_basis_points),
+    type: row.type,
+    unitPriceMinor,
     workItemId: row.work_item_id,
   });
 }

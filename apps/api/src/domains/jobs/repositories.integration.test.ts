@@ -167,6 +167,16 @@ describe("jobs repositories integration", () => {
             visitDate: "2026-04-21",
             workItemId: job.id,
           });
+          yield* JobsRepository.addCostLine({
+            authorUserId: identity.ownerUserId,
+            description: "Replacement seal kit",
+            organizationId: identity.organizationId,
+            quantity: 2,
+            taxRateBasisPoints: 2300,
+            type: "material",
+            unitPriceMinor: 2599,
+            workItemId: job.id,
+          });
 
           return job;
         })
@@ -191,6 +201,18 @@ describe("jobs repositories integration", () => {
     expect(detailValue.visits).toHaveLength(1);
     expect(detailValue.visits[0]?.visitDate).toBe("2026-04-21");
     expect(detailValue.visits[0]?.durationMinutes).toBe(120);
+    expect(detailValue.costLines).toHaveLength(1);
+    expect(detailValue.costLines[0]).toMatchObject({
+      description: "Replacement seal kit",
+      lineTotalMinor: 5198,
+      quantity: 2,
+      taxRateBasisPoints: 2300,
+      type: "material",
+      unitPriceMinor: 2599,
+    });
+    expect(detailValue.costSummary).toStrictEqual({
+      subtotalMinor: 5198,
+    });
 
     const siteOptions = await runJobsEffect(
       databaseUrl,

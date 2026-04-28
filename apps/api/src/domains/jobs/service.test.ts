@@ -180,6 +180,8 @@ function makeHarness(
         id: decodeCommentId("77777777-7777-4777-8777-777777777777"),
         workItemId: input.workItemId,
       } satisfies JobComment),
+    addCostLine: (_input: unknown) =>
+      Effect.die(new Error("Unexpected repository call: addCostLine")),
     addVisit: (input: {
       readonly authorUserId: UserId;
       readonly durationMinutes: number;
