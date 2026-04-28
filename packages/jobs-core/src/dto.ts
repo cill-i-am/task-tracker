@@ -67,7 +67,7 @@ export type CreateServiceAreaResponse = Schema.Schema.Type<
 
 export const UpdateServiceAreaInputSchema = Schema.Struct({
   name: Schema.optional(NonEmptyTrimmedString),
-  description: Schema.optional(NonEmptyTrimmedString),
+  description: Schema.optional(Schema.NullOr(NonEmptyTrimmedString)),
 }).annotations({
   parseOptions: { onExcessProperty: "error" },
 });

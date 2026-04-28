@@ -279,7 +279,7 @@ export interface CreateServiceAreaRecordInput {
 }
 
 export interface UpdateServiceAreaRecordInput {
-  readonly description?: string;
+  readonly description?: string | null;
   readonly name?: string;
 }
 

@@ -877,6 +877,23 @@ describe("jobs repositories integration", () => {
     });
     expect(serviceAreas).toContainEqual(updatedServiceArea);
 
+    const clearedServiceArea = await runJobsEffect(
+      databaseUrl,
+      ConfigurationRepository.updateServiceArea(
+        identity.organizationId,
+        createdServiceArea.id,
+        {
+          description: null,
+        }
+      )
+    );
+
+    expect(clearedServiceArea).toMatchObject({
+      id: createdServiceArea.id,
+      name: "Dublin Central",
+    });
+    expect(clearedServiceArea.description).toBeUndefined();
+
     const createdRateCard = await runJobsEffect(
       databaseUrl,
       RateCardsRepository.create({

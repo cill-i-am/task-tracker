@@ -145,6 +145,30 @@ describe("organization service areas section", () => {
       });
     });
   });
+
+  it("clears a service area description through the jobs client group", async () => {
+    const user = userEvent.setup();
+    renderServiceAreasSection();
+
+    const area = await screen.findByRole("article", {
+      name: "Service area Dublin",
+    });
+    await user.click(within(area).getByRole("button", { name: "Edit Dublin" }));
+    await user.clear(within(area).getByLabelText("Description for Dublin"));
+    await user.click(within(area).getByRole("button", { name: "Save Dublin" }));
+
+    await waitFor(() => {
+      expect(mockedUpdateServiceArea).toHaveBeenCalledWith({
+        path: {
+          serviceAreaId,
+        },
+        payload: {
+          description: null,
+          name: "Dublin",
+        },
+      });
+    });
+  });
 });
 
 function renderServiceAreasSection() {

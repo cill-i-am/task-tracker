@@ -8,6 +8,7 @@ import {
   SERVICE_AREA_NOT_FOUND_ERROR_TAG,
   ServiceAreaListResponseSchema,
   SitesOptionsResponseSchema,
+  UpdateServiceAreaResponseSchema,
 } from "@task-tracker/jobs-core";
 import { ParseResult } from "effect";
 import type { Pool } from "pg";
@@ -286,6 +287,28 @@ describe("jobs http integration", () => {
         ServiceAreaListResponseSchema
       )(await listServiceAreasResponse.json());
       expect(serviceAreas.items).toContainEqual(createdServiceArea);
+
+      const clearServiceAreaDescriptionResponse = await api.handler(
+        makeJsonRequest(
+          `/service-areas/${createdServiceArea.id}`,
+          {
+            description: null,
+          },
+          {
+            cookieJar: ownerCookieJar,
+            method: "PATCH",
+          }
+        )
+      );
+      expect(clearServiceAreaDescriptionResponse.status).toBe(200);
+      const clearedServiceArea = ParseResult.decodeUnknownSync(
+        UpdateServiceAreaResponseSchema
+      )(await clearServiceAreaDescriptionResponse.json());
+      expect(clearedServiceArea).toMatchObject({
+        id: createdServiceArea.id,
+        name: "Dublin",
+      });
+      expect(clearedServiceArea.description).toBeUndefined();
 
       const memberCreateServiceAreaResponse = await api.handler(
         makeJsonRequest(

@@ -48,7 +48,7 @@ export function OrganizationServiceAreasSection() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const payload = buildServiceAreaPayload(values);
+    const payload = buildCreateServiceAreaPayload(values);
 
     if (!payload) {
       setNameError("Add a service area name.");
@@ -198,7 +198,7 @@ function ServiceAreaRow({
   }, [isEditing, serviceArea.description, serviceArea.name]);
 
   async function handleSave() {
-    const payload = buildServiceAreaPayload(values);
+    const payload = buildUpdateServiceAreaPayload(values);
 
     if (!payload) {
       setNameError("Add a service area name.");
@@ -305,7 +305,7 @@ function ServiceAreaRow({
   );
 }
 
-function buildServiceAreaPayload(values: ServiceAreaFormValues) {
+function buildCreateServiceAreaPayload(values: ServiceAreaFormValues) {
   const name = values.name.trim();
 
   if (!name) {
@@ -316,6 +316,21 @@ function buildServiceAreaPayload(values: ServiceAreaFormValues) {
 
   return {
     ...(description ? { description } : {}),
+    name,
+  };
+}
+
+function buildUpdateServiceAreaPayload(values: ServiceAreaFormValues) {
+  const name = values.name.trim();
+
+  if (!name) {
+    return null;
+  }
+
+  const description = values.description.trim();
+
+  return {
+    description: description || null,
     name,
   };
 }

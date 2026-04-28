@@ -30,6 +30,7 @@ import {
   SitesOptionsResponseSchema,
   SitesApiGroup,
   SiteGeocodingFailedError,
+  UpdateServiceAreaInputSchema,
   UpdateServiceAreaResponseSchema,
   UserId,
   VisitDurationIncrementError,
@@ -69,6 +70,16 @@ describe("jobs-core", () => {
         name: "",
       })
     ).toThrow(/Expected/);
+
+    expect(
+      Schema.decodeUnknownSync(UpdateServiceAreaInputSchema)({
+        description: null,
+        name: "  Retail Core  ",
+      })
+    ).toStrictEqual({
+      description: null,
+      name: "Retail Core",
+    });
   }, 5000);
 
   it("decodes rate card input contracts", () => {
