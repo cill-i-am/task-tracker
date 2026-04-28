@@ -18,6 +18,9 @@ import {
   JobsApiGroup,
   JobsContextSchema,
   JobTitleSchema,
+  OrganizationActivityCursor,
+  OrganizationActivityListResponseSchema,
+  OrganizationActivityQuerySchema,
   PatchJobInputSchema,
   SitesOptionsResponseSchema,
   SitesApiGroup,
@@ -355,6 +358,79 @@ describe("jobs-core", () => {
       note: "Half hour entry",
       durationMinutes: 30,
     });
+  }, 5000);
+
+  it("exports organization activity query and response DTOs", () => {
+    expect(
+      ParseResult.decodeUnknownSync(OrganizationActivityQuerySchema)({
+        actorUserId: "user_123",
+        cursor: "activity_cursor_1",
+        eventType: "status_changed",
+        fromDate: "2026-04-01",
+        limit: "25",
+        toDate: "2026-04-28",
+      })
+    ).toStrictEqual({
+      actorUserId: "user_123",
+      cursor: "activity_cursor_1",
+      eventType: "status_changed",
+      fromDate: "2026-04-01",
+      limit: 25,
+      toDate: "2026-04-28",
+    });
+
+    expect(
+      ParseResult.decodeUnknownSync(OrganizationActivityListResponseSchema)({
+        items: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440020",
+            workItemId: "550e8400-e29b-41d4-a716-446655440000",
+            jobTitle: "Replace boiler",
+            actor: {
+              id: "user_123",
+              name: "Ada Lovelace",
+              email: "ada@example.com",
+            },
+            eventType: "status_changed",
+            payload: {
+              eventType: "status_changed",
+              fromStatus: "new",
+              toStatus: "in_progress",
+            },
+            createdAt: "2026-04-23T11:00:00.000Z",
+          },
+        ],
+        nextCursor: "activity_cursor_2",
+      })
+    ).toStrictEqual({
+      items: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440020",
+          workItemId: "550e8400-e29b-41d4-a716-446655440000",
+          jobTitle: "Replace boiler",
+          actor: {
+            id: "user_123",
+            name: "Ada Lovelace",
+            email: "ada@example.com",
+          },
+          eventType: "status_changed",
+          payload: {
+            eventType: "status_changed",
+            fromStatus: "new",
+            toStatus: "in_progress",
+          },
+          createdAt: "2026-04-23T11:00:00.000Z",
+        },
+      ],
+      nextCursor: "activity_cursor_2",
+    });
+
+    expect(OrganizationActivityCursor).toBeDefined();
+    expect(() =>
+      ParseResult.decodeUnknownSync(OrganizationActivityQuerySchema)({
+        limit: "101",
+      })
+    ).toThrow(/lessThanOrEqualTo/);
   }, 5000);
 
   it("keeps site options rich enough for maps and links", () => {
