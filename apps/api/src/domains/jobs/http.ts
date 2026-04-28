@@ -18,6 +18,9 @@ const JobsHandlersLive = HttpApiBuilder.group(JobsApi, "jobs", (handlers) =>
       .handle("listJobs", ({ urlParams }) => jobsService.list(urlParams))
       .handle("getJobOptions", () => jobsService.getOptions())
       .handle("createJob", ({ payload }) => jobsService.create(payload))
+      .handle("listOrganizationActivity", ({ urlParams }) =>
+        jobsService.listOrganizationActivity(urlParams)
+      )
       .handle("getJobDetail", ({ path }) =>
         jobsService.getDetail(path.workItemId)
       )

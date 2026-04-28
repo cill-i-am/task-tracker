@@ -18,6 +18,7 @@ import type {
   CreateJobSiteInput,
   Job,
   JobListQuery,
+  OrganizationActivityQuery,
   OrganizationIdType as OrganizationId,
   PatchJobInput,
   SiteIdType as SiteId,
@@ -98,6 +99,17 @@ export class JobsService extends Effect.Service<JobsService>()(
           regions,
           sites,
         } as const;
+      });
+
+      const listOrganizationActivity = Effect.fn(
+        "JobsService.listOrganizationActivity"
+      )(function* (query: OrganizationActivityQuery) {
+        const actor = yield* loadActor();
+        yield* authorization.ensureCanViewOrganizationActivity(actor);
+
+        return yield* jobsRepository
+          .listOrganizationActivity(actor.organizationId, query)
+          .pipe(Effect.catchTag("SqlError", failJobsStorageError));
       });
 
       const create = Effect.fn("JobsService.create")(function* (
@@ -615,6 +627,7 @@ export class JobsService extends Effect.Service<JobsService>()(
         getDetail,
         getOptions,
         list,
+        listOrganizationActivity,
         patch,
         reopen,
         transition,
