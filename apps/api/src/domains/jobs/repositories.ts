@@ -21,6 +21,7 @@ import {
   JobVisitSchema,
   OrganizationId as OrganizationIdSchema,
   OrganizationMemberNotFoundError,
+  RATE_CARD_NOT_FOUND_ERROR_TAG,
   RateCardNotFoundError,
   RateCardSchema,
   ServiceAreaNotFoundError,
@@ -1433,7 +1434,9 @@ export class RateCardsRepository extends Effect.Service<RateCardsRepository>()(
             yield* insertRateCardLines(rateCardId, input.lines);
 
             return yield* loadRateCard(input.organizationId, rateCardId).pipe(
-              Effect.orDie
+              Effect.catchTag(RATE_CARD_NOT_FOUND_ERROR_TAG, (error) =>
+                Effect.die(error)
+              )
             );
           })
         );

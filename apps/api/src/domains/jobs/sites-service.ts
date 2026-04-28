@@ -64,7 +64,7 @@ export class SitesService extends Effect.Service<SitesService>()(
               actor.organizationId,
               input.serviceAreaId
             )
-            .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+            .pipe(Effect.catchTag("SqlError", failSitesStorageError));
         }
 
         const geocodedLocation = yield* siteGeocoder.geocode(input);
@@ -137,7 +137,7 @@ export class SitesService extends Effect.Service<SitesService>()(
               actor.organizationId,
               input.serviceAreaId
             )
-            .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+            .pipe(Effect.catchTag("SqlError", failSitesStorageError));
         }
 
         const geocodedLocation = yield* siteGeocoder.geocode(input);

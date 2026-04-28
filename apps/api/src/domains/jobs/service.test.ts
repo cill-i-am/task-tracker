@@ -1,10 +1,12 @@
 import { HttpServerRequest } from "@effect/platform";
+import { SqlError } from "@effect/sql/SqlError";
 import {
   ActivityId,
   BlockedReasonRequiredError,
   CommentId,
   JobAccessDeniedError,
   JobSchema,
+  JobStorageError,
   OrganizationMemberNotFoundError,
   ServiceAreaNotFoundError,
   VisitId,
@@ -112,6 +114,7 @@ interface JobsServiceHarnessOptions {
   readonly actor?: JobsActor;
   readonly lockedJob?: Job;
   readonly serviceAreaFailure?: ServiceAreaNotFoundError;
+  readonly serviceAreaStorageFailure?: SqlError;
   readonly transactionFailure?: OrganizationMemberNotFoundError;
 }
 
@@ -327,6 +330,10 @@ function makeHarness(
 
         if (options.serviceAreaFailure !== undefined) {
           return yield* Effect.fail(options.serviceAreaFailure);
+        }
+
+        if (options.serviceAreaStorageFailure !== undefined) {
+          return yield* Effect.fail(options.serviceAreaStorageFailure);
         }
 
         return requestedServiceAreaId;
@@ -547,6 +554,43 @@ describe("jobs service", () => {
     );
 
     expect(getFailure(exit)).toStrictEqual(failure);
+    expect(harness.calls.ensureServiceArea).toBe(1);
+    expect(harness.calls.geocode).toBe(0);
+    expect(harness.calls.createSite).toBe(0);
+    expect(harness.calls.create).toBe(0);
+    expect(harness.calls.addActivity).toBe(0);
+  }, 10_000);
+
+  it("maps inline site service area storage failures before geocoding", async () => {
+    const harness = makeHarness({
+      serviceAreaStorageFailure: new SqlError({
+        message: "database unavailable",
+      }),
+    });
+
+    const exit = await runJobsServiceExit(
+      Effect.gen(function* () {
+        const jobs = yield* JobsService;
+
+        return yield* jobs.create({
+          site: {
+            input: {
+              ...inlineSiteInput,
+              serviceAreaId,
+            },
+            kind: "create",
+          },
+          title: "Replace circulation pump",
+        });
+      }),
+      harness
+    );
+
+    expect(getFailure(exit)).toBeInstanceOf(JobStorageError);
+    expect(getFailure(exit)).toMatchObject({
+      cause: "database unavailable",
+      message: "Jobs storage operation failed",
+    });
     expect(harness.calls.ensureServiceArea).toBe(1);
     expect(harness.calls.geocode).toBe(0);
     expect(harness.calls.createSite).toBe(0);

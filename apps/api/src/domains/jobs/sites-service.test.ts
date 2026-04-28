@@ -1,6 +1,8 @@
 import { HttpServerRequest } from "@effect/platform";
+import { SqlError } from "@effect/sql/SqlError";
 import {
   JobAccessDeniedError,
+  JobStorageError,
   ServiceAreaNotFoundError,
   SiteGeocodingFailedError,
 } from "@task-tracker/jobs-core";
@@ -77,6 +79,7 @@ function makeHarness(
     readonly actor?: JobsActor;
     readonly geocodingFailure?: SiteGeocodingFailedError;
     readonly serviceAreaFailure?: ServiceAreaNotFoundError;
+    readonly serviceAreaStorageFailure?: SqlError;
   } = {}
 ): SitesServiceHarness {
   const actor = options.actor ?? makeActor("owner");
@@ -191,6 +194,10 @@ function makeHarness(
 
         if (options.serviceAreaFailure !== undefined) {
           return yield* Effect.fail(options.serviceAreaFailure);
+        }
+
+        if (options.serviceAreaStorageFailure !== undefined) {
+          return yield* Effect.fail(options.serviceAreaStorageFailure);
         }
 
         return requestedServiceAreaId;
@@ -380,6 +387,33 @@ describe("sites service", () => {
     );
 
     expect(getFailure(exit)).toStrictEqual(failure);
+    expect(harness.calls.ensureServiceArea).toBe(1);
+    expect(harness.calls.geocode).toBe(0);
+    expect(harness.calls.createSite).toBe(0);
+    expect(harness.calls.getOptionById).toBe(0);
+  }, 10_000);
+
+  it("maps service area validation storage failures before geocoding", async () => {
+    const harness = makeHarness({
+      serviceAreaStorageFailure: new SqlError({
+        message: "database unavailable",
+      }),
+    });
+
+    const exit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.create(siteInput);
+      }),
+      harness
+    );
+
+    expect(getFailure(exit)).toBeInstanceOf(JobStorageError);
+    expect(getFailure(exit)).toMatchObject({
+      cause: "database unavailable",
+      message: "Sites storage operation failed",
+    });
     expect(harness.calls.ensureServiceArea).toBe(1);
     expect(harness.calls.geocode).toBe(0);
     expect(harness.calls.createSite).toBe(0);

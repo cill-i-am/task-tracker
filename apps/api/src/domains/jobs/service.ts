@@ -117,7 +117,7 @@ export class JobsService extends Effect.Service<JobsService>()(
               actor.organizationId,
               input.site.input.serviceAreaId
             )
-            .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
+            .pipe(Effect.catchTag("SqlError", failJobsStorageError));
         }
 
         const geocodedSiteLocation =
