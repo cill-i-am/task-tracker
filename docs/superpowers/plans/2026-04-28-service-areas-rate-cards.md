@@ -214,10 +214,7 @@ const serviceAreasGroup = HttpApiGroup.make("serviceAreas")
       .addError(JobStorageError)
   )
   .add(
-    HttpApiEndpoint.patch(
-      "updateServiceArea",
-      "/service-areas/:serviceAreaId"
-    )
+    HttpApiEndpoint.patch("updateServiceArea", "/service-areas/:serviceAreaId")
       .setPath(Schema.Struct({ serviceAreaId: ServiceAreaId }))
       .setPayload(UpdateServiceAreaInputSchema)
       .addSuccess(ServiceAreaSchema)
@@ -298,7 +295,9 @@ expect(decoded.lines[1]?.kind).toBe("material_markup");
 
 expect(() =>
   Schema.decodeUnknownSync(CreateRateCardInputSchema)({
-    lines: [{ kind: "custom", name: "Bad", position: 1, unit: "hour", value: -1 }],
+    lines: [
+      { kind: "custom", name: "Bad", position: 1, unit: "hour", value: -1 },
+    ],
     name: "Standard",
   })
 ).toThrow();
@@ -339,9 +338,7 @@ export const RATE_CARD_LINE_KINDS = [
   "material_markup",
   "custom",
 ] as const;
-export const RateCardLineKindSchema = Schema.Literal(
-  ...RATE_CARD_LINE_KINDS
-);
+export const RateCardLineKindSchema = Schema.Literal(...RATE_CARD_LINE_KINDS);
 export type RateCardLineKind = Schema.Schema.Type<
   typeof RateCardLineKindSchema
 >;
@@ -427,9 +424,12 @@ In `apps/api/src/domains/jobs/schema.ts`:
 Use checks:
 
 ```ts
-check("rate_card_lines_value_non_negative_chk", sql`${table.value} >= 0`)
-check("rate_card_lines_position_positive_chk", sql`${table.position} > 0`)
-check("rate_card_lines_kind_chk", sql`${table.kind} in (${rateCardLineKindValuesSql})`)
+check("rate_card_lines_value_non_negative_chk", sql`${table.value} >= 0`);
+check("rate_card_lines_position_positive_chk", sql`${table.position} > 0`);
+check(
+  "rate_card_lines_kind_chk",
+  sql`${table.kind} in (${rateCardLineKindValuesSql})`
+);
 ```
 
 - [ ] **Step 3: Update platform schema exports**
@@ -537,9 +537,9 @@ Update SQL to use `service_areas` and `service_area_id`.
 Add to `SitesRepository` or split into a focused configuration repository:
 
 ```ts
-listServiceAreas(organizationId)
-createServiceArea({ organizationId, name, description })
-updateServiceArea(organizationId, serviceAreaId, input)
+listServiceAreas(organizationId);
+createServiceArea({ organizationId, name, description });
+updateServiceArea(organizationId, serviceAreaId, input);
 ```
 
 Decode all outputs with shared schemas from `@task-tracker/jobs-core`.
@@ -549,9 +549,9 @@ Decode all outputs with shared schemas from `@task-tracker/jobs-core`.
 Create `RateCardsRepository` in `repositories.ts` with:
 
 ```ts
-list(organizationId)
-create({ organizationId, name, lines })
-update(organizationId, rateCardId, input)
+list(organizationId);
+create({ organizationId, name, lines });
+update(organizationId, rateCardId, input);
 ```
 
 Persist rate-card lines by replacing the card's active lines inside the same
@@ -562,7 +562,7 @@ transaction on update. Preserve ordering by `position asc, id asc`.
 In `JobsAuthorization`, add:
 
 ```ts
-ensureCanManageConfiguration(actor)
+ensureCanManageConfiguration(actor);
 ```
 
 It should allow only owner/admin and fail with `JobAccessDeniedError` for
@@ -573,12 +573,12 @@ members.
 Create `apps/api/src/domains/jobs/configuration-service.ts` with methods:
 
 ```ts
-listServiceAreas()
-createServiceArea(input)
-updateServiceArea(serviceAreaId, input)
-listRateCards()
-createRateCard(input)
-updateRateCard(rateCardId, input)
+listServiceAreas();
+createServiceArea(input);
+updateServiceArea(serviceAreaId, input);
+listRateCards();
+createRateCard(input);
+updateRateCard(rateCardId, input);
 ```
 
 Use `CurrentJobsActor`, `JobsAuthorization`, repositories, and
@@ -752,12 +752,12 @@ Expected: FAIL because components do not exist.
 Create `organization-configuration-state.ts` with Effect Atom mutations:
 
 ```ts
-listServiceAreasAtom
-createServiceAreaMutationAtom
-updateServiceAreaMutationAtomFamily
-listRateCardsAtom
-createRateCardMutationAtom
-updateRateCardMutationAtomFamily
+listServiceAreasAtom;
+createServiceAreaMutationAtom;
+updateServiceAreaMutationAtomFamily;
+listRateCardsAtom;
+createRateCardMutationAtom;
+updateRateCardMutationAtomFamily;
 ```
 
 Use `runBrowserJobsRequest` and the generated Jobs API client groups.
