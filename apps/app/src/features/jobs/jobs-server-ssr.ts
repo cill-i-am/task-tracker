@@ -55,7 +55,7 @@ export async function listCurrentServerJobsDirect(
 ): Promise<JobListResponse> {
   const request = await readServerJobsRequestStrict();
 
-  return await runJobsClient(request, (client) =>
+  return await runJobsClient(request, "JobsServer.listJobs", (client) =>
     client.jobs.listJobs({
       urlParams: query,
     })
@@ -72,10 +72,13 @@ export async function listAllCurrentServerJobsDirect(
 
   while (true) {
     const urlParams = cursor ? { ...staticQuery, cursor } : staticQuery;
-    const page = await runJobsClient(request, (client) =>
-      client.jobs.listJobs({
-        urlParams,
-      })
+    const page = await runJobsClient(
+      request,
+      "JobsServer.listAllJobs.page",
+      (client) =>
+        client.jobs.listJobs({
+          urlParams,
+        })
     );
 
     items.push(...page.items);
@@ -96,7 +99,7 @@ export async function getCurrentServerJobDetailDirect(
 ): Promise<JobDetailResponse> {
   const request = await readServerJobsRequestStrict();
 
-  return await runJobsClient(request, (client) =>
+  return await runJobsClient(request, "JobsServer.getJobDetail", (client) =>
     client.jobs.getJobDetail({ path: { workItemId } })
   );
 }
@@ -104,13 +107,15 @@ export async function getCurrentServerJobDetailDirect(
 export async function getCurrentServerJobOptionsDirect(): Promise<JobOptionsResponse> {
   const request = await readServerJobsRequestStrict();
 
-  return await runJobsClient(request, (client) => client.jobs.getJobOptions());
+  return await runJobsClient(request, "JobsServer.getJobOptions", (client) =>
+    client.jobs.getJobOptions()
+  );
 }
 
 export async function getCurrentServerSiteOptionsDirect(): Promise<SitesOptionsResponse> {
   const request = await readServerJobsRequestStrict();
 
-  return await runJobsClient(request, (client) =>
+  return await runJobsClient(request, "SitesServer.getSiteOptions", (client) =>
     client.sites.getSiteOptions()
   );
 }

@@ -38,6 +38,7 @@ const organizationId = decodeOrganizationId("org_123");
 
 const {
   mockedAddJobComment,
+  mockedAddJobVisit,
   mockedGetJobDetail,
   mockedListJobs,
   mockedMakeBrowserJobsClient,
@@ -46,6 +47,7 @@ const {
   mockedTransitionJob,
 } = vi.hoisted(() => ({
   mockedAddJobComment: vi.fn<EffectClientMock>(),
+  mockedAddJobVisit: vi.fn<EffectClientMock>(),
   mockedGetJobDetail: vi.fn<EffectClientMock>(),
   mockedListJobs: vi.fn<EffectClientMock>(),
   mockedMakeBrowserJobsClient: vi.fn<EffectClientMock>(),
@@ -146,7 +148,10 @@ vi.mock("./jobs-client", async () => {
   return {
     makeBrowserJobsClient: mockedMakeBrowserJobsClient,
     provideBrowserJobsHttp: (effect: unknown) => effect,
-    runBrowserJobsRequest: (execute: (client: unknown) => unknown) =>
+    runBrowserJobsRequest: (
+      _operation: string,
+      execute: (client: unknown) => unknown
+    ) =>
       (mockedMakeBrowserJobsClient() as Effect.Effect<unknown, unknown>).pipe(
         EffectModule.flatMap(
           (client) => execute(client) as Effect.Effect<unknown, unknown>
@@ -158,6 +163,7 @@ vi.mock("./jobs-client", async () => {
 describe("jobs detail sheet integration", () => {
   beforeEach(() => {
     mockedAddJobComment.mockReset();
+    mockedAddJobVisit.mockReset();
     mockedGetJobDetail.mockReset();
     mockedListJobs.mockReset();
     mockedMakeBrowserJobsClient.mockReset();
@@ -169,7 +175,7 @@ describe("jobs detail sheet integration", () => {
       Effect.succeed({
         jobs: {
           addJobComment: mockedAddJobComment,
-          addJobVisit: vi.fn<EffectClientMock>(),
+          addJobVisit: mockedAddJobVisit,
           getJobDetail: mockedGetJobDetail,
           listJobs: mockedListJobs,
           reopenJob: mockedReopenJob,
@@ -267,6 +273,54 @@ describe("jobs detail sheet integration", () => {
       await expect(
         screen.findByText("Crew returning first thing tomorrow.")
       ).resolves.toBeInTheDocument();
+      expect(
+        screen.queryByText(/that update didn't land/i)
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it(
+    "keeps a newly logged visit visible when the follow-up detail refresh fails",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedAddJobVisit.mockReturnValue(
+        Effect.succeed({
+          authorUserId: actorUserId,
+          createdAt: "2026-04-24T12:30:00.000Z",
+          durationMinutes: 120,
+          id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" as VisitIdType,
+          note: "Returned with the pressure kit.",
+          visitDate: "2026-04-24",
+          workItemId,
+        })
+      );
+      mockedGetJobDetail.mockReturnValue(
+        Effect.fail(new Error("refresh failed"))
+      );
+
+      const user = userEvent.setup();
+      renderDetailSheet();
+
+      await user.clear(screen.getByLabelText("Visit date"));
+      await user.type(screen.getByLabelText("Visit date"), "2026-04-24");
+      await user.type(
+        screen.getByLabelText("Visit note"),
+        "Returned with the pressure kit."
+      );
+      await user.click(screen.getByRole("button", { name: /log visit/i }));
+
+      await expect(
+        screen.findByText("Returned with the pressure kit.")
+      ).resolves.toBeInTheDocument();
+      const visitNotes = screen
+        .getAllByText(/Returned with the pressure kit.|Replaced faulty relay/)
+        .map((node) => node.textContent);
+      expect(visitNotes).toStrictEqual([
+        "Returned with the pressure kit.",
+        "Replaced faulty relay and tested startup.",
+      ]);
       expect(
         screen.queryByText(/that update didn't land/i)
       ).not.toBeInTheDocument();

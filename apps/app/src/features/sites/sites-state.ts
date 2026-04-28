@@ -90,13 +90,13 @@ function mergeSiteOptions(
 }
 
 function createBrowserSite(input: CreateSiteInput) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("SitesBrowser.createSite", (client) =>
     client.sites.createSite({ payload: input })
   );
 }
 
 function updateBrowserSite(siteId: SiteIdType, input: UpdateSiteInput) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("SitesBrowser.updateSite", (client) =>
     client.sites.updateSite({
       path: { siteId },
       payload: input,
@@ -105,12 +105,25 @@ function updateBrowserSite(siteId: SiteIdType, input: UpdateSiteInput) {
 }
 
 function getBrowserSiteOptions() {
-  return runBrowserJobsRequest((client) => client.sites.getSiteOptions());
+  return runBrowserJobsRequest("SitesBrowser.getSiteOptions", (client) =>
+    client.sites.getSiteOptions()
+  );
 }
 
 function refreshSiteOptionsOrUpsert(get: Atom.FnContext, site: JobSiteOption) {
   return Effect.gen(function* () {
-    const siteOptions = yield* getBrowserSiteOptions().pipe(Effect.option);
+    const siteOptions = yield* getBrowserSiteOptions().pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning(
+          "Site options refresh failed; using optimistic site",
+          {
+            error: error.message,
+            siteId: site.id,
+          }
+        )
+      ),
+      Effect.option
+    );
     const currentOptionsState = get(jobsOptionsStateAtom);
     const nextOptions = Option.match(siteOptions, {
       onNone: () => upsertSiteOption(currentOptionsState.data, site),

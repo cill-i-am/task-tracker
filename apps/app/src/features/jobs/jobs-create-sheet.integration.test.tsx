@@ -113,7 +113,10 @@ vi.mock("./jobs-client", async () => {
   return {
     makeBrowserJobsClient: mockedMakeBrowserJobsClient,
     provideBrowserJobsHttp: (effect: unknown) => effect,
-    runBrowserJobsRequest: (execute: (client: unknown) => unknown) =>
+    runBrowserJobsRequest: (
+      _operation: string,
+      execute: (client: unknown) => unknown
+    ) =>
       (mockedMakeBrowserJobsClient() as Effect.Effect<unknown, unknown>).pipe(
         EffectModule.flatMap(
           (client) => execute(client) as Effect.Effect<unknown, unknown>
@@ -163,6 +166,7 @@ describe("jobs create sheet integration", () => {
       renderCreateSheet();
 
       await user.type(screen.getByLabelText("Title"), "Replace air valve");
+      await createInlineContact(user, "Alex Caller");
       await user.click(screen.getByRole("button", { name: /create job/i }));
 
       await waitFor(() => {
@@ -214,6 +218,7 @@ describe("jobs create sheet integration", () => {
       renderCreateSheet();
 
       await user.type(screen.getByLabelText("Title"), "Replace air valve");
+      await createInlineContact(user, "Alex Caller");
       await user.click(screen.getByRole("button", { name: /create job/i }));
 
       await waitFor(() => {
@@ -223,6 +228,7 @@ describe("jobs create sheet integration", () => {
       expect(screen.getByTestId("job-titles")).toHaveTextContent(
         "Canonical queue title"
       );
+      expect(mockedGetJobOptions).toHaveBeenCalledOnce();
       expect(
         screen.queryByText(/we couldn't create that job/i)
       ).not.toBeInTheDocument();
@@ -322,6 +328,19 @@ function JobsStateProbe() {
       </output>
       <output data-testid="notice-title">{notice?.title ?? ""}</output>
     </div>
+  );
+}
+
+async function createInlineContact(
+  user: ReturnType<typeof userEvent.setup>,
+  contactName: string
+) {
+  await user.click(screen.getByLabelText("Contact"));
+  await user.type(screen.getByPlaceholderText("Contact"), contactName);
+  await user.click(
+    screen.getByRole("option", {
+      name: `Create new contact: "${contactName}"`,
+    })
   );
 }
 

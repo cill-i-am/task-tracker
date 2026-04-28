@@ -6,6 +6,7 @@ import type {
   CreateJobInput,
   CreateJobResponse,
   JobContactOption,
+  JobListCursorType,
   JobListQuery,
   JobListItem,
   JobListResponse,
@@ -36,7 +37,7 @@ export interface JobsListFilters {
 
 export interface JobsListState {
   readonly items: readonly JobListItem[];
-  readonly nextCursor?: string | undefined;
+  readonly nextCursor?: JobListCursorType | undefined;
   readonly organizationId: OrganizationId | null;
 }
 
@@ -279,44 +280,56 @@ export function deriveContactsForSite(
 }
 
 function listAllBrowserJobs() {
-  return runBrowserJobsRequest((client) =>
-    Effect.gen(function* () {
-      const items: JobListItem[] = [];
-      let cursor: JobListQuery["cursor"];
+  return runBrowserJobsRequest("JobsBrowser.listAllJobs", (client) => {
+    const loadPage = (cursor: JobListQuery["cursor"]) =>
+      client.jobs.listJobs({
+        urlParams: cursor ? { cursor } : {},
+      });
 
-      while (true) {
-        const page: JobListResponse = yield* client.jobs.listJobs({
-          urlParams: cursor ? { cursor } : {},
-        });
+    const loadRemainingPages = (
+      cursor: JobListQuery["cursor"],
+      items: readonly JobListItem[]
+    ): Effect.Effect<JobListResponse, unknown> =>
+      loadPage(cursor).pipe(
+        Effect.flatMap((page) => {
+          const nextItems = [...items, ...page.items];
 
-        items.push(...page.items);
+          return page.nextCursor === undefined
+            ? Effect.succeed({
+                items: nextItems,
+                nextCursor: undefined,
+              } satisfies JobListResponse)
+            : loadRemainingPages(page.nextCursor, nextItems);
+        })
+      );
 
-        if (!page.nextCursor) {
-          return {
-            items,
-            nextCursor: undefined,
-          } satisfies JobListResponse;
-        }
-
-        cursor = page.nextCursor;
-      }
-    })
-  );
+    return loadRemainingPages(undefined, []);
+  });
 }
 
 function getBrowserJobOptions() {
-  return runBrowserJobsRequest((client) => client.jobs.getJobOptions());
+  return runBrowserJobsRequest("JobsBrowser.getJobOptions", (client) =>
+    client.jobs.getJobOptions()
+  );
 }
 
 function createBrowserJob(input: CreateJobInput) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("JobsBrowser.createJob", (client) =>
     client.jobs.createJob({ payload: input })
   );
 }
 
 function refreshJobListOrUpsert(get: Atom.FnContext, job: CreateJobResponse) {
   return Effect.gen(function* () {
-    const listResult = yield* listAllBrowserJobs().pipe(Effect.option);
+    const listResult = yield* listAllBrowserJobs().pipe(
+      Effect.tapError((error) =>
+        Effect.logWarning("Jobs list refresh failed; using optimistic job", {
+          error: error.message,
+          jobId: job.id,
+        })
+      ),
+      Effect.option
+    );
     const currentListState = get(jobsListStateAtom);
 
     const nextListState = Option.match(listResult, {
@@ -349,7 +362,11 @@ function refreshJobOptionsWhen(get: Atom.FnContext, shouldRefresh: boolean) {
             });
           })
         ),
-        Effect.ignore
+        Effect.catchAll((error) =>
+          Effect.logWarning("Jobs options refresh failed after job create", {
+            error: error.message,
+          })
+        )
       )
     : Effect.void;
 }

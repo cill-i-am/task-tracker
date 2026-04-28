@@ -106,7 +106,7 @@ export const addJobVisitMutationAtomFamily = Atom.family(
 );
 
 function getBrowserJobDetail(workItemId: WorkItemIdType) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("JobsBrowser.getJobDetail", (client) =>
     client.jobs.getJobDetail({
       path: { workItemId },
     })
@@ -117,7 +117,7 @@ function transitionBrowserJob(
   workItemId: WorkItemIdType,
   input: TransitionJobInput
 ) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("JobsBrowser.transitionJob", (client) =>
     client.jobs.transitionJob({
       path: { workItemId },
       payload: input,
@@ -126,7 +126,7 @@ function transitionBrowserJob(
 }
 
 function reopenBrowserJob(workItemId: WorkItemIdType) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("JobsBrowser.reopenJob", (client) =>
     client.jobs.reopenJob({
       path: { workItemId },
     })
@@ -134,7 +134,7 @@ function reopenBrowserJob(workItemId: WorkItemIdType) {
 }
 
 function patchBrowserJob(workItemId: WorkItemIdType, input: PatchJobInput) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("JobsBrowser.patchJob", (client) =>
     client.jobs.patchJob({
       path: { workItemId },
       payload: input,
@@ -146,7 +146,7 @@ function addBrowserJobComment(
   workItemId: WorkItemIdType,
   input: AddJobCommentInput
 ) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("JobsBrowser.addJobComment", (client) =>
     client.jobs.addJobComment({
       path: { workItemId },
       payload: input,
@@ -158,7 +158,7 @@ function addBrowserJobVisit(
   workItemId: WorkItemIdType,
   input: AddJobVisitInput
 ) {
-  return runBrowserJobsRequest((client) =>
+  return runBrowserJobsRequest("JobsBrowser.addJobVisit", (client) =>
     client.jobs.addJobVisit({
       path: { workItemId },
       payload: input,
@@ -213,6 +213,12 @@ function refreshJobDetailIfPossible(
   workItemId: WorkItemIdType
 ) {
   return getBrowserJobDetail(workItemId).pipe(
+    Effect.tapError((error) =>
+      Effect.logWarning("Job detail refresh failed; keeping optimistic state", {
+        error: error.message,
+        workItemId,
+      })
+    ),
     Effect.option,
     Effect.tap((detail) =>
       Option.match(detail, {

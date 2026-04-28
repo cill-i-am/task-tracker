@@ -9,6 +9,7 @@ import {
   CreateSiteResponseSchema,
   JobActivityBlockedReasonChangedPayloadSchema,
   JobActivityJobCreatedPayloadSchema,
+  JobDetailResponseSchema,
   JobListQuerySchema,
   JobPrioritySchema,
   JobSiteOptionSchema,
@@ -40,6 +41,23 @@ describe("jobs-core", () => {
     expect(() => ParseResult.decodeUnknownSync(UserId)("")).toThrow(
       /Expected a non empty string/
     );
+    expect(() =>
+      ParseResult.decodeUnknownSync(JobDetailResponseSchema)({
+        activity: [],
+        comments: [],
+        job: {
+          createdAt: "2026-04-23T11:00:00.000Z",
+          createdByUserId: "",
+          id: "11111111-1111-4111-8111-111111111111",
+          kind: "job",
+          priority: "none",
+          status: "new",
+          title: "Inspect boiler",
+          updatedAt: "2026-04-23T12:00:00.000Z",
+        },
+        visits: [],
+      })
+    ).toThrow(/Expected a non empty string/);
   }, 5000);
 
   it("decodes trimmed boundary DTOs", () => {

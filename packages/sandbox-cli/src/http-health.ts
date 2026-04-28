@@ -15,29 +15,71 @@ export class SandboxHttpHealthService extends Effect.Service<SandboxHttpHealthSe
   {
     accessors: true,
     effect: Effect.succeed<SandboxHttpHealth>({
-      check: (port, service, sandboxId) =>
-        Effect.gen(function* () {
-          const response = yield* fetchHealth(port).pipe(Effect.option);
+      check: Effect.fn("SandboxHttpHealth.check")(
+        function* (port, service, sandboxId) {
+          yield* Effect.annotateCurrentSpan("port", String(port));
+          yield* Effect.annotateCurrentSpan("service", service);
+          yield* Effect.annotateCurrentSpan("sandboxId", sandboxId);
 
-          if (Option.isNone(response) || !response.value.ok) {
-            return false;
-          }
-
-          const payload = yield* decodeHealthPayload(response.value).pipe(
+          const response = yield* fetchHealth(port).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("Sandbox health request failed", {
+                error: formatUnknownError(error),
+                port,
+                sandboxId,
+                service,
+              })
+            ),
             Effect.option
           );
 
-          return Option.match(payload, {
-            onNone: () => false,
-            onSome: (decoded) =>
-              decoded.ok === true &&
-              decoded.service === service &&
-              decoded.sandboxId === sandboxId,
+          return yield* Option.match(response, {
+            onNone: () => Effect.succeed(false),
+            onSome: (healthResponse) =>
+              healthResponse.ok
+                ? decodeHealthPayload(healthResponse).pipe(
+                    Effect.tapError((error) =>
+                      Effect.logWarning(
+                        "Sandbox health payload decode failed",
+                        {
+                          error: formatUnknownError(error),
+                          port,
+                          sandboxId,
+                          service,
+                        }
+                      )
+                    ),
+                    Effect.option,
+                    Effect.map((payload) =>
+                      Option.match(payload, {
+                        onNone: () => false,
+                        onSome: (decoded) =>
+                          decoded.ok === true &&
+                          decoded.service === service &&
+                          decoded.sandboxId === sandboxId,
+                      })
+                    )
+                  )
+                : Effect.logWarning("Sandbox health endpoint returned not ok", {
+                    port,
+                    sandboxId,
+                    service,
+                    status: healthResponse.status,
+                  }).pipe(Effect.as(false)),
           });
-        }),
+        }
+      ),
     }),
   }
 ) {}
+
+function formatUnknownError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 function fetchHealth(port: number) {
   return Effect.tryPromise({
