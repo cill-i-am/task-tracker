@@ -29,18 +29,18 @@ import { hasJobsElevatedAccess } from "#/features/jobs/jobs-viewer";
 import type { JobsViewer } from "#/features/jobs/jobs-viewer";
 
 import {
-  buildServiceAreaSelectionGroups,
-  buildSiteInput,
-  hasSiteFieldErrors,
-  validateSiteForm,
-} from "./sites-create-sheet";
+  SITE_CREATE_NONE_VALUE,
+  buildCreateSiteInputFromDraft,
+  buildSiteServiceAreaSelectionGroups,
+  defaultSiteCreateDraft,
+  hasSiteCreateFieldErrors,
+  validateSiteCreateDraft,
+} from "./site-create-form";
 import type {
-  SitesCreateFieldErrors,
-  SitesCreateFormState,
-} from "./sites-create-sheet";
+  SiteCreateDraft as SitesCreateFormState,
+  SiteCreateFieldErrors as SitesCreateFieldErrors,
+} from "./site-create-form";
 import { updateSiteMutationAtomFamily } from "./sites-state";
-
-const NONE_VALUE = "__none__";
 
 interface SitesDetailSheetProps {
   readonly initialSite: JobSiteOption | null;
@@ -63,11 +63,11 @@ export function SitesDetailSheet({
   });
   const canEdit = hasJobsElevatedAccess(viewer.role);
   const serviceAreaGroups = React.useMemo(
-    () => buildServiceAreaSelectionGroups(options.serviceAreas),
+    () => buildSiteServiceAreaSelectionGroups(options.serviceAreas),
     [options.serviceAreas]
   );
   const [values, setValues] = React.useState<SitesCreateFormState>(() =>
-    currentSite ? buildFormStateFromSite(currentSite) : buildEmptySiteState()
+    currentSite ? buildFormStateFromSite(currentSite) : defaultSiteCreateDraft
   );
   const [fieldErrors, setFieldErrors] = React.useState<SitesCreateFieldErrors>(
     {}
@@ -93,14 +93,16 @@ export function SitesDetailSheet({
       return;
     }
 
-    const nextErrors = validateSiteForm(values, options.serviceAreas);
+    const nextErrors = validateSiteCreateDraft(values, options.serviceAreas);
     setFieldErrors(nextErrors);
 
-    if (hasSiteFieldErrors(nextErrors)) {
+    if (hasSiteCreateFieldErrors(nextErrors)) {
       return;
     }
 
-    const exit = await updateSite(buildSiteInput(values, options.serviceAreas));
+    const exit = await updateSite(
+      buildCreateSiteInputFromDraft(values, options.serviceAreas)
+    );
 
     if (Exit.isSuccess(exit)) {
       setFieldErrors({});
@@ -381,22 +383,8 @@ function buildFormStateFromSite(site: JobSiteOption): SitesCreateFormState {
     country: "IE",
     eircode: site.eircode ?? "",
     name: site.name,
-    serviceAreaSelection: site.serviceAreaId ?? NONE_VALUE,
+    serviceAreaSelection: site.serviceAreaId ?? SITE_CREATE_NONE_VALUE,
     town: site.town ?? "",
-  };
-}
-
-function buildEmptySiteState(): SitesCreateFormState {
-  return {
-    accessNotes: "",
-    addressLine1: "",
-    addressLine2: "",
-    county: "",
-    country: "IE",
-    eircode: "",
-    name: "",
-    serviceAreaSelection: NONE_VALUE,
-    town: "",
   };
 }
 

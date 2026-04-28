@@ -117,6 +117,17 @@ describe("organization rate card section", () => {
     expect(screen.queryByLabelText("Rate card")).not.toBeInTheDocument();
   });
 
+  it("does not update an unchanged existing Standard card", async () => {
+    const user = userEvent.setup();
+    renderRateCardSection();
+
+    await screen.findByText("Standard");
+    await user.click(screen.getByRole("button", { name: "Save rate card" }));
+
+    expect(mockedUpdateRateCard).not.toHaveBeenCalled();
+    expect(mockedCreateRateCard).not.toHaveBeenCalled();
+  });
+
   it("hides the draft save action until rate cards finish loading", async () => {
     const rateCardsResponse = createDeferredRateCardsResponse();
     mockedListRateCards.mockReturnValue(

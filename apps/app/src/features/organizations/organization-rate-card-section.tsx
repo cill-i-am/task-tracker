@@ -4,13 +4,14 @@ import { useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 import type { Result } from "@effect-atom/atom-react";
 import { Delete02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { RATE_CARD_LINE_KINDS } from "@task-tracker/jobs-core";
 import type {
   RateCard,
   RateCardLine,
   RateCardLineInput,
   RateCardLineKind,
 } from "@task-tracker/jobs-core";
-import { Cause, Exit } from "effect";
+import { Exit } from "effect";
 import * as React from "react";
 
 import { AppUtilityPanel } from "#/components/app-utility-panel";
@@ -23,6 +24,7 @@ import {
   TooltipTrigger,
 } from "#/components/ui/tooltip";
 
+import { OrganizationAsyncResultError } from "./organization-async-result-error";
 import {
   createRateCardMutationAtom,
   listRateCardsAtom,
@@ -32,15 +34,20 @@ import {
 
 const STANDARD_RATE_CARD_NAME = "Standard";
 
+const RATE_CARD_KIND_LABELS = {
+  callout: "Callout",
+  custom: "Custom",
+  labour: "Labour",
+  material_markup: "Material markup",
+} satisfies Record<RateCardLineKind, string>;
+
 const RATE_CARD_KIND_OPTIONS: readonly {
   readonly label: string;
   readonly value: RateCardLineKind;
-}[] = [
-  { label: "Labour", value: "labour" },
-  { label: "Callout", value: "callout" },
-  { label: "Material markup", value: "material_markup" },
-  { label: "Custom", value: "custom" },
-];
+}[] = RATE_CARD_LINE_KINDS.map((kind) => ({
+  label: RATE_CARD_KIND_LABELS[kind],
+  value: kind,
+}));
 
 interface EditableRateCardLine {
   readonly id: string;
@@ -104,7 +111,7 @@ export function OrganizationRateCardSection() {
         ) : null}
       </div>
 
-      <AsyncResultError result={listResult} />
+      <OrganizationAsyncResultError result={listResult} />
 
       <RateCardEditorSlot
         listFailed={listResult._tag === "Failure"}
@@ -158,12 +165,16 @@ function ExistingStandardRateCardEditor({
     <RateCardForm
       initialLines={rateCard.lines}
       mutationResult={updateResult}
-      onSave={(lines) =>
-        updateRateCard({
+      onSave={(lines) => {
+        if (areRateCardLinesEqual(lines, rateCard.lines)) {
+          return Promise.resolve(Exit.succeed(null));
+        }
+
+        return updateRateCard({
           lines,
           name: STANDARD_RATE_CARD_NAME,
-        })
-      }
+        });
+      }}
     />
   );
 }
@@ -276,7 +287,7 @@ function RateCardForm({
         </p>
       )}
 
-      <AsyncResultError result={mutationResult} />
+      <OrganizationAsyncResultError result={mutationResult} />
 
       <div className="flex flex-wrap gap-2">
         <Button
@@ -493,20 +504,23 @@ function resolveRateCardLineKind(value: string): RateCardLineKind | null {
   );
 }
 
-function AsyncResultError({
-  result,
-}: {
-  readonly result: Result.Result<unknown, unknown>;
-}) {
-  if (result._tag !== "Failure") {
-    return null;
-  }
-
-  const error = Cause.squash(result.cause);
-
+function areRateCardLinesEqual(
+  input: readonly RateCardLineInput[],
+  current: readonly RateCardLine[]
+) {
   return (
-    <p role="alert" className="text-sm text-destructive">
-      {error instanceof Error ? error.message : "Request failed."}
-    </p>
+    input.length === current.length &&
+    input.every((line, index) => {
+      const currentLine = current[index];
+
+      return (
+        currentLine !== undefined &&
+        line.kind === currentLine.kind &&
+        line.name === currentLine.name &&
+        line.position === currentLine.position &&
+        line.unit === currentLine.unit &&
+        line.value === currentLine.value
+      );
+    })
   );
 }

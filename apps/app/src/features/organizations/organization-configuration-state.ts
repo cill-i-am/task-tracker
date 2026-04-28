@@ -192,32 +192,32 @@ function upsertServiceArea(
   state: ServiceAreaListResponse,
   serviceArea: ServiceArea
 ): ServiceAreaListResponse {
-  const items = [
-    serviceArea,
-    ...state.items.filter((item) => item.id !== serviceArea.id),
-  ];
-  items.sort(compareByNameThenId);
-
-  return { items };
+  return {
+    items: upsertByIdSortedByName(state.items, serviceArea),
+  };
 }
 
 function upsertRateCard(
   state: RateCardListResponse,
   rateCard: RateCard
 ): RateCardListResponse {
-  const items = [
-    rateCard,
-    ...state.items.filter((item) => item.id !== rateCard.id),
-  ];
-  items.sort(compareByNameThenId);
-
-  return { items };
+  return {
+    items: upsertByIdSortedByName(state.items, rateCard),
+  };
 }
 
-function compareByNameThenId(
-  left: { readonly id: string; readonly name: string },
-  right: { readonly id: string; readonly name: string }
-) {
+function upsertByIdSortedByName<
+  Item extends { readonly id: string; readonly name: string },
+>(items: readonly Item[], item: Item) {
+  const next = [item, ...items.filter((current) => current.id !== item.id)];
+  next.sort(compareByNameThenId);
+
+  return next;
+}
+
+function compareByNameThenId<
+  Item extends { readonly id: string; readonly name: string },
+>(left: Item, right: Item) {
   const nameComparison = left.name.localeCompare(right.name);
 
   return nameComparison === 0

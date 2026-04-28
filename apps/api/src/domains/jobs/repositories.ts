@@ -1102,7 +1102,7 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           );
         }
 
-        const rows = yield* sql<JobSiteOptionRow>`
+        const rows = yield* sql<IdRow>`
           update sites
           set ${sql.update({
             access_notes: input.accessNotes ?? null,
@@ -1123,19 +1123,7 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           where organization_id = ${organizationId}
             and id = ${siteId}
             and archived_at is null
-          returning
-            access_notes,
-            address_line_1,
-            address_line_2,
-            county,
-            eircode,
-            id,
-            latitude,
-            longitude,
-            name,
-            service_area_id,
-            null::text as service_area_name,
-            town
+          returning id
         `;
 
         if (rows[0] === undefined) {
@@ -1395,6 +1383,10 @@ export class RateCardsRepository extends Effect.Service<RateCardsRepository>()(
           order by updated_at desc, id desc
         `;
 
+        if (cards.length === 0) {
+          return [];
+        }
+
         const lines = yield* sql<RateCardLineRow>`
           select
             rate_card_lines.id,
@@ -1410,8 +1402,11 @@ export class RateCardsRepository extends Effect.Service<RateCardsRepository>()(
             and rate_cards.archived_at is null
           order by rate_card_lines.position asc, rate_card_lines.id asc
         `;
+        const linesByRateCardId = groupRateCardLinesByRateCardId(lines);
 
-        return cards.map((card) => mapRateCardRows(card, lines));
+        return cards.map((card) =>
+          mapRateCardRows(card, linesByRateCardId.get(card.id) ?? [])
+        );
       });
 
       const create = Effect.fn("RateCardsRepository.create")(function* (
@@ -1707,20 +1702,34 @@ function mapRateCardRows(
   return decodeRateCard({
     createdAt: card.created_at.toISOString(),
     id: card.id,
-    lines: lines
-      .filter((line) => line.rate_card_id === card.id)
-      .map((line) => ({
-        id: line.id,
-        kind: line.kind,
-        name: line.name,
-        position: line.position,
-        rateCardId: line.rate_card_id,
-        unit: line.unit,
-        value: typeof line.value === "number" ? line.value : Number(line.value),
-      })),
+    lines: lines.map((line) => ({
+      id: line.id,
+      kind: line.kind,
+      name: line.name,
+      position: line.position,
+      rateCardId: line.rate_card_id,
+      unit: line.unit,
+      value: typeof line.value === "number" ? line.value : Number(line.value),
+    })),
     name: card.name,
     updatedAt: card.updated_at.toISOString(),
   });
+}
+
+function groupRateCardLinesByRateCardId(lines: readonly RateCardLineRow[]) {
+  const linesByRateCardId = new Map<string, RateCardLineRow[]>();
+
+  for (const line of lines) {
+    const current = linesByRateCardId.get(line.rate_card_id);
+
+    if (current === undefined) {
+      linesByRateCardId.set(line.rate_card_id, [line]);
+    } else {
+      current.push(line);
+    }
+  }
+
+  return linesByRateCardId;
 }
 
 function mapJobSiteOptionRow(row: JobSiteOptionRow): JobSiteOption {

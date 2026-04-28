@@ -1,9 +1,8 @@
 "use client";
 
 import { useAtomSet, useAtomValue } from "@effect-atom/atom-react";
-import type { Result } from "@effect-atom/atom-react";
 import type { ServiceArea } from "@task-tracker/jobs-core";
-import { Cause, Exit } from "effect";
+import { Exit } from "effect";
 import * as React from "react";
 
 import { AppUtilityPanel } from "#/components/app-utility-panel";
@@ -12,6 +11,7 @@ import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
 import { Textarea } from "#/components/ui/textarea";
 
+import { OrganizationAsyncResultError } from "./organization-async-result-error";
 import {
   createServiceAreaMutationAtom,
   listServiceAreasAtom,
@@ -123,8 +123,8 @@ export function OrganizationServiceAreasSection() {
 
       {nameError ? <FieldError>{nameError}</FieldError> : null}
 
-      <AsyncResultError result={listResult} />
-      <AsyncResultError result={createResult} />
+      <OrganizationAsyncResultError result={listResult} />
+      <OrganizationAsyncResultError result={createResult} />
 
       <ServiceAreasList
         serviceAreas={serviceAreas}
@@ -277,7 +277,7 @@ function ServiceAreaRow({
             </div>
           </div>
           {nameError ? <FieldError>{nameError}</FieldError> : null}
-          <AsyncResultError result={updateResult} />
+          <OrganizationAsyncResultError result={updateResult} />
         </FieldGroup>
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -333,22 +333,4 @@ function buildUpdateServiceAreaPayload(values: ServiceAreaFormValues) {
     description: description || null,
     name,
   };
-}
-
-function AsyncResultError({
-  result,
-}: {
-  readonly result: Result.Result<unknown, unknown>;
-}) {
-  if (result._tag !== "Failure") {
-    return null;
-  }
-
-  const error = Cause.squash(result.cause);
-
-  return (
-    <p role="alert" className="text-sm text-destructive">
-      {error instanceof Error ? error.message : "Request failed."}
-    </p>
-  );
 }
