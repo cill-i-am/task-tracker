@@ -134,8 +134,11 @@ export function OrganizationSettingsPage({
 
     setSavedOrganizationName(organization.name);
 
-    if (isNewOrganization || form.state.isDefaultValue) {
+    if (isNewOrganization) {
       setSuccessMessage(null);
+    }
+
+    if (isNewOrganization || form.state.isDefaultValue) {
       form.reset({
         name: organization.name,
       });

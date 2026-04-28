@@ -52,6 +52,7 @@ const RATE_CARD_KIND_OPTIONS: readonly {
   label: RATE_CARD_KIND_LABELS[kind],
   value: kind,
 }));
+const EMPTY_RATE_CARD_LINES: readonly RateCardLine[] = [];
 
 interface EditableRateCardLine {
   readonly id: string;
@@ -191,7 +192,7 @@ function DraftStandardRateCardEditor() {
 
   return (
     <RateCardForm
-      initialLines={[]}
+      initialLines={EMPTY_RATE_CARD_LINES}
       mutationResult={createResult}
       onSave={(lines) =>
         createRateCard({
@@ -249,7 +250,7 @@ function RateCardForm({
     }
   }
 
-  function addLine() {
+  const addLine = React.useCallback(() => {
     nextLineIdRef.current += 1;
     setLines((current) => [
       ...current,
@@ -261,16 +262,16 @@ function RateCardForm({
         value: "0",
       },
     ]);
-  }
+  }, []);
 
-  function removeLine(lineId: string) {
+  const removeLine = React.useCallback((lineId: string) => {
     setLines((current) => current.filter((line) => line.id !== lineId));
     setLineErrors((current) =>
       Object.fromEntries(
         Object.entries(current).filter(([id]) => id !== lineId)
       )
     );
-  }
+  }, []);
 
   const commandActions = React.useMemo<readonly CommandAction[]>(
     () => [
@@ -291,7 +292,7 @@ function RateCardForm({
         title: "Save rate card",
       },
     ],
-    [mutationResult.waiting]
+    [addLine, mutationResult.waiting]
   );
   useRegisterCommandActions(commandActions);
 
@@ -369,17 +370,23 @@ function RateCardLineRow({
   const nameId = React.useId();
   const valueId = React.useId();
   const unitId = React.useId();
+  const onRemoveRef = React.useRef(onRemove);
+
+  React.useEffect(() => {
+    onRemoveRef.current = onRemove;
+  }, [onRemove]);
+
   const commandActions = React.useMemo<readonly CommandAction[]>(
     () => [
       {
         group: "Current page",
         id: `rate-card-remove-line-${line.id}`,
-        run: onRemove,
+        run: () => onRemoveRef.current(),
         scope: "route",
         title: `Remove rate-card line ${lineNumber}: ${line.name || "Untitled"}`,
       },
     ],
-    [line.id, line.name, lineNumber, onRemove]
+    [line.id, line.name, lineNumber]
   );
   useRegisterCommandActions(commandActions);
 
