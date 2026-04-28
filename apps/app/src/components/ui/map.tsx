@@ -133,10 +133,11 @@ interface MapViewport {
 
 type MapStyleOption = string | MapLibreGL.StyleSpecification;
 
-type MapRef = MapLibreGL.Map;
+type MapRef = MapLibreGL.Map | null;
 
 type MapProps = {
   children?: ReactNode;
+  ref?: Ref<MapRef>;
   /** Additional CSS classes for the map container */
   className?: string;
   /**
@@ -164,7 +165,6 @@ type MapProps = {
   onViewportChange?: (viewport: MapViewport) => void;
   /** Show a loading indicator on the map */
   loading?: boolean;
-  ref?: Ref<MapRef>;
 } & Omit<MapLibreGL.MapOptions, "container" | "style">;
 
 function DefaultLoader() {
@@ -192,13 +192,13 @@ function getViewport(map: MapLibreGL.Map): MapViewport {
 function Map({
   children,
   className,
+  ref,
   theme: themeProp,
   styles,
   projection,
   viewport,
   onViewportChange,
   loading = false,
-  ref,
   ...props
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -223,8 +223,8 @@ function Map({
     [styles]
   );
 
-  // Expose the map instance to the parent component
-  useImperativeHandle(ref, () => mapInstance as MapLibreGL.Map, [mapInstance]);
+  // Expose the map instance to the parent component once MapLibre has mounted.
+  useImperativeHandle<MapRef, MapRef>(ref, () => mapInstance, [mapInstance]);
 
   const clearStyleTimeout = useCallback(() => {
     if (styleTimeoutRef.current) {
