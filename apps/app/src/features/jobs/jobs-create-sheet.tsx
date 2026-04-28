@@ -65,6 +65,7 @@ import {
   ResponsiveDrawer,
   ResponsiveNestedDrawer,
 } from "#/components/ui/responsive-drawer";
+import { Textarea } from "#/components/ui/textarea";
 import { AuthFormField } from "#/features/auth/auth-form-field";
 import {
   SiteCreateFields,
@@ -118,8 +119,12 @@ const PRIORITY_OPTIONS: readonly {
 ];
 
 interface JobsCreateFormState {
+  readonly contactEmail: string;
   readonly contactName: string;
+  readonly contactNotes: string;
+  readonly contactPhone: string;
   readonly contactSelection: string;
+  readonly externalReference: string;
   readonly priority: JobPriority;
   readonly siteDraft: SiteCreateDraft;
   readonly siteSelection: string;
@@ -134,8 +139,12 @@ interface JobsCreateFieldErrors {
 }
 
 const defaultFormState: JobsCreateFormState = {
+  contactEmail: "",
   contactName: "",
+  contactNotes: "",
+  contactPhone: "",
   contactSelection: NONE_VALUE,
+  externalReference: "",
   priority: "none",
   siteDraft: defaultSiteCreateDraft,
   siteSelection: NONE_VALUE,
@@ -357,6 +366,25 @@ export function JobsCreateSheet() {
             </AuthFormField>
           </FieldGroup>
 
+          <FieldGroup>
+            <AuthFormField
+              label="External reference"
+              htmlFor="job-external-reference"
+              invalid={false}
+            >
+              <Input
+                id="job-external-reference"
+                value={values.externalReference}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    externalReference: event.target.value,
+                  }))
+                }
+              />
+            </AuthFormField>
+          </FieldGroup>
+
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <LinearMetadataSelect
@@ -409,8 +437,11 @@ export function JobsCreateSheet() {
                 onValueChange={(nextValue) =>
                   setValues((current) => ({
                     ...current,
-                    contactSelection: nextValue,
+                    contactEmail: "",
                     contactName: "",
+                    contactNotes: "",
+                    contactPhone: "",
+                    contactSelection: nextValue,
                   }))
                 }
                 onCreateContact={(contactName) =>
@@ -433,6 +464,60 @@ export function JobsCreateSheet() {
               </p>
             ) : null}
           </div>
+
+          {values.contactSelection === INLINE_CREATE_VALUE ? (
+            <FieldGroup>
+              <AuthFormField
+                label="Contact email"
+                htmlFor="job-contact-email"
+                invalid={false}
+              >
+                <Input
+                  id="job-contact-email"
+                  type="email"
+                  value={values.contactEmail}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      contactEmail: event.target.value,
+                    }))
+                  }
+                />
+              </AuthFormField>
+              <AuthFormField
+                label="Contact phone"
+                htmlFor="job-contact-phone"
+                invalid={false}
+              >
+                <Input
+                  id="job-contact-phone"
+                  value={values.contactPhone}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      contactPhone: event.target.value,
+                    }))
+                  }
+                />
+              </AuthFormField>
+              <AuthFormField
+                label="Contact notes"
+                htmlFor="job-contact-notes"
+                invalid={false}
+              >
+                <Textarea
+                  id="job-contact-notes"
+                  value={values.contactNotes}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      contactNotes: event.target.value,
+                    }))
+                  }
+                />
+              </AuthFormField>
+            </FieldGroup>
+          ) : null}
 
           <FieldGroup>
             {showInlineSiteSummary ? (
@@ -937,6 +1022,10 @@ function buildCreateJobInput(
 ): CreateJobInput {
   return {
     contact: resolveCreateJobContactInput(values, selectionIds),
+    externalReference:
+      values.externalReference.trim().length === 0
+        ? undefined
+        : values.externalReference.trim(),
     priority: values.priority === "none" ? undefined : values.priority,
     site: resolveCreateJobSiteInput(values, selectionIds, regions),
     title: values.title.trim(),
@@ -956,6 +1045,15 @@ function resolveCreateJobContactInput(
       kind: "create",
       input: {
         name: values.contactName.trim(),
+        ...(values.contactEmail.trim().length > 0
+          ? { email: values.contactEmail.trim() }
+          : {}),
+        ...(values.contactPhone.trim().length > 0
+          ? { phone: values.contactPhone.trim() }
+          : {}),
+        ...(values.contactNotes.trim().length > 0
+          ? { notes: values.contactNotes.trim() }
+          : {}),
       },
     };
   }

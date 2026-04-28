@@ -166,12 +166,45 @@ describe("jobs create sheet integration", () => {
       renderCreateSheet();
 
       await user.type(screen.getByLabelText("Title"), "Replace air valve");
+      await user.type(
+        screen.getByLabelText("External reference"),
+        "CLAIM-2026-0042"
+      );
       await createInlineContact(user, "Alex Caller");
+      await user.type(
+        screen.getByLabelText("Contact email"),
+        "alex@example.com"
+      );
+      await user.type(
+        screen.getByLabelText("Contact phone"),
+        "+353 87 123 4567"
+      );
+      await user.type(
+        screen.getByLabelText("Contact notes"),
+        "Prefers morning calls."
+      );
       await user.click(screen.getByRole("button", { name: /create job/i }));
 
       await waitFor(() => {
         expect(mockedNavigate).toHaveBeenCalledWith({ to: "/jobs" });
       });
+
+      expect(mockedCreateJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            contact: {
+              input: {
+                email: "alex@example.com",
+                name: "Alex Caller",
+                notes: "Prefers morning calls.",
+                phone: "+353 87 123 4567",
+              },
+              kind: "create",
+            },
+            externalReference: "CLAIM-2026-0042",
+          }),
+        })
+      );
 
       expect(screen.getByTestId("job-titles")).toHaveTextContent(
         "Replace air valve | Existing queue job"
@@ -284,8 +317,11 @@ function renderCreateSheet() {
           seedJobsOptionsState(organizationId, {
             contacts: [
               {
+                email: "pat@example.com",
                 id: depotContactId,
                 name: "Pat Contact",
+                notes: "Use email for routine updates.",
+                phone: "+353 87 765 4321",
                 siteIds: [depotSiteId],
               },
             ],

@@ -227,6 +227,12 @@ describe("jobs detail sheet integration", () => {
       });
 
       expect(screen.getByText("Completed")).toBeInTheDocument();
+      expect(screen.getAllByText("PO-4471").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("pat@example.com").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("+353 87 765 4321").length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText("Use email for routine updates.").length
+      ).toBeGreaterThan(0);
       expect(
         screen.getByText("Use reception and the south gate.")
       ).toBeInTheDocument();
@@ -340,6 +346,7 @@ function renderDetailSheet() {
                 assigneeId: actorUserId,
                 contactId,
                 createdAt: "2026-04-23T10:00:00.000Z",
+                externalReference: "PO-4471",
                 id: workItemId,
                 kind: "job",
                 priority: "medium",
@@ -357,8 +364,11 @@ function renderDetailSheet() {
           seedJobsOptionsState(organizationId, {
             contacts: [
               {
+                email: "pat@example.com",
                 id: contactId,
                 name: "Pat Contact",
+                notes: "Use email for routine updates.",
+                phone: "+353 87 765 4321",
                 siteIds: [siteId],
               },
             ],
@@ -449,6 +459,7 @@ function buildDetail(): JobDetailResponse {
       contactId,
       createdAt: "2026-04-23T10:00:00.000Z",
       createdByUserId: actorUserId,
+      externalReference: "PO-4471",
       id: workItemId,
       kind: "job",
       priority: "medium",

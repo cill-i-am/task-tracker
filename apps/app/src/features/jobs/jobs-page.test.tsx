@@ -48,6 +48,7 @@ const initialList: JobListResponse = {
       assigneeId: memberOneId,
       coordinatorId: memberTwoId,
       createdAt: "2026-01-01T00:15:00.000Z",
+      externalReference: "PO-4471",
       id: "77777777-7777-4777-8777-777777777777" as WorkItemIdType,
       kind: "job",
       priority: "high",
@@ -337,6 +338,28 @@ describe("jobs page", () => {
       screen.queryByRole("link", { name: /new job/i })
     ).not.toBeInTheDocument();
   }, 10_000);
+
+  it(
+    "searches jobs by external reference",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+
+      renderJobsPage();
+      const queuePanel = getPrimaryQueuePanel();
+
+      await user.type(screen.getByLabelText("Search jobs"), "PO-4471");
+
+      expect(
+        within(queuePanel).getAllByText("Inspect boiler").length
+      ).toBeGreaterThan(0);
+      expect(
+        within(queuePanel).queryByText("Await materials")
+      ).not.toBeInTheDocument();
+    }
+  );
 
   it(
     "filters by assignee and priority with real atom state",

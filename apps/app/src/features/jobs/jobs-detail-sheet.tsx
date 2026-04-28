@@ -590,10 +590,13 @@ export function JobsDetailSheet({
               label="Contact"
               value={contact?.name ?? "No contact yet"}
               supporting={
-                detail.job.siteId && contact
-                  ? "Linked through the selected site"
-                  : "Add one when the customer context is clear"
+                contact?.email ?? contact?.phone ?? "No contact details yet"
               }
+            />
+            <HeaderMetaItem
+              label="Reference"
+              value={detail.job.externalReference ?? "No external reference"}
+              supporting="Optional reference from outside this workspace"
             />
             <HeaderMetaItem
               label="Updated"
@@ -621,6 +624,13 @@ export function JobsDetailSheet({
             </DetailSection>
 
             <JobsDetailLocation site={site} />
+
+            <DetailSection
+              title="Contact"
+              description="Useful details for the person or organization connected to this work."
+            >
+              <JobsDetailContact contact={contact} />
+            </DetailSection>
 
             <DetailSection
               title="Site assignment"
@@ -1043,13 +1053,50 @@ function DetailEmpty({
   );
 }
 
+function JobsDetailContact({
+  contact,
+}: {
+  readonly contact:
+    | {
+        readonly email?: string;
+        readonly name: string;
+        readonly notes?: string;
+        readonly phone?: string;
+      }
+    | undefined;
+}) {
+  if (!contact) {
+    return (
+      <DetailEmpty
+        title="No contact yet."
+        description="Add one when there is a clear related person or organization."
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-3 text-sm">
+      <HeaderMetaItem label="Name" value={contact.name} />
+      {contact.email ? (
+        <HeaderMetaItem label="Email" value={contact.email} />
+      ) : null}
+      {contact.phone ? (
+        <HeaderMetaItem label="Phone" value={contact.phone} />
+      ) : null}
+      {contact.notes ? (
+        <HeaderMetaItem label="Notes" value={contact.notes} />
+      ) : null}
+    </div>
+  );
+}
+
 function HeaderMetaItem({
   label,
   supporting,
   value,
 }: {
   readonly label: string;
-  readonly supporting: string;
+  readonly supporting?: string;
   readonly value: string;
 }) {
   return (
@@ -1060,9 +1107,11 @@ function HeaderMetaItem({
       <p className="mt-1 truncate text-sm font-medium text-foreground">
         {value}
       </p>
-      <p className="mt-1 truncate text-xs text-muted-foreground">
-        {supporting}
-      </p>
+      {supporting ? (
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {supporting}
+        </p>
+      ) : null}
     </div>
   );
 }
