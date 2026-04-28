@@ -727,33 +727,12 @@
         },
         "value": {
           "name": "value",
-          "type": "double precision",
+          "type": "numeric(12, 2)",
           "primaryKey": false,
           "notNull": true
         }
       },
       "indexes": {
-        "rate_card_lines_rate_card_position_idx": {
-          "name": "rate_card_lines_rate_card_position_idx",
-          "columns": [
-            {
-              "expression": "rate_card_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "position",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "rate_card_lines_rate_card_position_unique_idx": {
           "name": "rate_card_lines_rate_card_position_unique_idx",
           "columns": [

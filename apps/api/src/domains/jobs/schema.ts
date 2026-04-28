@@ -15,6 +15,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -110,13 +111,9 @@ export const rateCardLine = pgTable(
     name: text("name").notNull(),
     position: integer("position").notNull(),
     unit: text("unit").notNull(),
-    value: doublePrecision("value").notNull(),
+    value: numeric("value", { precision: 12, scale: 2 }).notNull(),
   },
   (table) => [
-    index("rate_card_lines_rate_card_position_idx").on(
-      table.rateCardId,
-      table.position
-    ),
     uniqueIndex("rate_card_lines_rate_card_position_unique_idx").on(
       table.rateCardId,
       table.position
