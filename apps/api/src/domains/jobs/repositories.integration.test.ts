@@ -18,6 +18,7 @@ import {
   site,
   user,
   workItem,
+  workItemActivity,
 } from "../../platform/database/schema.js";
 import {
   applyAllMigrations,
@@ -435,6 +436,228 @@ describe("jobs repositories integration", () => {
     ]);
     expect(bySite.items.map((item) => item.id)).toStrictEqual([middleJobId]);
     expect(byStatus.items.map((item) => item.id)).toStrictEqual([middleJobId]);
+  }, 30_000);
+
+  it("lists organization activity with organization and filter boundaries", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({ prefix: "jobs_repo" });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping organization activity coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    const identity = await seedIdentityRecords(databaseUrl);
+    const foreignIdentity = await seedIdentityRecords(databaseUrl);
+
+    const newestJobId = decodeWorkItemId(
+      "00000000-0000-4000-8000-000000000103"
+    );
+    const middleJobId = decodeWorkItemId(
+      "00000000-0000-4000-8000-000000000102"
+    );
+    const oldestJobId = decodeWorkItemId(
+      "00000000-0000-4000-8000-000000000101"
+    );
+    const foreignJobId = decodeWorkItemId(
+      "00000000-0000-4000-8000-000000000104"
+    );
+
+    await withPool(databaseUrl, async (pool) => {
+      const db = drizzle(pool);
+
+      await db.insert(workItem).values([
+        {
+          assigneeId: null,
+          blockedReason: null,
+          completedAt: null,
+          completedByUserId: null,
+          contactId: null,
+          coordinatorId: null,
+          createdAt: new Date("2026-04-20T10:00:00.000Z"),
+          createdByUserId: identity.ownerUserId,
+          id: oldestJobId,
+          kind: "job",
+          organizationId: identity.organizationId,
+          priority: "none",
+          siteId: null,
+          status: "new",
+          title: "Oldest activity job",
+          updatedAt: new Date("2026-04-20T10:00:00.000Z"),
+        },
+        {
+          assigneeId: null,
+          blockedReason: null,
+          completedAt: null,
+          completedByUserId: null,
+          contactId: null,
+          coordinatorId: null,
+          createdAt: new Date("2026-04-21T10:00:00.000Z"),
+          createdByUserId: identity.ownerUserId,
+          id: middleJobId,
+          kind: "job",
+          organizationId: identity.organizationId,
+          priority: "none",
+          siteId: null,
+          status: "in_progress",
+          title: "Middle activity job",
+          updatedAt: new Date("2026-04-21T10:00:00.000Z"),
+        },
+        {
+          assigneeId: null,
+          blockedReason: null,
+          completedAt: null,
+          completedByUserId: null,
+          contactId: null,
+          coordinatorId: null,
+          createdAt: new Date("2026-04-22T10:00:00.000Z"),
+          createdByUserId: identity.ownerUserId,
+          id: newestJobId,
+          kind: "job",
+          organizationId: identity.organizationId,
+          priority: "none",
+          siteId: null,
+          status: "in_progress",
+          title: "Newest activity job",
+          updatedAt: new Date("2026-04-22T10:00:00.000Z"),
+        },
+        {
+          assigneeId: null,
+          blockedReason: null,
+          completedAt: null,
+          completedByUserId: null,
+          contactId: null,
+          coordinatorId: null,
+          createdAt: new Date("2026-04-22T10:00:00.000Z"),
+          createdByUserId: foreignIdentity.ownerUserId,
+          id: foreignJobId,
+          kind: "job",
+          organizationId: foreignIdentity.organizationId,
+          priority: "none",
+          siteId: null,
+          status: "new",
+          title: "Foreign activity job",
+          updatedAt: new Date("2026-04-22T10:00:00.000Z"),
+        },
+      ]);
+
+      const activityRows: (typeof workItemActivity.$inferInsert)[] = [
+        {
+          actorUserId: identity.ownerUserId,
+          createdAt: new Date("2026-04-20T10:00:00.000Z"),
+          eventType: "job_created",
+          id: randomUUID(),
+          organizationId: identity.organizationId,
+          payload: {
+            eventType: "job_created",
+            kind: "job",
+            priority: "none",
+            title: "Oldest activity job",
+          },
+          workItemId: oldestJobId,
+        },
+        {
+          actorUserId: identity.assigneeUserId,
+          createdAt: new Date("2026-04-21T10:00:00.000Z"),
+          eventType: "status_changed",
+          id: randomUUID(),
+          organizationId: identity.organizationId,
+          payload: {
+            eventType: "status_changed",
+            fromStatus: "new",
+            toStatus: "in_progress",
+          },
+          workItemId: middleJobId,
+        },
+        {
+          actorUserId: identity.ownerUserId,
+          createdAt: new Date("2026-04-22T10:00:00.000Z"),
+          eventType: "status_changed",
+          id: randomUUID(),
+          organizationId: identity.organizationId,
+          payload: {
+            eventType: "status_changed",
+            fromStatus: "in_progress",
+            toStatus: "blocked",
+          },
+          workItemId: newestJobId,
+        },
+        {
+          actorUserId: foreignIdentity.ownerUserId,
+          createdAt: new Date("2026-04-22T10:00:00.000Z"),
+          eventType: "job_created",
+          id: randomUUID(),
+          organizationId: foreignIdentity.organizationId,
+          payload: {
+            eventType: "job_created",
+            kind: "job",
+            priority: "none",
+            title: "Foreign activity job",
+          },
+          workItemId: foreignJobId,
+        },
+      ];
+
+      await db.insert(workItemActivity).values(activityRows);
+    });
+
+    const all = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {})
+    );
+    const byActor = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        actorUserId: identity.ownerUserId,
+      })
+    );
+    const byEvent = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        eventType: "status_changed",
+      })
+    );
+    const byDate = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        fromDate: "2026-04-21",
+        toDate: "2026-04-21",
+      })
+    );
+    const byJobTitle = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        jobTitle: "Middle",
+      } as never)
+    );
+
+    expect(all.items.map((item) => item.jobTitle)).toStrictEqual([
+      "Newest activity job",
+      "Middle activity job",
+      "Oldest activity job",
+    ]);
+    expect(byActor.items).toHaveLength(2);
+    expect(byEvent.items.map((item) => item.eventType)).toStrictEqual([
+      "status_changed",
+      "status_changed",
+    ]);
+    expect(byDate.items.map((item) => item.createdAt)).toStrictEqual([
+      "2026-04-21T10:00:00.000Z",
+    ]);
+    expect(byJobTitle.items.map((item) => item.jobTitle)).toStrictEqual([
+      "Middle activity job",
+    ]);
   }, 30_000);
 
   it("rejects foreign-organization references on writes", async (context: {
