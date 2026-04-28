@@ -20,7 +20,7 @@ import {
   CommentId,
   ContactId,
   OrganizationId,
-  RegionId,
+  ServiceAreaId,
   SiteId,
   UserId,
   VisitId,
@@ -34,6 +34,40 @@ export const JobListCursor = Schema.String.pipe(
   Schema.brand("@task-tracker/jobs-core/JobListCursor")
 );
 export type JobListCursor = Schema.Schema.Type<typeof JobListCursor>;
+
+export const ServiceAreaSchema = Schema.Struct({
+  id: ServiceAreaId,
+  name: NonEmptyTrimmedString,
+  description: Schema.optional(NonEmptyTrimmedString),
+});
+export type ServiceArea = Schema.Schema.Type<typeof ServiceAreaSchema>;
+
+export const CreateServiceAreaInputSchema = Schema.Struct({
+  name: NonEmptyTrimmedString,
+  description: Schema.optional(NonEmptyTrimmedString),
+}).annotations({
+  parseOptions: { onExcessProperty: "error" },
+});
+export type CreateServiceAreaInput = Schema.Schema.Type<
+  typeof CreateServiceAreaInputSchema
+>;
+
+export const UpdateServiceAreaInputSchema = Schema.Struct({
+  name: Schema.optional(NonEmptyTrimmedString),
+  description: Schema.optional(NonEmptyTrimmedString),
+}).annotations({
+  parseOptions: { onExcessProperty: "error" },
+});
+export type UpdateServiceAreaInput = Schema.Schema.Type<
+  typeof UpdateServiceAreaInputSchema
+>;
+
+export const ServiceAreaListResponseSchema = Schema.Struct({
+  items: Schema.Array(ServiceAreaSchema),
+});
+export type ServiceAreaListResponse = Schema.Schema.Type<
+  typeof ServiceAreaListResponseSchema
+>;
 
 export const JobSchema = Schema.Struct({
   id: WorkItemId,
@@ -186,7 +220,7 @@ export const JobListQuerySchema = Schema.Struct({
   coordinatorId: Schema.optional(UserId),
   priority: Schema.optional(JobPrioritySchema),
   siteId: Schema.optional(SiteId),
-  regionId: Schema.optional(RegionId),
+  serviceAreaId: Schema.optional(ServiceAreaId),
 });
 export type JobListQuery = Schema.Schema.Type<typeof JobListQuerySchema>;
 
@@ -200,7 +234,7 @@ export type CreateJobSiteExistingInput = Schema.Schema.Type<
 
 export const CreateSiteInputSchema = Schema.Struct({
   name: NonEmptyTrimmedString,
-  regionId: Schema.optional(RegionId),
+  serviceAreaId: Schema.optional(ServiceAreaId),
   addressLine1: NonEmptyTrimmedString,
   addressLine2: Schema.optional(NonEmptyTrimmedString),
   town: Schema.optional(NonEmptyTrimmedString),
@@ -359,17 +393,11 @@ export const JobMemberOptionSchema = Schema.Struct({
 });
 export type JobMemberOption = Schema.Schema.Type<typeof JobMemberOptionSchema>;
 
-export const JobRegionOptionSchema = Schema.Struct({
-  id: RegionId,
-  name: Schema.String,
-});
-export type JobRegionOption = Schema.Schema.Type<typeof JobRegionOptionSchema>;
-
 export const JobSiteOptionSchema = Schema.Struct({
   id: SiteId,
   name: Schema.String,
-  regionId: Schema.optional(RegionId),
-  regionName: Schema.optional(Schema.String),
+  serviceAreaId: Schema.optional(ServiceAreaId),
+  serviceAreaName: Schema.optional(Schema.String),
   addressLine1: Schema.String,
   addressLine2: Schema.optional(Schema.String),
   town: Schema.optional(Schema.String),
@@ -408,7 +436,7 @@ export type JobContactOption = Schema.Schema.Type<
 
 export const JobOptionsResponseSchema = Schema.Struct({
   members: Schema.Array(JobMemberOptionSchema),
-  regions: Schema.Array(JobRegionOptionSchema),
+  serviceAreas: Schema.Array(ServiceAreaSchema),
   sites: Schema.Array(JobSiteOptionSchema),
   contacts: Schema.Array(JobContactOptionSchema),
 });
@@ -417,7 +445,7 @@ export type JobOptionsResponse = Schema.Schema.Type<
 >;
 
 export const SitesOptionsResponseSchema = Schema.Struct({
-  regions: Schema.Array(JobRegionOptionSchema),
+  serviceAreas: Schema.Array(ServiceAreaSchema),
   sites: Schema.Array(JobSiteOptionSchema),
 });
 export type SitesOptionsResponse = Schema.Schema.Type<

@@ -7,7 +7,7 @@ import { JobStatusSchema, SiteCountrySchema } from "./domain.js";
 import {
   ContactId,
   OrganizationId,
-  RegionId,
+  ServiceAreaId,
   SiteId,
   UserId,
   VisitId,
@@ -153,14 +153,14 @@ export class OrganizationMemberNotFoundError extends Schema.TaggedError<Organiza
   HttpApiSchema.annotations({ status: 404 })
 ) {}
 
-export const REGION_NOT_FOUND_ERROR_TAG =
-  "@task-tracker/jobs-core/RegionNotFoundError" as const;
-export class RegionNotFoundError extends Schema.TaggedError<RegionNotFoundError>()(
-  REGION_NOT_FOUND_ERROR_TAG,
+export const SERVICE_AREA_NOT_FOUND_ERROR_TAG =
+  "@task-tracker/jobs-core/ServiceAreaNotFoundError" as const;
+export class ServiceAreaNotFoundError extends Schema.TaggedError<ServiceAreaNotFoundError>()(
+  SERVICE_AREA_NOT_FOUND_ERROR_TAG,
   {
     message: Schema.String,
     organizationId: OrganizationId,
-    regionId: RegionId,
+    serviceAreaId: ServiceAreaId,
   },
   HttpApiSchema.annotations({ status: 404 })
 ) {}
@@ -178,4 +178,4 @@ export type JobsError =
   | SiteGeocodingFailedError
   | ContactNotFoundError
   | OrganizationMemberNotFoundError
-  | RegionNotFoundError;
+  | ServiceAreaNotFoundError;

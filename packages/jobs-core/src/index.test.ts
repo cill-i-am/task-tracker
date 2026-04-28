@@ -5,6 +5,7 @@ import {
   AddJobCommentInputSchema,
   AddJobVisitInputSchema,
   CreateJobInputSchema,
+  CreateServiceAreaInputSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
   JobActivityBlockedReasonChangedPayloadSchema,
@@ -12,6 +13,7 @@ import {
   JobDetailResponseSchema,
   JobListQuerySchema,
   JobPrioritySchema,
+  JobOptionsResponseSchema,
   JobSiteOptionSchema,
   JobStatusSchema,
   JobsApi,
@@ -19,6 +21,8 @@ import {
   JobsContextSchema,
   JobTitleSchema,
   PatchJobInputSchema,
+  ServiceAreasApiGroup,
+  ServiceAreaSchema,
   SitesOptionsResponseSchema,
   SitesApiGroup,
   SiteGeocodingFailedError,
@@ -28,6 +32,36 @@ import {
 } from "./index.js";
 
 describe("jobs-core", () => {
+  it("decodes service area contracts", () => {
+    expect(
+      Schema.decodeUnknownSync(ServiceAreaSchema)({
+        description: "North city and hospitals",
+        id: "33333333-3333-4333-8333-333333333333",
+        name: "North Dublin",
+      })
+    ).toStrictEqual({
+      description: "North city and hospitals",
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "North Dublin",
+    });
+
+    expect(
+      Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
+        description: "  Retail sites  ",
+        name: "  Retail  ",
+      })
+    ).toStrictEqual({
+      description: "Retail sites",
+      name: "Retail",
+    });
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
+        name: "",
+      })
+    ).toThrow(/Expected/);
+  }, 5000);
+
   it("exports the closed job enums", () => {
     expect(ParseResult.decodeUnknownSync(JobStatusSchema)("in_progress")).toBe(
       "in_progress"
@@ -372,8 +406,8 @@ describe("jobs-core", () => {
       longitude: -6.2603,
       geocodingProvider: "google",
       geocodedAt: "2026-04-22T10:00:00.000Z",
-      regionId: "550e8400-e29b-41d4-a716-446655440011",
-      regionName: "Dublin",
+      serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+      serviceAreaName: "Dublin",
     };
 
     expect(
@@ -392,8 +426,8 @@ describe("jobs-core", () => {
       longitude: -6.2603,
       geocodingProvider: "google",
       geocodedAt: "2026-04-22T10:00:00.000Z",
-      regionId: "550e8400-e29b-41d4-a716-446655440011",
-      regionName: "Dublin",
+      serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+      serviceAreaName: "Dublin",
     });
     expect(
       ParseResult.decodeUnknownSync(CreateSiteResponseSchema)(siteOption)
@@ -413,6 +447,8 @@ describe("jobs-core", () => {
       "/jobs/{workItemId}/reopen",
       "/jobs/{workItemId}/comments",
       "/jobs/{workItemId}/visits",
+      "/service-areas",
+      "/service-areas/{serviceAreaId}",
       "/sites/options",
       "/sites",
       "/sites/{siteId}",
@@ -434,6 +470,24 @@ describe("jobs-core", () => {
       "sites.getSiteOptions"
     );
     expect(spec.paths["/sites"]?.post?.operationId).toBe("sites.createSite");
+  }, 5000);
+
+  it("surfaces the service areas api contract with the expected paths", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+
+    expect(spec.paths["/service-areas"]?.get?.operationId).toBe(
+      "serviceAreas.listServiceAreas"
+    );
+    expect(spec.paths["/service-areas"]?.post?.operationId).toBe(
+      "serviceAreas.createServiceArea"
+    );
+    expect(spec.paths["/service-areas"]?.post?.responses["201"]).toBeDefined();
+    expect(
+      spec.paths["/service-areas/{serviceAreaId}"]?.patch?.operationId
+    ).toBe("serviceAreas.updateServiceArea");
+    expect(
+      spec.paths["/service-areas/{serviceAreaId}"]?.patch?.responses["404"]
+    ).toBeDefined();
   }, 5000);
 
   it("documents standalone site creation responses", () => {
@@ -462,13 +516,14 @@ describe("jobs-core", () => {
 
   it("exports the shared api group", () => {
     expect(JobsApiGroup.identifier).toBe("jobs");
+    expect(ServiceAreasApiGroup.identifier).toBe("serviceAreas");
     expect(SitesApiGroup.identifier).toBe("sites");
   }, 5000);
 
   it("exports a lean sites options response", () => {
     expect(
       ParseResult.decodeUnknownSync(SitesOptionsResponseSchema)({
-        regions: [
+        serviceAreas: [
           {
             id: "550e8400-e29b-41d4-a716-446655440011",
             name: "Dublin",
@@ -490,7 +545,7 @@ describe("jobs-core", () => {
         ],
       })
     ).toStrictEqual({
-      regions: [
+      serviceAreas: [
         {
           id: "550e8400-e29b-41d4-a716-446655440011",
           name: "Dublin",
@@ -510,6 +565,62 @@ describe("jobs-core", () => {
           geocodedAt: "2026-04-22T10:00:00.000Z",
         },
       ],
+    });
+  }, 5000);
+
+  it("exports service areas in job options", () => {
+    expect(
+      ParseResult.decodeUnknownSync(JobOptionsResponseSchema)({
+        members: [],
+        serviceAreas: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440011",
+            name: "Dublin",
+          },
+        ],
+        sites: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440010",
+            name: "Docklands Campus",
+            serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+            serviceAreaName: "Dublin",
+            addressLine1: "1 Custom House Quay",
+            county: "Dublin",
+            country: "IE",
+            eircode: "D01 X2X2",
+            latitude: 53.3498,
+            longitude: -6.2603,
+            geocodingProvider: "google",
+            geocodedAt: "2026-04-22T10:00:00.000Z",
+          },
+        ],
+        contacts: [],
+      })
+    ).toStrictEqual({
+      members: [],
+      serviceAreas: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440011",
+          name: "Dublin",
+        },
+      ],
+      sites: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440010",
+          name: "Docklands Campus",
+          serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+          serviceAreaName: "Dublin",
+          addressLine1: "1 Custom House Quay",
+          county: "Dublin",
+          country: "IE",
+          eircode: "D01 X2X2",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          geocodingProvider: "google",
+          geocodedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      contacts: [],
     });
   }, 5000);
 

@@ -15,10 +15,10 @@ export const WorkItemId = Schema.UUID.pipe(
 );
 export type WorkItemId = Schema.Schema.Type<typeof WorkItemId>;
 
-export const RegionId = Schema.UUID.pipe(
-  Schema.brand("@task-tracker/jobs-core/RegionId")
+export const ServiceAreaId = Schema.UUID.pipe(
+  Schema.brand("@task-tracker/jobs-core/ServiceAreaId")
 );
-export type RegionId = Schema.Schema.Type<typeof RegionId>;
+export type ServiceAreaId = Schema.Schema.Type<typeof ServiceAreaId>;
 
 export const SiteId = Schema.UUID.pipe(
   Schema.brand("@task-tracker/jobs-core/SiteId")
