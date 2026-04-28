@@ -6,11 +6,15 @@ import {
   AddJobCommentResponseSchema,
   AddJobVisitInputSchema,
   AddJobVisitResponseSchema,
+  AssignJobLabelInputSchema,
+  CreateJobLabelInputSchema,
   CreateJobInputSchema,
   CreateJobResponseSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
   JobDetailResponseSchema,
+  JobLabelResponseSchema,
+  JobLabelsResponseSchema,
   JobListQuerySchema,
   JobOptionsResponseSchema,
   JobListResponseSchema,
@@ -20,6 +24,7 @@ import {
   SitesOptionsResponseSchema,
   TransitionJobInputSchema,
   TransitionJobResponseSchema,
+  UpdateJobLabelInputSchema,
   UpdateSiteInputSchema,
   UpdateSiteResponseSchema,
 } from "./dto.js";
@@ -29,6 +34,8 @@ import {
   CoordinatorMatchesAssigneeError,
   InvalidJobTransitionError,
   JobAccessDeniedError,
+  JobLabelNameConflictError,
+  JobLabelNotFoundError,
   JobListCursorInvalidError,
   JobNotFoundError,
   JobStorageError,
@@ -38,7 +45,7 @@ import {
   SiteNotFoundError,
   VisitDurationIncrementError,
 } from "./errors.js";
-import { SiteId, WorkItemId } from "./ids.js";
+import { JobLabelId, SiteId, WorkItemId } from "./ids.js";
 
 const jobsGroup = HttpApiGroup.make("jobs")
   .add(
@@ -124,6 +131,57 @@ const jobsGroup = HttpApiGroup.make("jobs")
       .addError(JobNotFoundError)
       .addError(JobAccessDeniedError)
       .addError(VisitDurationIncrementError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.post("assignJobLabel", "/jobs/:workItemId/labels")
+      .setPath(Schema.Struct({ workItemId: WorkItemId }))
+      .setPayload(AssignJobLabelInputSchema)
+      .addSuccess(JobDetailResponseSchema)
+      .addError(JobNotFoundError)
+      .addError(JobLabelNotFoundError)
+      .addError(JobAccessDeniedError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.del("removeJobLabel", "/jobs/:workItemId/labels/:labelId")
+      .setPath(Schema.Struct({ workItemId: WorkItemId, labelId: JobLabelId }))
+      .addSuccess(JobDetailResponseSchema)
+      .addError(JobNotFoundError)
+      .addError(JobLabelNotFoundError)
+      .addError(JobAccessDeniedError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.get("listJobLabels", "/job-labels")
+      .addSuccess(JobLabelsResponseSchema)
+      .addError(JobAccessDeniedError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.post("createJobLabel", "/job-labels")
+      .setPayload(CreateJobLabelInputSchema)
+      .addSuccess(JobLabelResponseSchema, { status: 201 })
+      .addError(JobAccessDeniedError)
+      .addError(JobLabelNameConflictError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.patch("updateJobLabel", "/job-labels/:labelId")
+      .setPath(Schema.Struct({ labelId: JobLabelId }))
+      .setPayload(UpdateJobLabelInputSchema)
+      .addSuccess(JobLabelResponseSchema)
+      .addError(JobAccessDeniedError)
+      .addError(JobLabelNotFoundError)
+      .addError(JobLabelNameConflictError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.del("deleteJobLabel", "/job-labels/:labelId")
+      .setPath(Schema.Struct({ labelId: JobLabelId }))
+      .addSuccess(JobLabelResponseSchema)
+      .addError(JobAccessDeniedError)
+      .addError(JobLabelNotFoundError)
       .addError(JobStorageError)
   );
 

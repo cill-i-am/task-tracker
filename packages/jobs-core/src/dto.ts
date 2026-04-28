@@ -6,6 +6,7 @@ import {
   JobBlockedReasonSchema,
   JobCommentBodySchema,
   JobKindSchema,
+  JobLabelNameSchema,
   JobPrioritySchema,
   JobStatusSchema,
   JobTitleSchema,
@@ -19,6 +20,7 @@ import {
   ActivityId,
   CommentId,
   ContactId,
+  JobLabelId,
   OrganizationId,
   RegionId,
   SiteId,
@@ -35,12 +37,21 @@ export const JobListCursor = Schema.String.pipe(
 );
 export type JobListCursor = Schema.Schema.Type<typeof JobListCursor>;
 
+export const JobLabelSchema = Schema.Struct({
+  id: JobLabelId,
+  name: JobLabelNameSchema,
+  createdAt: IsoDateTimeString,
+  updatedAt: IsoDateTimeString,
+});
+export type JobLabel = Schema.Schema.Type<typeof JobLabelSchema>;
+
 export const JobSchema = Schema.Struct({
   id: WorkItemId,
   kind: JobKindSchema,
   title: JobTitleSchema,
   status: JobStatusSchema,
   priority: JobPrioritySchema,
+  labels: Schema.Array(JobLabelSchema),
   siteId: Schema.optional(SiteId),
   contactId: Schema.optional(ContactId),
   assigneeId: Schema.optional(UserId),
@@ -60,6 +71,7 @@ export const JobListItemSchema = Schema.Struct({
   title: JobTitleSchema,
   status: JobStatusSchema,
   priority: JobPrioritySchema,
+  labels: Schema.Array(JobLabelSchema),
   siteId: Schema.optional(SiteId),
   contactId: Schema.optional(ContactId),
   assigneeId: Schema.optional(UserId),
@@ -136,6 +148,18 @@ export const JobActivityVisitLoggedPayloadSchema = Schema.Struct({
   visitId: VisitId,
 });
 
+export const JobActivityLabelAddedPayloadSchema = Schema.Struct({
+  eventType: Schema.Literal("label_added"),
+  labelId: JobLabelId,
+  labelName: JobLabelNameSchema,
+});
+
+export const JobActivityLabelRemovedPayloadSchema = Schema.Struct({
+  eventType: Schema.Literal("label_removed"),
+  labelId: JobLabelId,
+  labelName: JobLabelNameSchema,
+});
+
 export const JobActivityPayloadSchema = Schema.Union(
   JobActivityJobCreatedPayloadSchema,
   JobActivityStatusChangedPayloadSchema,
@@ -146,7 +170,9 @@ export const JobActivityPayloadSchema = Schema.Union(
   JobActivitySiteChangedPayloadSchema,
   JobActivityContactChangedPayloadSchema,
   JobActivityReopenedPayloadSchema,
-  JobActivityVisitLoggedPayloadSchema
+  JobActivityVisitLoggedPayloadSchema,
+  JobActivityLabelAddedPayloadSchema,
+  JobActivityLabelRemovedPayloadSchema
 );
 export type JobActivityPayload = Schema.Schema.Type<
   typeof JobActivityPayloadSchema
@@ -187,6 +213,7 @@ export const JobListQuerySchema = Schema.Struct({
   priority: Schema.optional(JobPrioritySchema),
   siteId: Schema.optional(SiteId),
   regionId: Schema.optional(RegionId),
+  labelId: Schema.optional(JobLabelId),
 });
 export type JobListQuery = Schema.Schema.Type<typeof JobListQuerySchema>;
 
@@ -339,6 +366,39 @@ export type AddJobVisitResponse = Schema.Schema.Type<
   typeof AddJobVisitResponseSchema
 >;
 
+export const CreateJobLabelInputSchema = Schema.Struct({
+  name: JobLabelNameSchema,
+});
+export type CreateJobLabelInput = Schema.Schema.Type<
+  typeof CreateJobLabelInputSchema
+>;
+
+export const UpdateJobLabelInputSchema = Schema.Struct({
+  name: JobLabelNameSchema,
+});
+export type UpdateJobLabelInput = Schema.Schema.Type<
+  typeof UpdateJobLabelInputSchema
+>;
+
+export const AssignJobLabelInputSchema = Schema.Struct({
+  labelId: JobLabelId,
+});
+export type AssignJobLabelInput = Schema.Schema.Type<
+  typeof AssignJobLabelInputSchema
+>;
+
+export const JobLabelResponseSchema = JobLabelSchema;
+export type JobLabelResponse = Schema.Schema.Type<
+  typeof JobLabelResponseSchema
+>;
+
+export const JobLabelsResponseSchema = Schema.Struct({
+  labels: Schema.Array(JobLabelSchema),
+});
+export type JobLabelsResponse = Schema.Schema.Type<
+  typeof JobLabelsResponseSchema
+>;
+
 export const JobDetailSchema = Schema.Struct({
   job: JobSchema,
   comments: Schema.Array(JobCommentSchema),
@@ -411,6 +471,7 @@ export const JobOptionsResponseSchema = Schema.Struct({
   regions: Schema.Array(JobRegionOptionSchema),
   sites: Schema.Array(JobSiteOptionSchema),
   contacts: Schema.Array(JobContactOptionSchema),
+  labels: Schema.Array(JobLabelSchema),
 });
 export type JobOptionsResponse = Schema.Schema.Type<
   typeof JobOptionsResponseSchema
