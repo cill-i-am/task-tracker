@@ -9,6 +9,7 @@ import {
   CreateJobInputSchema,
   CreateJobResponseSchema,
   CreateServiceAreaInputSchema,
+  CreateServiceAreaResponseSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
   JobDetailResponseSchema,
@@ -19,11 +20,11 @@ import {
   PatchJobResponseSchema,
   ReopenJobResponseSchema,
   ServiceAreaListResponseSchema,
-  ServiceAreaSchema,
   SitesOptionsResponseSchema,
   TransitionJobInputSchema,
   TransitionJobResponseSchema,
   UpdateServiceAreaInputSchema,
+  UpdateServiceAreaResponseSchema,
   UpdateSiteInputSchema,
   UpdateSiteResponseSchema,
 } from "./dto.js";
@@ -143,7 +144,7 @@ const serviceAreasGroup = HttpApiGroup.make("serviceAreas")
   .add(
     HttpApiEndpoint.post("createServiceArea", "/service-areas")
       .setPayload(CreateServiceAreaInputSchema)
-      .addSuccess(ServiceAreaSchema, { status: 201 })
+      .addSuccess(CreateServiceAreaResponseSchema, { status: 201 })
       .addError(JobAccessDeniedError)
       .addError(JobStorageError)
   )
@@ -151,7 +152,7 @@ const serviceAreasGroup = HttpApiGroup.make("serviceAreas")
     HttpApiEndpoint.patch("updateServiceArea", "/service-areas/:serviceAreaId")
       .setPath(Schema.Struct({ serviceAreaId: ServiceAreaId }))
       .setPayload(UpdateServiceAreaInputSchema)
-      .addSuccess(ServiceAreaSchema)
+      .addSuccess(UpdateServiceAreaResponseSchema)
       .addError(JobAccessDeniedError)
       .addError(ServiceAreaNotFoundError)
       .addError(JobStorageError)

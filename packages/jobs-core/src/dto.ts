@@ -52,6 +52,11 @@ export type CreateServiceAreaInput = Schema.Schema.Type<
   typeof CreateServiceAreaInputSchema
 >;
 
+export const CreateServiceAreaResponseSchema = ServiceAreaSchema;
+export type CreateServiceAreaResponse = Schema.Schema.Type<
+  typeof CreateServiceAreaResponseSchema
+>;
+
 export const UpdateServiceAreaInputSchema = Schema.Struct({
   name: Schema.optional(NonEmptyTrimmedString),
   description: Schema.optional(NonEmptyTrimmedString),
@@ -60,6 +65,11 @@ export const UpdateServiceAreaInputSchema = Schema.Struct({
 });
 export type UpdateServiceAreaInput = Schema.Schema.Type<
   typeof UpdateServiceAreaInputSchema
+>;
+
+export const UpdateServiceAreaResponseSchema = ServiceAreaSchema;
+export type UpdateServiceAreaResponse = Schema.Schema.Type<
+  typeof UpdateServiceAreaResponseSchema
 >;
 
 export const ServiceAreaListResponseSchema = Schema.Struct({

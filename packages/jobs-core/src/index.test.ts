@@ -6,6 +6,7 @@ import {
   AddJobVisitInputSchema,
   CreateJobInputSchema,
   CreateServiceAreaInputSchema,
+  CreateServiceAreaResponseSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
   JobActivityBlockedReasonChangedPayloadSchema,
@@ -26,6 +27,7 @@ import {
   SitesOptionsResponseSchema,
   SitesApiGroup,
   SiteGeocodingFailedError,
+  UpdateServiceAreaResponseSchema,
   UserId,
   VisitDurationIncrementError,
   WorkItemId,
@@ -33,17 +35,21 @@ import {
 
 describe("jobs-core", () => {
   it("decodes service area contracts", () => {
-    expect(
-      Schema.decodeUnknownSync(ServiceAreaSchema)({
-        description: "North city and hospitals",
-        id: "33333333-3333-4333-8333-333333333333",
-        name: "North Dublin",
-      })
-    ).toStrictEqual({
+    const serviceArea = {
       description: "North city and hospitals",
       id: "33333333-3333-4333-8333-333333333333",
       name: "North Dublin",
-    });
+    };
+
+    expect(
+      Schema.decodeUnknownSync(ServiceAreaSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
+    expect(
+      Schema.decodeUnknownSync(CreateServiceAreaResponseSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
+    expect(
+      Schema.decodeUnknownSync(UpdateServiceAreaResponseSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
 
     expect(
       Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
