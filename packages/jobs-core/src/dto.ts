@@ -10,6 +10,7 @@ import {
   JobStatusSchema,
   JobTitleSchema,
   JobVisitNoteSchema,
+  RateCardLineKindSchema,
   SiteCountrySchema,
   SiteGeocodingProviderSchema,
   SiteLatitudeSchema,
@@ -20,6 +21,8 @@ import {
   CommentId,
   ContactId,
   OrganizationId,
+  RateCardId,
+  RateCardLineId,
   ServiceAreaId,
   SiteId,
   UserId,
@@ -29,6 +32,11 @@ import {
 
 const JobVisitDurationMinutesSchema = Schema.Int.pipe(Schema.positive());
 const NonEmptyTrimmedString = Schema.Trim.pipe(Schema.minLength(1));
+const RateCardLineValueSchema = Schema.Number.pipe(
+  Schema.finite(),
+  Schema.greaterThanOrEqualTo(0)
+);
+const RateCardLinePositionSchema = Schema.Int.pipe(Schema.positive());
 
 export const JobListCursor = Schema.String.pipe(
   Schema.brand("@task-tracker/jobs-core/JobListCursor")
@@ -77,6 +85,76 @@ export const ServiceAreaListResponseSchema = Schema.Struct({
 });
 export type ServiceAreaListResponse = Schema.Schema.Type<
   typeof ServiceAreaListResponseSchema
+>;
+
+export const RateCardLineSchema = Schema.Struct({
+  id: RateCardLineId,
+  rateCardId: RateCardId,
+  kind: RateCardLineKindSchema,
+  name: NonEmptyTrimmedString,
+  position: RateCardLinePositionSchema,
+  unit: NonEmptyTrimmedString,
+  value: RateCardLineValueSchema,
+});
+export type RateCardLine = Schema.Schema.Type<typeof RateCardLineSchema>;
+
+export const RateCardSchema = Schema.Struct({
+  id: RateCardId,
+  name: NonEmptyTrimmedString,
+  lines: Schema.Array(RateCardLineSchema),
+  createdAt: IsoDateTimeString,
+  updatedAt: IsoDateTimeString,
+});
+export type RateCard = Schema.Schema.Type<typeof RateCardSchema>;
+
+export const RateCardLineInputSchema = Schema.Struct({
+  kind: RateCardLineKindSchema,
+  name: NonEmptyTrimmedString,
+  position: RateCardLinePositionSchema,
+  unit: NonEmptyTrimmedString,
+  value: RateCardLineValueSchema,
+}).annotations({
+  parseOptions: { onExcessProperty: "error" },
+});
+export type RateCardLineInput = Schema.Schema.Type<
+  typeof RateCardLineInputSchema
+>;
+
+export const CreateRateCardInputSchema = Schema.Struct({
+  name: NonEmptyTrimmedString,
+  lines: Schema.Array(RateCardLineInputSchema),
+}).annotations({
+  parseOptions: { onExcessProperty: "error" },
+});
+export type CreateRateCardInput = Schema.Schema.Type<
+  typeof CreateRateCardInputSchema
+>;
+
+export const CreateRateCardResponseSchema = RateCardSchema;
+export type CreateRateCardResponse = Schema.Schema.Type<
+  typeof CreateRateCardResponseSchema
+>;
+
+export const UpdateRateCardInputSchema = Schema.Struct({
+  name: Schema.optional(NonEmptyTrimmedString),
+  lines: Schema.optional(Schema.Array(RateCardLineInputSchema)),
+}).annotations({
+  parseOptions: { onExcessProperty: "error" },
+});
+export type UpdateRateCardInput = Schema.Schema.Type<
+  typeof UpdateRateCardInputSchema
+>;
+
+export const UpdateRateCardResponseSchema = RateCardSchema;
+export type UpdateRateCardResponse = Schema.Schema.Type<
+  typeof UpdateRateCardResponseSchema
+>;
+
+export const RateCardListResponseSchema = Schema.Struct({
+  items: Schema.Array(RateCardSchema),
+});
+export type RateCardListResponse = Schema.Schema.Type<
+  typeof RateCardListResponseSchema
 >;
 
 export const JobSchema = Schema.Struct({

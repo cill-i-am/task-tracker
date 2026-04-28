@@ -5,6 +5,7 @@ import {
   AddJobCommentInputSchema,
   AddJobVisitInputSchema,
   CreateJobInputSchema,
+  CreateRateCardInputSchema,
   CreateServiceAreaInputSchema,
   CreateServiceAreaResponseSchema,
   CreateSiteInputSchema,
@@ -22,6 +23,8 @@ import {
   JobsContextSchema,
   JobTitleSchema,
   PatchJobInputSchema,
+  RateCardSchema,
+  RateCardsApiGroup,
   ServiceAreasApiGroup,
   ServiceAreaSchema,
   SitesOptionsResponseSchema,
@@ -66,6 +69,71 @@ describe("jobs-core", () => {
         name: "",
       })
     ).toThrow(/Expected/);
+  }, 5000);
+
+  it("decodes rate card input contracts", () => {
+    const decoded = Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+      lines: [
+        {
+          kind: "labour",
+          name: "  Labour  ",
+          position: 1,
+          unit: "hour",
+          value: 85,
+        },
+        {
+          kind: "material_markup",
+          name: "Materials markup",
+          position: 2,
+          unit: "percent",
+          value: 15,
+        },
+      ],
+      name: "  Standard  ",
+    });
+
+    expect(decoded.name).toBe("Standard");
+    expect(decoded.lines[0]?.name).toBe("Labour");
+    expect(decoded.lines[1]?.kind).toBe("material_markup");
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: [
+          {
+            kind: "custom",
+            name: "Bad",
+            position: 1,
+            unit: "hour",
+            value: -1,
+          },
+        ],
+        name: "Standard",
+      })
+    ).toThrow(/greaterThanOrEqualTo/);
+  }, 5000);
+
+  it("decodes rate card response contracts", () => {
+    const rateCard = {
+      id: "550e8400-e29b-41d4-a716-446655440020",
+      name: "Standard",
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T11:00:00.000Z",
+      lines: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440021",
+          rateCardId: "550e8400-e29b-41d4-a716-446655440020",
+          kind: "callout",
+          name: "Callout",
+          position: 1,
+          unit: "visit",
+          value: 120,
+        },
+      ],
+    };
+
+    expect(Schema.decodeUnknownSync(RateCardSchema)(rateCard)).toStrictEqual(
+      rateCard
+    );
   }, 5000);
 
   it("exports the closed job enums", () => {
@@ -455,6 +523,8 @@ describe("jobs-core", () => {
       "/jobs/{workItemId}/visits",
       "/service-areas",
       "/service-areas/{serviceAreaId}",
+      "/rate-cards",
+      "/rate-cards/{rateCardId}",
       "/sites/options",
       "/sites",
       "/sites/{siteId}",
@@ -476,6 +546,24 @@ describe("jobs-core", () => {
       "sites.getSiteOptions"
     );
     expect(spec.paths["/sites"]?.post?.operationId).toBe("sites.createSite");
+  }, 5000);
+
+  it("surfaces the rate cards api contract with the expected paths", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+
+    expect(spec.paths["/rate-cards"]?.get?.operationId).toBe(
+      "rateCards.listRateCards"
+    );
+    expect(spec.paths["/rate-cards"]?.post?.operationId).toBe(
+      "rateCards.createRateCard"
+    );
+    expect(spec.paths["/rate-cards"]?.post?.responses["201"]).toBeDefined();
+    expect(spec.paths["/rate-cards/{rateCardId}"]?.patch?.operationId).toBe(
+      "rateCards.updateRateCard"
+    );
+    expect(
+      spec.paths["/rate-cards/{rateCardId}"]?.patch?.responses["404"]
+    ).toBeDefined();
   }, 5000);
 
   it("surfaces the service areas api contract with the expected paths", () => {
@@ -522,6 +610,7 @@ describe("jobs-core", () => {
 
   it("exports the shared api group", () => {
     expect(JobsApiGroup.identifier).toBe("jobs");
+    expect(RateCardsApiGroup.identifier).toBe("rateCards");
     expect(ServiceAreasApiGroup.identifier).toBe("serviceAreas");
     expect(SitesApiGroup.identifier).toBe("sites");
   }, 5000);

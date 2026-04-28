@@ -20,6 +20,16 @@ export const ServiceAreaId = Schema.UUID.pipe(
 );
 export type ServiceAreaId = Schema.Schema.Type<typeof ServiceAreaId>;
 
+export const RateCardId = Schema.UUID.pipe(
+  Schema.brand("@task-tracker/jobs-core/RateCardId")
+);
+export type RateCardId = Schema.Schema.Type<typeof RateCardId>;
+
+export const RateCardLineId = Schema.UUID.pipe(
+  Schema.brand("@task-tracker/jobs-core/RateCardLineId")
+);
+export type RateCardLineId = Schema.Schema.Type<typeof RateCardLineId>;
+
 export const SiteId = Schema.UUID.pipe(
   Schema.brand("@task-tracker/jobs-core/SiteId")
 );

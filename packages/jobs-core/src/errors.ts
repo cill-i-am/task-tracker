@@ -7,6 +7,7 @@ import { JobStatusSchema, SiteCountrySchema } from "./domain.js";
 import {
   ContactId,
   OrganizationId,
+  RateCardId,
   ServiceAreaId,
   SiteId,
   UserId,
@@ -165,6 +166,18 @@ export class ServiceAreaNotFoundError extends Schema.TaggedError<ServiceAreaNotF
   HttpApiSchema.annotations({ status: 404 })
 ) {}
 
+export const RATE_CARD_NOT_FOUND_ERROR_TAG =
+  "@task-tracker/jobs-core/RateCardNotFoundError" as const;
+export class RateCardNotFoundError extends Schema.TaggedError<RateCardNotFoundError>()(
+  RATE_CARD_NOT_FOUND_ERROR_TAG,
+  {
+    message: Schema.String,
+    organizationId: OrganizationId,
+    rateCardId: RateCardId,
+  },
+  HttpApiSchema.annotations({ status: 404 })
+) {}
+
 export type JobsError =
   | JobNotFoundError
   | JobAccessDeniedError
@@ -178,4 +191,5 @@ export type JobsError =
   | SiteGeocodingFailedError
   | ContactNotFoundError
   | OrganizationMemberNotFoundError
-  | ServiceAreaNotFoundError;
+  | ServiceAreaNotFoundError
+  | RateCardNotFoundError;

@@ -56,6 +56,17 @@ export const JOB_PRIORITIES = [
 export const JobPrioritySchema = Schema.Literal(...JOB_PRIORITIES);
 export type JobPriority = Schema.Schema.Type<typeof JobPrioritySchema>;
 
+export const RATE_CARD_LINE_KINDS = [
+  "labour",
+  "callout",
+  "material_markup",
+  "custom",
+] as const;
+export const RateCardLineKindSchema = Schema.Literal(...RATE_CARD_LINE_KINDS);
+export type RateCardLineKind = Schema.Schema.Type<
+  typeof RateCardLineKindSchema
+>;
+
 export const SiteLatitudeSchema = Schema.Number.pipe(
   Schema.greaterThanOrEqualTo(-90),
   Schema.lessThanOrEqualTo(90)

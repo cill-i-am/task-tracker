@@ -8,6 +8,8 @@ import {
   AddJobVisitResponseSchema,
   CreateJobInputSchema,
   CreateJobResponseSchema,
+  CreateRateCardInputSchema,
+  CreateRateCardResponseSchema,
   CreateServiceAreaInputSchema,
   CreateServiceAreaResponseSchema,
   CreateSiteInputSchema,
@@ -18,11 +20,14 @@ import {
   JobListResponseSchema,
   PatchJobInputSchema,
   PatchJobResponseSchema,
+  RateCardListResponseSchema,
   ReopenJobResponseSchema,
   ServiceAreaListResponseSchema,
   SitesOptionsResponseSchema,
   TransitionJobInputSchema,
   TransitionJobResponseSchema,
+  UpdateRateCardInputSchema,
+  UpdateRateCardResponseSchema,
   UpdateServiceAreaInputSchema,
   UpdateServiceAreaResponseSchema,
   UpdateSiteInputSchema,
@@ -38,12 +43,13 @@ import {
   JobNotFoundError,
   JobStorageError,
   OrganizationMemberNotFoundError,
+  RateCardNotFoundError,
   ServiceAreaNotFoundError,
   SiteGeocodingFailedError,
   SiteNotFoundError,
   VisitDurationIncrementError,
 } from "./errors.js";
-import { ServiceAreaId, SiteId, WorkItemId } from "./ids.js";
+import { RateCardId, ServiceAreaId, SiteId, WorkItemId } from "./ids.js";
 
 const jobsGroup = HttpApiGroup.make("jobs")
   .add(
@@ -160,6 +166,32 @@ const serviceAreasGroup = HttpApiGroup.make("serviceAreas")
 
 export const ServiceAreasApiGroup = serviceAreasGroup;
 
+const rateCardsGroup = HttpApiGroup.make("rateCards")
+  .add(
+    HttpApiEndpoint.get("listRateCards", "/rate-cards")
+      .addSuccess(RateCardListResponseSchema)
+      .addError(JobAccessDeniedError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.post("createRateCard", "/rate-cards")
+      .setPayload(CreateRateCardInputSchema)
+      .addSuccess(CreateRateCardResponseSchema, { status: 201 })
+      .addError(JobAccessDeniedError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.patch("updateRateCard", "/rate-cards/:rateCardId")
+      .setPath(Schema.Struct({ rateCardId: RateCardId }))
+      .setPayload(UpdateRateCardInputSchema)
+      .addSuccess(UpdateRateCardResponseSchema)
+      .addError(JobAccessDeniedError)
+      .addError(RateCardNotFoundError)
+      .addError(JobStorageError)
+  );
+
+export const RateCardsApiGroup = rateCardsGroup;
+
 const sitesGroup = HttpApiGroup.make("sites")
   .add(
     HttpApiEndpoint.get("getSiteOptions", "/sites/options")
@@ -193,9 +225,11 @@ export const SitesApiGroup = sitesGroup;
 export const JobsApi = HttpApi.make("JobsApi")
   .add(JobsApiGroup)
   .add(ServiceAreasApiGroup)
+  .add(RateCardsApiGroup)
   .add(SitesApiGroup);
 
 export type JobsApiGroupType = typeof JobsApiGroup;
+export type RateCardsApiGroupType = typeof RateCardsApiGroup;
 export type ServiceAreasApiGroupType = typeof ServiceAreasApiGroup;
 export type SitesApiGroupType = typeof SitesApiGroup;
 export type JobsApiType = typeof JobsApi;
