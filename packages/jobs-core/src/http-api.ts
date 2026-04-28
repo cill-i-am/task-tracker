@@ -11,9 +11,12 @@ import {
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
   JobDetailResponseSchema,
+  JobMemberOptionsResponseSchema,
   JobListQuerySchema,
   JobOptionsResponseSchema,
   JobListResponseSchema,
+  OrganizationActivityListResponseSchema,
+  OrganizationActivityQuerySchema,
   PatchJobInputSchema,
   PatchJobResponseSchema,
   ReopenJobResponseSchema,
@@ -32,6 +35,7 @@ import {
   JobListCursorInvalidError,
   JobNotFoundError,
   JobStorageError,
+  OrganizationActivityCursorInvalidError,
   OrganizationMemberNotFoundError,
   RegionNotFoundError,
   SiteGeocodingFailedError,
@@ -56,6 +60,12 @@ const jobsGroup = HttpApiGroup.make("jobs")
       .addError(JobStorageError)
   )
   .add(
+    HttpApiEndpoint.get("getJobMemberOptions", "/jobs/member-options")
+      .addSuccess(JobMemberOptionsResponseSchema)
+      .addError(JobAccessDeniedError)
+      .addError(JobStorageError)
+  )
+  .add(
     HttpApiEndpoint.post("createJob", "/jobs")
       .setPayload(CreateJobInputSchema)
       .addSuccess(CreateJobResponseSchema, { status: 201 })
@@ -64,6 +74,14 @@ const jobsGroup = HttpApiGroup.make("jobs")
       .addError(SiteNotFoundError)
       .addError(SiteGeocodingFailedError)
       .addError(ContactNotFoundError)
+      .addError(JobStorageError)
+  )
+  .add(
+    HttpApiEndpoint.get("listOrganizationActivity", "/activity")
+      .setUrlParams(OrganizationActivityQuerySchema)
+      .addSuccess(OrganizationActivityListResponseSchema)
+      .addError(JobAccessDeniedError)
+      .addError(OrganizationActivityCursorInvalidError)
       .addError(JobStorageError)
   )
   .add(

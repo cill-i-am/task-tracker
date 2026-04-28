@@ -58,9 +58,15 @@ import { Input } from "#/components/ui/input";
 import { ResponsiveDrawer } from "#/components/ui/responsive-drawer";
 import { Separator } from "#/components/ui/separator";
 import { Textarea } from "#/components/ui/textarea";
+import { describeJobActivity } from "#/features/activity/activity-formatting";
 import { useRegisterCommandActions } from "#/features/command-bar/command-bar";
 import type { CommandAction } from "#/features/command-bar/command-bar";
 
+import {
+  formatJobDateTime,
+  JOB_PRIORITY_LABELS as PRIORITY_LABELS,
+  JOB_STATUS_LABELS as STATUS_LABELS,
+} from "./job-display";
 import { JobsDetailLocation } from "./jobs-detail-location";
 import {
   addJobCommentMutationAtomFamily,
@@ -77,23 +83,6 @@ import {
   hasJobsElevatedAccess,
 } from "./jobs-viewer";
 import type { JobsViewer } from "./jobs-viewer";
-
-const PRIORITY_LABELS = {
-  none: "No priority",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-} as const;
-
-const STATUS_LABELS = {
-  blocked: "Blocked",
-  canceled: "Canceled",
-  completed: "Completed",
-  in_progress: "In progress",
-  new: "New",
-  triaged: "Triaged",
-} as const;
 
 const VISIT_DURATION_OPTIONS = [
   { label: "1 hour", value: "60" },
@@ -990,7 +979,7 @@ export function JobsDetailSheet({
                         >
                           <div className="flex flex-col gap-2">
                             <p className="text-sm leading-7">
-                              {describeActivity(actor?.name, event.payload)}
+                              {describeJobActivity(actor?.name, event.payload)}
                             </p>
                             <p className="text-sm text-muted-foreground">
                               {formatDateTime(event.createdAt)}
@@ -1237,63 +1226,10 @@ function formatDate(value: string) {
 }
 
 function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(value));
+  return formatJobDateTime(value);
 }
 
 function formatDuration(durationMinutes: number) {
   const hours = durationMinutes / 60;
   return `${hours}h logged`;
-}
-
-function describeActivity(
-  actorName: string | undefined,
-  payload: JobDetailResponse["activity"][number]["payload"]
-) {
-  const actorPrefix = actorName ? `${actorName} ` : "";
-
-  switch (payload.eventType) {
-    case "assignee_changed": {
-      return `${actorPrefix}updated the assignee.`;
-    }
-    case "blocked_reason_changed": {
-      return `${actorPrefix}updated the blocked reason.`;
-    }
-    case "contact_changed": {
-      return `${actorPrefix}updated the contact.`;
-    }
-    case "coordinator_changed": {
-      return `${actorPrefix}updated the coordinator.`;
-    }
-    case "job_created": {
-      return `${actorPrefix}created the job.`;
-    }
-    case "job_reopened": {
-      return `${actorPrefix}reopened the job.`;
-    }
-    case "priority_changed": {
-      return `${actorPrefix}changed priority from ${PRIORITY_LABELS[payload.fromPriority]} to ${PRIORITY_LABELS[payload.toPriority]}.`;
-    }
-    case "site_changed": {
-      return `${actorPrefix}updated the site.`;
-    }
-    case "status_changed": {
-      return `${actorPrefix}changed status from ${STATUS_LABELS[payload.fromStatus]} to ${STATUS_LABELS[payload.toStatus]}.`;
-    }
-    case "visit_logged": {
-      return `${actorPrefix}logged a visit.`;
-    }
-    default: {
-      return assertNever(payload);
-    }
-  }
-}
-
-function assertNever(value: never): never {
-  throw new Error(`Unhandled job activity payload: ${JSON.stringify(value)}`);
 }
