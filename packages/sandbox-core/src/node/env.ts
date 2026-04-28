@@ -18,6 +18,12 @@ export class SandboxEnvironmentError extends Schema.TaggedError<SandboxEnvironme
     message: Schema.String,
     missing: Schema.Array(Schema.String),
     filePath: Schema.optional(Schema.String),
+    reason: Schema.Literal(
+      "file_read_failed",
+      "invalid_environment",
+      "missing_required"
+    ),
+    cause: Schema.optional(Schema.String),
   }
 ) {}
 
@@ -50,11 +56,7 @@ export const loadSandboxSharedEnvironment = Effect.fn(
 
   const merged = {
     ...fileEnv,
-    ...Object.fromEntries(
-      Object.entries(input.processEnv ?? {}).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string"
-      )
-    ),
+    ...pickStringValues(input.processEnv ?? {}),
   };
 
   const selectedEnvironment = Object.fromEntries(
@@ -95,6 +97,8 @@ const readOptionalEnvironmentFile = Effect.fn("SandboxEnv.readOptionalFile")(
           ? Effect.succeed("")
           : Effect.fail(
               new SandboxEnvironmentError({
+                cause: formatUnknownError(error),
+                reason: "file_read_failed",
                 message:
                   error instanceof Error
                     ? `Failed to read sandbox env file ${filePath}: ${error.message}`
@@ -124,11 +128,14 @@ const decodeSandboxSharedEnvironment = Effect.fn("SandboxEnv.decodeShared")(
         });
 
         return new SandboxEnvironmentError({
+          cause: formatParseError(parseError),
           message:
             missing.length === 0
               ? `Sandbox shared env is invalid: ${formatParseError(parseError)}`
               : `Missing required sandbox env vars: ${missing.join(", ")}. Add them to .env or .env.local at the repo root, or export them in the shell before running the sandbox CLI.`,
           missing,
+          reason:
+            missing.length === 0 ? "invalid_environment" : "missing_required",
         });
       })
     );
@@ -139,16 +146,30 @@ function formatParseError(parseError: ParseResult.ParseError) {
   return ParseResult.TreeFormatter.formatErrorSync(parseError);
 }
 
+function formatUnknownError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
 function parseEnvironmentFile(content: string): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(parseEnv(content)).filter(
-      (entry): entry is [string, string] => typeof entry[1] === "string"
-    )
-  );
+  return pickStringValues(parseEnv(content));
 }
 
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function pickStringValues(
+  input: Record<string, string | undefined>
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(input).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
+  );
 }
 
 export type SharedSandboxEnvironmentInput = SharedSandboxEnvironmentType;

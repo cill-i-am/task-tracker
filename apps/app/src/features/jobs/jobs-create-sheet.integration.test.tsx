@@ -11,6 +11,7 @@ import type {
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Effect } from "effect";
+import type * as EffectPackage from "effect";
 import type { ReactNode } from "react";
 
 import { JobsCreateSheet } from "./jobs-create-sheet";
@@ -105,10 +106,24 @@ vi.mock("#/components/ui/drawer", () => ({
   DrawerTitle: ({ children }: { children?: ReactNode }) => <h2>{children}</h2>,
 }));
 
-vi.mock("./jobs-client", () => ({
-  makeBrowserJobsClient: mockedMakeBrowserJobsClient,
-  provideBrowserJobsHttp: (effect: unknown) => effect,
-}));
+vi.mock("./jobs-client", async () => {
+  const { Effect: EffectModule } =
+    await vi.importActual<typeof EffectPackage>("effect");
+
+  return {
+    makeBrowserJobsClient: mockedMakeBrowserJobsClient,
+    provideBrowserJobsHttp: (effect: unknown) => effect,
+    runBrowserJobsRequest: (
+      _operation: string,
+      execute: (client: unknown) => unknown
+    ) =>
+      (mockedMakeBrowserJobsClient() as Effect.Effect<unknown, unknown>).pipe(
+        EffectModule.flatMap(
+          (client) => execute(client) as Effect.Effect<unknown, unknown>
+        )
+      ),
+  };
+});
 
 describe("jobs create sheet integration", () => {
   beforeEach(() => {
@@ -151,6 +166,7 @@ describe("jobs create sheet integration", () => {
       renderCreateSheet();
 
       await user.type(screen.getByLabelText("Title"), "Replace air valve");
+      await createInlineContact(user, "Alex Caller");
       await user.click(screen.getByRole("button", { name: /create job/i }));
 
       await waitFor(() => {
@@ -202,6 +218,7 @@ describe("jobs create sheet integration", () => {
       renderCreateSheet();
 
       await user.type(screen.getByLabelText("Title"), "Replace air valve");
+      await createInlineContact(user, "Alex Caller");
       await user.click(screen.getByRole("button", { name: /create job/i }));
 
       await waitFor(() => {
@@ -211,6 +228,7 @@ describe("jobs create sheet integration", () => {
       expect(screen.getByTestId("job-titles")).toHaveTextContent(
         "Canonical queue title"
       );
+      expect(mockedGetJobOptions).toHaveBeenCalledOnce();
       expect(
         screen.queryByText(/we couldn't create that job/i)
       ).not.toBeInTheDocument();
@@ -310,6 +328,19 @@ function JobsStateProbe() {
       </output>
       <output data-testid="notice-title">{notice?.title ?? ""}</output>
     </div>
+  );
+}
+
+async function createInlineContact(
+  user: ReturnType<typeof userEvent.setup>,
+  contactName: string
+) {
+  await user.click(screen.getByLabelText("Contact"));
+  await user.type(screen.getByPlaceholderText("Contact"), contactName);
+  await user.click(
+    screen.getByRole("option", {
+      name: `Create new contact: "${contactName}"`,
+    })
   );
 }
 
