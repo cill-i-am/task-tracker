@@ -1,5 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import type { OrganizationId } from "@task-tracker/identity-core";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import type {
+  OrganizationId,
+  OrganizationRole,
+} from "@task-tracker/identity-core";
 import type {
   JobOptionsResponse,
   OrganizationActivityListResponse,
@@ -16,10 +19,7 @@ import {
   listCurrentServerOrganizationActivity,
 } from "#/features/jobs/jobs-server";
 import type { ActiveOrganizationSync } from "#/features/organizations/organization-access";
-import {
-  assertOrganizationAdministrationRole,
-  getCurrentOrganizationMemberRole,
-} from "#/features/organizations/organization-access";
+import { assertOrganizationAdministrationRole } from "#/features/organizations/organization-access";
 
 export { decodeActivitySearch };
 
@@ -38,6 +38,7 @@ const EMPTY_OPTIONS: JobOptionsResponse = {
 interface ActivityRouteOrganizationAccess {
   readonly activeOrganizationId: OrganizationId;
   readonly activeOrganizationSync: ActiveOrganizationSync;
+  readonly currentOrganizationRole?: OrganizationRole | undefined;
 }
 
 export async function loadActivityRouteData(
@@ -51,11 +52,13 @@ export async function loadActivityRouteData(
     };
   }
 
-  const role = await getCurrentOrganizationMemberRole(
-    context.activeOrganizationId
-  );
+  const role = context.currentOrganizationRole;
 
-  assertOrganizationAdministrationRole(role);
+  if (role === undefined) {
+    throw redirect({ to: "/" });
+  }
+
+  assertOrganizationAdministrationRole({ role });
 
   const [activity, options] = await Promise.all([
     listCurrentServerOrganizationActivity(toOrganizationActivityQuery(search)),

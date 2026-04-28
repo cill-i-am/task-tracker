@@ -1603,7 +1603,10 @@ function mapOrganizationActivityRow(
         : {
             email: row.actor_email ?? "",
             id: row.actor_user_id,
-            name: row.actor_name ?? row.actor_email ?? "Team member",
+            name: normalizeOptionName(
+              row.actor_name,
+              row.actor_email ?? "Team member"
+            ),
           },
     createdAt: row.created_at.toISOString(),
     eventType: row.event_type,
@@ -1629,13 +1632,12 @@ function mapJobVisitRow(row: WorkItemVisitRow): JobVisit {
 function encodeCursor(
   row: Pick<WorkItemRow, "id" | "updated_at">
 ): JobListCursor {
-  return decodeJobListCursor(
-    Buffer.from(
-      JSON.stringify({
-        id: decodeWorkItemId(row.id),
-        updatedAt: row.updated_at.toISOString(),
-      } satisfies JobCursorState)
-    ).toString("base64url")
+  return encodeJsonCursor(
+    {
+      id: decodeWorkItemId(row.id),
+      updatedAt: row.updated_at.toISOString(),
+    } satisfies JobCursorState,
+    decodeJobListCursor
   );
 }
 
@@ -1643,9 +1645,7 @@ function decodeCursor(cursor: JobListCursor): {
   readonly id: WorkItemId;
   readonly updatedAt: Date;
 } {
-  const value = decodeJobCursorState(
-    JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"))
-  ) as JobCursorState;
+  const value = decodeJsonCursor(cursor, decodeJobCursorState);
 
   return {
     id: value.id,
@@ -1656,22 +1656,37 @@ function decodeCursor(cursor: JobListCursor): {
 function encodeOrganizationActivityCursor(
   row: Pick<OrganizationActivityRow, "id" | "created_at">
 ): OrganizationActivityCursor {
-  return decodeOrganizationActivityCursor(
-    Buffer.from(
-      JSON.stringify({
-        id: decodeActivityId(row.id),
-        createdAt: row.created_at.toISOString(),
-      } satisfies OrganizationActivityCursorState)
-    ).toString("base64url")
+  return encodeJsonCursor(
+    {
+      id: decodeActivityId(row.id),
+      createdAt: row.created_at.toISOString(),
+    } satisfies OrganizationActivityCursorState,
+    decodeOrganizationActivityCursor
   );
 }
 
 function decodeOrganizationActivityCursorValue(
   cursor: OrganizationActivityCursor
 ): OrganizationActivityCursorState {
-  return decodeOrganizationActivityCursorState(
+  return decodeJsonCursor(cursor, decodeOrganizationActivityCursorState);
+}
+
+function encodeJsonCursor<Cursor extends string>(
+  value: unknown,
+  decodeCursorValue: (value: string) => Cursor
+): Cursor {
+  return decodeCursorValue(
+    Buffer.from(JSON.stringify(value)).toString("base64url")
+  );
+}
+
+function decodeJsonCursor<State>(
+  cursor: string,
+  decodeState: (value: unknown) => State
+): State {
+  return decodeState(
     JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"))
-  ) as OrganizationActivityCursorState;
+  );
 }
 
 function nullableToUndefined<Value>(value: Value | null): Value | undefined {

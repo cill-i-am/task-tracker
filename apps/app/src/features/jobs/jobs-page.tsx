@@ -73,6 +73,10 @@ import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey, useAppHotkeySequence } from "#/hotkeys/use-app-hotkey";
 import { cn } from "#/lib/utils";
 
+import {
+  JOB_PRIORITY_LABELS as PRIORITY_LABELS,
+  JOB_STATUS_LABELS as STATUS_LABELS,
+} from "./job-display";
 import { JobsCoverageMap } from "./jobs-coverage-map";
 import { hasSiteCoordinates } from "./jobs-location";
 import {
@@ -102,23 +106,6 @@ const STATUS_FILTER_OPTIONS = [
   { label: "Completed", value: "completed" },
   { label: "Canceled", value: "canceled" },
 ] as const;
-
-const PRIORITY_LABELS: Record<JobPriority, string> = {
-  none: "No priority",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-};
-
-const STATUS_LABELS = {
-  blocked: "Blocked",
-  canceled: "Canceled",
-  completed: "Completed",
-  in_progress: "In progress",
-  new: "New",
-  triaged: "Triaged",
-} as const;
 
 export function JobsPage({
   children,

@@ -6,7 +6,7 @@ import type {
 } from "@task-tracker/jobs-core";
 import {
   IsoDateString,
-  JOB_ACTIVITY_EVENT_TYPES,
+  JobActivityEventTypeSchema,
   UserId,
 } from "@task-tracker/jobs-core";
 import { ParseResult } from "effect";
@@ -21,11 +21,11 @@ export interface ActivitySearch {
 
 export function decodeActivitySearch(input: Record<string, unknown>) {
   return {
-    actorUserId: decodeUserId(input.actorUserId),
-    eventType: decodeEventType(input.eventType),
-    fromDate: decodeIsoDate(input.fromDate),
+    actorUserId: decodeActivityActorUserId(input.actorUserId),
+    eventType: decodeActivityEventType(input.eventType),
+    fromDate: decodeActivityIsoDate(input.fromDate),
     jobTitle: decodeJobTitle(input.jobTitle),
-    toDate: decodeIsoDate(input.toDate),
+    toDate: decodeActivityIsoDate(input.toDate),
   } satisfies ActivitySearch;
 }
 
@@ -41,38 +41,22 @@ export function toOrganizationActivityQuery(
   };
 }
 
-function decodeUserId(value: unknown) {
-  if (typeof value !== "string") {
-    return;
-  }
+const decodeUserId = ParseResult.decodeUnknownSync(UserId);
+const decodeEventType = ParseResult.decodeUnknownSync(
+  JobActivityEventTypeSchema
+);
+const decodeIsoDate = ParseResult.decodeUnknownSync(IsoDateString);
 
-  try {
-    return ParseResult.decodeUnknownSync(UserId)(value);
-  } catch {
-    return;
-  }
+export function decodeActivityActorUserId(value: unknown) {
+  return decodeOptionalString(value, decodeUserId);
 }
 
-function decodeEventType(value: unknown) {
-  if (typeof value !== "string") {
-    return;
-  }
-
-  return JOB_ACTIVITY_EVENT_TYPES.includes(value as JobActivityEventType)
-    ? (value as JobActivityEventType)
-    : undefined;
+export function decodeActivityEventType(value: unknown) {
+  return decodeOptionalString(value, decodeEventType);
 }
 
-function decodeIsoDate(value: unknown) {
-  if (typeof value !== "string") {
-    return;
-  }
-
-  try {
-    return ParseResult.decodeUnknownSync(IsoDateString)(value);
-  } catch {
-    return;
-  }
+export function decodeActivityIsoDate(value: unknown) {
+  return decodeOptionalString(value, decodeIsoDate);
 }
 
 function decodeJobTitle(value: unknown) {
@@ -83,4 +67,19 @@ function decodeJobTitle(value: unknown) {
   const trimmed = value.trim();
 
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function decodeOptionalString<Value>(
+  value: unknown,
+  decode: (value: string) => Value
+): Value | undefined {
+  if (typeof value !== "string" || value.length === 0) {
+    return;
+  }
+
+  try {
+    return decode(value);
+  } catch {
+    return undefined;
+  }
 }

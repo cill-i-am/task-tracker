@@ -1,7 +1,6 @@
 "use client";
 
 import { Link, useMatches, useRouterState } from "@tanstack/react-router";
-import type { OrganizationRole } from "@task-tracker/identity-core";
 import * as React from "react";
 
 import ThemeToggle from "#/components/ThemeToggle";
@@ -20,6 +19,7 @@ import {
   TooltipTrigger,
 } from "#/components/ui/tooltip";
 import { isJobsMapViewSearch } from "#/features/jobs/jobs-search";
+import { useCurrentOrganizationRoleFromMatches } from "#/features/organizations/organization-route-context";
 import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import type { HotkeyScope } from "#/hotkeys/hotkey-registry";
@@ -101,26 +101,6 @@ export function SiteHeader() {
       <ShortcutIntroNotice />
     </header>
   );
-}
-
-function useCurrentOrganizationRoleFromMatches() {
-  return useMatches({
-    select: (matches) => {
-      const orgMatch = matches.find(
-        (match) => match.routeId === "/_app/_org" || match.id === "/_app/_org"
-      );
-      const context = orgMatch?.context as
-        | { readonly currentOrganizationRole?: unknown }
-        | undefined;
-      const role = context?.currentOrganizationRole;
-
-      return isOrganizationRole(role) ? role : undefined;
-    },
-  });
-}
-
-function isOrganizationRole(input: unknown): input is OrganizationRole {
-  return input === "owner" || input === "admin" || input === "member";
 }
 
 function getActiveShortcutScopes(

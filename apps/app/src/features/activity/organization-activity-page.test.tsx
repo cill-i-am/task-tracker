@@ -5,7 +5,10 @@ import type {
 } from "@task-tracker/jobs-core";
 /* oxlint-disable vitest/prefer-import-in-mock */
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
+
+import type { ActivitySearch } from "./activity-search";
 
 vi.mock(import("@tanstack/react-router"), async (importActual) => {
   const actual = await importActual();
@@ -64,7 +67,7 @@ describe("organization activity page", () => {
             ],
             nextCursor: undefined,
           }}
-          onSearchChange={vi.fn()}
+          onSearchChange={vi.fn<(search: ActivitySearch) => void>()}
           options={{
             contacts: [],
             members: [
@@ -109,7 +112,7 @@ describe("organization activity page", () => {
             items: [],
             nextCursor: undefined,
           }}
-          onSearchChange={vi.fn()}
+          onSearchChange={vi.fn<(search: ActivitySearch) => void>()}
           options={{
             contacts: [],
             members: [],
@@ -121,6 +124,46 @@ describe("organization activity page", () => {
       );
 
       expect(screen.getByText("No activity found")).toBeInTheDocument();
+    }
+  );
+
+  it(
+    "commits the job title filter on blur",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+      const onSearchChange = vi.fn<(search: ActivitySearch) => void>();
+      const { OrganizationActivityPage } =
+        await import("./organization-activity-page");
+
+      render(
+        <OrganizationActivityPage
+          activity={{
+            items: [],
+            nextCursor: undefined,
+          }}
+          onSearchChange={onSearchChange}
+          options={{
+            contacts: [],
+            members: [],
+            regions: [],
+            sites: [],
+          }}
+          search={{}}
+        />
+      );
+
+      await user.type(screen.getByLabelText("Job title"), "  Boiler  ");
+
+      expect(onSearchChange).not.toHaveBeenCalled();
+
+      await user.tab();
+
+      expect(onSearchChange).toHaveBeenCalledExactlyOnceWith({
+        jobTitle: "Boiler",
+      });
     }
   );
 });

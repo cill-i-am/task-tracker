@@ -1,17 +1,9 @@
 /* oxlint-disable vitest/prefer-import-in-mock */
 import { isRedirect } from "@tanstack/react-router";
 import { decodeOrganizationId } from "@task-tracker/identity-core";
-import type {
-  OrganizationId,
-  OrganizationRole,
-} from "@task-tracker/identity-core";
+import type { OrganizationRole } from "@task-tracker/identity-core";
 import type { OrganizationActivityQuery } from "@task-tracker/jobs-core";
 
-import type * as OrganizationAccess from "#/features/organizations/organization-access";
-
-type RoleLookupMock = (
-  organizationId: OrganizationId
-) => Promise<{ role: OrganizationRole }>;
 type ActivityLookupMock = (
   query?: OrganizationActivityQuery
 ) => Promise<unknown>;
@@ -20,11 +12,9 @@ type JobOptionsLookupMock = () => Promise<unknown>;
 const organizationId = decodeOrganizationId("org_123");
 
 const {
-  mockedGetCurrentOrganizationMemberRole,
   mockedGetCurrentServerJobOptions,
   mockedListCurrentServerOrganizationActivity,
 } = vi.hoisted(() => ({
-  mockedGetCurrentOrganizationMemberRole: vi.fn<RoleLookupMock>(),
   mockedGetCurrentServerJobOptions: vi.fn<JobOptionsLookupMock>(),
   mockedListCurrentServerOrganizationActivity: vi.fn<ActivityLookupMock>(),
 }));
@@ -34,17 +24,6 @@ vi.mock("#/features/jobs/jobs-server", () => ({
   listCurrentServerOrganizationActivity:
     mockedListCurrentServerOrganizationActivity,
 }));
-
-vi.mock(import("#/features/organizations/organization-access"), async () => {
-  const actual = await vi.importActual<typeof OrganizationAccess>(
-    "#/features/organizations/organization-access"
-  );
-
-  return {
-    ...actual,
-    getCurrentOrganizationMemberRole: mockedGetCurrentOrganizationMemberRole,
-  };
-});
 
 describe("activity route loader", () => {
   afterEach(() => {
@@ -67,7 +46,6 @@ describe("activity route loader", () => {
         regions: [],
         sites: [],
       };
-      mockedGetCurrentOrganizationMemberRole.mockResolvedValue({ role });
       mockedListCurrentServerOrganizationActivity.mockResolvedValue(activity);
       mockedGetCurrentServerJobOptions.mockResolvedValue(options);
 
@@ -89,6 +67,7 @@ describe("activity route loader", () => {
               required: false,
               targetOrganizationId: organizationId,
             },
+            currentOrganizationRole: role,
           },
           search
         )
@@ -96,9 +75,6 @@ describe("activity route loader", () => {
         activity,
         options,
       });
-      expect(mockedGetCurrentOrganizationMemberRole).toHaveBeenCalledWith(
-        organizationId
-      );
       expect(mockedListCurrentServerOrganizationActivity).toHaveBeenCalledWith(
         search
       );
@@ -112,10 +88,6 @@ describe("activity route loader", () => {
       timeout: 10_000,
     },
     async () => {
-      mockedGetCurrentOrganizationMemberRole.mockResolvedValue({
-        role: "member",
-      });
-
       const { loadActivityRouteData } = await import("./_app._org.activity");
       const result = loadActivityRouteData(
         {
@@ -124,6 +96,7 @@ describe("activity route loader", () => {
             required: false,
             targetOrganizationId: organizationId,
           },
+          currentOrganizationRole: "member",
         },
         {}
       );
@@ -170,7 +143,6 @@ describe("activity route loader", () => {
           sites: [],
         },
       });
-      expect(mockedGetCurrentOrganizationMemberRole).not.toHaveBeenCalled();
       expect(
         mockedListCurrentServerOrganizationActivity
       ).not.toHaveBeenCalled();

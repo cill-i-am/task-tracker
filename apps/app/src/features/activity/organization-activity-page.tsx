@@ -2,13 +2,13 @@
 
 import { Link } from "@tanstack/react-router";
 import type {
-  JobActivityEventType,
   JobOptionsResponse,
   OrganizationActivityListResponse,
-  IsoDateStringType,
+  JobActivityEventType,
 } from "@task-tracker/jobs-core";
 import { JOB_ACTIVITY_EVENT_TYPES } from "@task-tracker/jobs-core";
 import type * as React from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AppPageHeader } from "#/components/app-page-header";
 import { Badge } from "#/components/ui/badge";
@@ -21,6 +21,11 @@ import {
 import { Input } from "#/components/ui/input";
 import { Select } from "#/components/ui/select";
 import { describeJobActivity } from "#/features/activity/activity-formatting";
+import {
+  decodeActivityEventType,
+  decodeActivityIsoDate,
+} from "#/features/activity/activity-search";
+import { formatJobDateTime } from "#/features/jobs/job-display";
 import { cn } from "#/lib/utils";
 
 import type { ActivitySearch } from "./activity-search";
@@ -81,7 +86,7 @@ export function OrganizationActivityPage({
                           {EVENT_TYPE_LABELS[item.eventType]}
                         </Badge>
                         <span className="text-xs text-muted-foreground">
-                          {formatDateTime(item.createdAt)}
+                          {formatJobDateTime(item.createdAt)}
                         </span>
                       </div>
                       <p className="text-sm font-medium text-foreground">
@@ -127,6 +132,25 @@ function ActivityFilters({
   readonly search: ActivitySearch;
   readonly onSearchChange: (search: ActivitySearch) => void;
 }) {
+  const [jobTitleDraft, setJobTitleDraft] = useState(search.jobTitle ?? "");
+
+  useEffect(() => {
+    setJobTitleDraft(search.jobTitle ?? "");
+  }, [search.jobTitle]);
+
+  const commitJobTitleFilter = useCallback(() => {
+    const jobTitle = jobTitleDraft.trim() || undefined;
+
+    if (jobTitle === search.jobTitle) {
+      return;
+    }
+
+    onSearchChange({
+      ...search,
+      jobTitle,
+    });
+  }, [jobTitleDraft, onSearchChange, search]);
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_minmax(11rem,1fr)_9rem_9rem_minmax(12rem,1.2fr)]">
       <FilterField label="Actor">
@@ -160,8 +184,7 @@ function ActivityFilters({
           onChange={(event) =>
             onSearchChange({
               ...search,
-              eventType:
-                (event.target.value as JobActivityEventType | "") || undefined,
+              eventType: decodeActivityEventType(event.target.value),
             })
           }
         >
@@ -182,8 +205,7 @@ function ActivityFilters({
           onChange={(event) =>
             onSearchChange({
               ...search,
-              fromDate:
-                (event.target.value as IsoDateStringType | "") || undefined,
+              fromDate: decodeActivityIsoDate(event.target.value),
             })
           }
         />
@@ -197,8 +219,7 @@ function ActivityFilters({
           onChange={(event) =>
             onSearchChange({
               ...search,
-              toDate:
-                (event.target.value as IsoDateStringType | "") || undefined,
+              toDate: decodeActivityIsoDate(event.target.value),
             })
           }
         />
@@ -208,13 +229,15 @@ function ActivityFilters({
         <Input
           aria-label="Job title"
           placeholder="Filter by job title"
-          value={search.jobTitle ?? ""}
-          onChange={(event) =>
-            onSearchChange({
-              ...search,
-              jobTitle: event.target.value || undefined,
-            })
-          }
+          value={jobTitleDraft}
+          onBlur={commitJobTitleFilter}
+          onChange={(event) => setJobTitleDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commitJobTitleFilter();
+            }
+          }}
         />
       </FilterField>
     </div>
@@ -236,11 +259,4 @@ function FilterField({
       {children}
     </label>
   );
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
 }
