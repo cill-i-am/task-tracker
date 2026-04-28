@@ -1,9 +1,13 @@
 import { OpenApi } from "@effect/platform";
 import { ParseResult, Schema } from "effect";
+import * as Vitest from "vitest";
 
 import {
+  AddJobCostLineInputSchema,
   AddJobCommentInputSchema,
   AddJobVisitInputSchema,
+  calculateJobCostLineTotalMinor,
+  calculateJobCostSummary,
   CreateJobInputSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
@@ -27,6 +31,8 @@ import {
   WorkItemId,
 } from "./index.js";
 
+const { describe, expect, it } = Vitest;
+
 describe("jobs-core", () => {
   it("exports the closed job enums", () => {
     expect(ParseResult.decodeUnknownSync(JobStatusSchema)("in_progress")).toBe(
@@ -45,6 +51,10 @@ describe("jobs-core", () => {
       ParseResult.decodeUnknownSync(JobDetailResponseSchema)({
         activity: [],
         comments: [],
+        costLines: [],
+        costSummary: {
+          subtotalMinor: 0,
+        },
         job: {
           createdAt: "2026-04-23T11:00:00.000Z",
           createdByUserId: "",
@@ -357,6 +367,57 @@ describe("jobs-core", () => {
     });
   }, 5000);
 
+  it("validates add cost line input at the boundary", () => {
+    const decode = ParseResult.decodeUnknownSync(AddJobCostLineInputSchema);
+
+    expect(
+      decode({
+        description: "Install replacement valve",
+        quantity: 1.5,
+        taxRateBasisPoints: 2300,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toStrictEqual({
+      description: "Install replacement valve",
+      quantity: 1.5,
+      taxRateBasisPoints: 2300,
+      type: "labour",
+      unitPriceMinor: 6500,
+    });
+
+    expect(() =>
+      decode({
+        description: "",
+        quantity: 0,
+        type: "material",
+        unitPriceMinor: -1,
+      })
+    ).toThrow(/Expected/);
+  }, 5000);
+
+  it("calculates line totals and job cost summaries in minor units", () => {
+    expect(
+      calculateJobCostLineTotalMinor({
+        quantity: 1.5,
+        unitPriceMinor: 6500,
+      })
+    ).toBe(9750);
+
+    expect(
+      calculateJobCostSummary([
+        {
+          lineTotalMinor: 9750,
+        },
+        {
+          lineTotalMinor: 2599,
+        },
+      ])
+    ).toStrictEqual({
+      subtotalMinor: 12_349,
+    });
+  }, 5000);
+
   it("keeps site options rich enough for maps and links", () => {
     const siteOption = {
       id: "550e8400-e29b-41d4-a716-446655440010",
@@ -413,6 +474,7 @@ describe("jobs-core", () => {
       "/jobs/{workItemId}/reopen",
       "/jobs/{workItemId}/comments",
       "/jobs/{workItemId}/visits",
+      "/jobs/{workItemId}/cost-lines",
       "/sites/options",
       "/sites",
       "/sites/{siteId}",
@@ -429,6 +491,9 @@ describe("jobs-core", () => {
     expect(
       spec.paths["/jobs/{workItemId}/visits"]?.post?.responses["400"]
     ).toBeDefined();
+    expect(spec.paths["/jobs/{workItemId}/cost-lines"]?.post?.operationId).toBe(
+      "jobs.addJobCostLine"
+    );
     expect(spec.paths["/jobs"]?.post?.responses["422"]).toBeDefined();
     expect(spec.paths["/sites/options"]?.get?.operationId).toBe(
       "sites.getSiteOptions"

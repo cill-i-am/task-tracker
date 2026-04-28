@@ -91,6 +91,7 @@ export const JOB_ACTIVITY_EVENT_TYPES = [
   "contact_changed",
   "job_reopened",
   "visit_logged",
+  "cost_line_added",
 ] as const;
 export const JobActivityEventTypeSchema = Schema.Literal(
   ...JOB_ACTIVITY_EVENT_TYPES
@@ -125,6 +126,50 @@ export type JobCommentBody = Schema.Schema.Type<typeof JobCommentBodySchema>;
 
 export const JobVisitNoteSchema = Schema.Trim.pipe(Schema.minLength(1));
 export type JobVisitNote = Schema.Schema.Type<typeof JobVisitNoteSchema>;
+
+export const JOB_COST_LINE_TYPES = ["labour", "material"] as const;
+export const JobCostLineTypeSchema = Schema.Literal(...JOB_COST_LINE_TYPES);
+export type JobCostLineType = Schema.Schema.Type<typeof JobCostLineTypeSchema>;
+
+export const JobCostLineDescriptionSchema = Schema.Trim.pipe(
+  Schema.minLength(1)
+);
+export type JobCostLineDescription = Schema.Schema.Type<
+  typeof JobCostLineDescriptionSchema
+>;
+
+export const JobCostLineQuantitySchema = Schema.Number.pipe(
+  Schema.positive(),
+  Schema.filter((value) => Number.isFinite(value)),
+  Schema.annotations({
+    message: () => "Expected a positive finite quantity",
+  })
+);
+export type JobCostLineQuantity = Schema.Schema.Type<
+  typeof JobCostLineQuantitySchema
+>;
+
+export const JobCostLineUnitPriceMinorSchema = Schema.Int.pipe(
+  Schema.greaterThanOrEqualTo(0)
+);
+export type JobCostLineUnitPriceMinor = Schema.Schema.Type<
+  typeof JobCostLineUnitPriceMinorSchema
+>;
+
+export const JobCostLineTaxRateBasisPointsSchema = Schema.Int.pipe(
+  Schema.greaterThanOrEqualTo(0),
+  Schema.lessThanOrEqualTo(10_000)
+);
+export type JobCostLineTaxRateBasisPoints = Schema.Schema.Type<
+  typeof JobCostLineTaxRateBasisPointsSchema
+>;
+
+export const JobCostLineTotalMinorSchema = Schema.Int.pipe(
+  Schema.greaterThanOrEqualTo(0)
+);
+export type JobCostLineTotalMinor = Schema.Schema.Type<
+  typeof JobCostLineTotalMinorSchema
+>;
 
 export const JobBlockedReasonSchema = Schema.Trim.pipe(Schema.minLength(1));
 export type JobBlockedReason = Schema.Schema.Type<

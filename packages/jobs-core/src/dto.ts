@@ -5,6 +5,12 @@ import {
   IsoDateTimeString,
   JobBlockedReasonSchema,
   JobCommentBodySchema,
+  JobCostLineDescriptionSchema,
+  JobCostLineQuantitySchema,
+  JobCostLineTaxRateBasisPointsSchema,
+  JobCostLineTotalMinorSchema,
+  JobCostLineTypeSchema,
+  JobCostLineUnitPriceMinorSchema,
   JobKindSchema,
   JobPrioritySchema,
   JobStatusSchema,
@@ -19,6 +25,7 @@ import {
   ActivityId,
   CommentId,
   ContactId,
+  CostLineId,
   OrganizationId,
   RegionId,
   SiteId,
@@ -136,6 +143,12 @@ export const JobActivityVisitLoggedPayloadSchema = Schema.Struct({
   visitId: VisitId,
 });
 
+export const JobActivityCostLineAddedPayloadSchema = Schema.Struct({
+  eventType: Schema.Literal("cost_line_added"),
+  costLineId: CostLineId,
+  costLineType: JobCostLineTypeSchema,
+});
+
 export const JobActivityPayloadSchema = Schema.Union(
   JobActivityJobCreatedPayloadSchema,
   JobActivityStatusChangedPayloadSchema,
@@ -146,7 +159,8 @@ export const JobActivityPayloadSchema = Schema.Union(
   JobActivitySiteChangedPayloadSchema,
   JobActivityContactChangedPayloadSchema,
   JobActivityReopenedPayloadSchema,
-  JobActivityVisitLoggedPayloadSchema
+  JobActivityVisitLoggedPayloadSchema,
+  JobActivityCostLineAddedPayloadSchema
 );
 export type JobActivityPayload = Schema.Schema.Type<
   typeof JobActivityPayloadSchema
@@ -171,6 +185,25 @@ export const JobVisitSchema = Schema.Struct({
   createdAt: IsoDateTimeString,
 });
 export type JobVisit = Schema.Schema.Type<typeof JobVisitSchema>;
+
+export const JobCostLineSchema = Schema.Struct({
+  id: CostLineId,
+  workItemId: WorkItemId,
+  authorUserId: UserId,
+  type: JobCostLineTypeSchema,
+  description: JobCostLineDescriptionSchema,
+  quantity: JobCostLineQuantitySchema,
+  unitPriceMinor: JobCostLineUnitPriceMinorSchema,
+  taxRateBasisPoints: Schema.optional(JobCostLineTaxRateBasisPointsSchema),
+  lineTotalMinor: JobCostLineTotalMinorSchema,
+  createdAt: IsoDateTimeString,
+});
+export type JobCostLine = Schema.Schema.Type<typeof JobCostLineSchema>;
+
+export const JobCostSummarySchema = Schema.Struct({
+  subtotalMinor: JobCostLineTotalMinorSchema,
+});
+export type JobCostSummary = Schema.Schema.Type<typeof JobCostSummarySchema>;
 
 export const JobListQuerySchema = Schema.Struct({
   cursor: Schema.optional(JobListCursor),
@@ -339,11 +372,49 @@ export type AddJobVisitResponse = Schema.Schema.Type<
   typeof AddJobVisitResponseSchema
 >;
 
+export const AddJobCostLineInputSchema = Schema.Struct({
+  type: JobCostLineTypeSchema,
+  description: JobCostLineDescriptionSchema,
+  quantity: JobCostLineQuantitySchema,
+  unitPriceMinor: JobCostLineUnitPriceMinorSchema,
+  taxRateBasisPoints: Schema.optional(JobCostLineTaxRateBasisPointsSchema),
+}).annotations({
+  parseOptions: { onExcessProperty: "error" },
+});
+export type AddJobCostLineInput = Schema.Schema.Type<
+  typeof AddJobCostLineInputSchema
+>;
+
+export const AddJobCostLineResponseSchema = JobCostLineSchema;
+export type AddJobCostLineResponse = Schema.Schema.Type<
+  typeof AddJobCostLineResponseSchema
+>;
+
+export function calculateJobCostLineTotalMinor(input: {
+  readonly quantity: number;
+  readonly unitPriceMinor: number;
+}): number {
+  return Math.round(input.quantity * input.unitPriceMinor);
+}
+
+export function calculateJobCostSummary(
+  costLines: readonly Pick<JobCostLine, "lineTotalMinor">[]
+): JobCostSummary {
+  return {
+    subtotalMinor: costLines.reduce(
+      (subtotal, costLine) => subtotal + costLine.lineTotalMinor,
+      0
+    ),
+  };
+}
+
 export const JobDetailSchema = Schema.Struct({
   job: JobSchema,
   comments: Schema.Array(JobCommentSchema),
   activity: Schema.Array(JobActivitySchema),
   visits: Schema.Array(JobVisitSchema),
+  costLines: Schema.Array(JobCostLineSchema),
+  costSummary: JobCostSummarySchema,
 });
 export type JobDetail = Schema.Schema.Type<typeof JobDetailSchema>;
 
