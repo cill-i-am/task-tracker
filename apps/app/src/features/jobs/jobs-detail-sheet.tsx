@@ -58,9 +58,11 @@ import { Separator } from "#/components/ui/separator";
 import { Textarea } from "#/components/ui/textarea";
 import { useRegisterCommandActions } from "#/features/command-bar/command-bar";
 import type { CommandAction } from "#/features/command-bar/command-bar";
+import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 
 import { JobsDetailLocation } from "./jobs-detail-location";
 import {
+  addJobCostLineMutationAtomFamily,
   addJobCommentMutationAtomFamily,
   addJobVisitMutationAtomFamily,
   jobDetailStateAtomFamily,
@@ -107,6 +109,21 @@ const VISIT_DURATION_SELECTION_GROUPS = [
   },
 ] satisfies readonly CommandSelectGroup[];
 
+const COST_LINE_TYPE_LABELS = {
+  labour: "Labour",
+  material: "Material",
+} as const;
+
+const COST_LINE_TYPE_SELECTION_GROUPS = [
+  {
+    label: "Cost type",
+    options: [
+      { label: "Labour", value: "labour" },
+      { label: "Material", value: "material" },
+    ],
+  },
+] satisfies readonly CommandSelectGroup[];
+
 const NO_SITE_VALUE = "__none__";
 const decodeSiteId = Schema.decodeUnknownSync(SiteId);
 
@@ -138,6 +155,9 @@ export function JobsDetailSheet({
     addJobCommentMutationAtomFamily(workItemId)
   );
   const visitResult = useAtomValue(addJobVisitMutationAtomFamily(workItemId));
+  const costLineResult = useAtomValue(
+    addJobCostLineMutationAtomFamily(workItemId)
+  );
   const transitionJob = useAtomSet(
     transitionJobMutationAtomFamily(workItemId),
     {
@@ -159,12 +179,19 @@ export function JobsDetailSheet({
   const addJobVisit = useAtomSet(addJobVisitMutationAtomFamily(workItemId), {
     mode: "promiseExit",
   });
+  const addJobCostLine = useAtomSet(
+    addJobCostLineMutationAtomFamily(workItemId),
+    {
+      mode: "promiseExit",
+    }
+  );
   const hasAssignmentAccess = hasAssignedJobAccess(
     viewer,
     detail.job.assigneeId
   );
   const canEditJob = hasAssignmentAccess || hasJobsElevatedAccess(viewer.role);
   const canAddVisit = hasAssignmentAccess;
+  const canAddCostLine = hasAssignmentAccess;
   const canReopen = hasAssignmentAccess;
   const transitionOptions = getAvailableJobTransitions(viewer, detail.job);
   const transitionSelectionGroups =
@@ -192,6 +219,13 @@ export function JobsDetailSheet({
   const [visitDurationMinutes, setVisitDurationMinutes] = React.useState("60");
   const [visitNote, setVisitNote] = React.useState("");
   const [visitError, setVisitError] = React.useState<string | null>(null);
+  const costDescriptionRef = React.useRef<HTMLInputElement>(null);
+  const [costLineType, setCostLineType] =
+    React.useState<JobDetailResponse["costLines"][number]["type"]>("labour");
+  const [costDescription, setCostDescription] = React.useState("");
+  const [costQuantity, setCostQuantity] = React.useState("1");
+  const [costUnitPrice, setCostUnitPrice] = React.useState("");
+  const [costError, setCostError] = React.useState<string | null>(null);
   const site = detail.job.siteId
     ? lookup.siteById.get(detail.job.siteId)
     : undefined;
@@ -224,7 +258,22 @@ export function JobsDetailSheet({
     setVisitDurationMinutes("60");
     setVisitNote("");
     setVisitError(null);
+    setCostLineType("labour");
+    setCostDescription("");
+    setCostQuantity("1");
+    setCostUnitPrice("");
+    setCostError(null);
   }, [detail.job.siteId, detail.job.status, workItemId]);
+
+  useAppHotkey(
+    "jobDetailCost",
+    () => {
+      costDescriptionRef.current?.focus();
+    },
+    {
+      enabled: canAddCostLine,
+    }
+  );
 
   const closeSheet = React.useCallback(() => {
     React.startTransition(() => {
@@ -403,6 +452,43 @@ export function JobsDetailSheet({
       setVisitDate(getLocalDateInputValue());
       setVisitDurationMinutes("60");
       setVisitNote("");
+    }
+  }
+
+  async function handleAddCostLine(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const quantity = Number(costQuantity);
+    const unitPriceMajor = Number(costUnitPrice);
+
+    if (costDescription.trim().length === 0) {
+      setCostError("Add a short cost description.");
+      return;
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setCostError("Quantity must be greater than zero.");
+      return;
+    }
+
+    if (!Number.isFinite(unitPriceMajor) || unitPriceMajor < 0) {
+      setCostError("Unit price must be zero or more.");
+      return;
+    }
+
+    setCostError(null);
+    const exit = await addJobCostLine({
+      description: costDescription.trim(),
+      quantity,
+      type: costLineType,
+      unitPriceMinor: Math.round(unitPriceMajor * 100),
+    });
+
+    if (Exit.isSuccess(exit)) {
+      setCostLineType("labour");
+      setCostDescription("");
+      setCostQuantity("1");
+      setCostUnitPrice("");
     }
   }
 
@@ -786,6 +872,221 @@ export function JobsDetailSheet({
                         </li>
                       );
                     })}
+                  </ul>
+                )}
+              </div>
+            </DetailSection>
+
+            <DetailSection
+              title="Costs"
+              description="Track labour and materials without mixing them into the job narrative."
+            >
+              <div className="flex flex-col gap-5">
+                <div className="flex items-center justify-between gap-4 rounded-md border bg-muted/30 px-4 py-3">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    Cost total
+                  </span>
+                  <span className="text-lg font-semibold text-foreground">
+                    {formatMoneyMinor(detail.costSummary.subtotalMinor)}
+                  </span>
+                </div>
+
+                {canAddCostLine ? (
+                  <>
+                    {renderMutationError(costLineResult)}
+                    <form
+                      className="flex flex-col gap-4"
+                      method="post"
+                      onSubmit={handleAddCostLine}
+                    >
+                      <FieldGroup>
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <Field>
+                            <FieldLabel htmlFor="job-cost-type">
+                              Cost type
+                            </FieldLabel>
+                            <FieldContent>
+                              <CommandSelect
+                                id="job-cost-type"
+                                value={costLineType}
+                                placeholder="Pick type"
+                                emptyText="No cost types found."
+                                groups={COST_LINE_TYPE_SELECTION_GROUPS}
+                                onValueChange={(nextValue) =>
+                                  setCostLineType(
+                                    nextValue as JobDetailResponse["costLines"][number]["type"]
+                                  )
+                                }
+                              />
+                            </FieldContent>
+                          </Field>
+
+                          <Field
+                            data-invalid={
+                              Boolean(costError) &&
+                              (!Number.isFinite(Number(costQuantity)) ||
+                                Number(costQuantity) <= 0)
+                            }
+                          >
+                            <FieldLabel htmlFor="job-cost-quantity">
+                              Quantity
+                            </FieldLabel>
+                            <FieldContent>
+                              <Input
+                                id="job-cost-quantity"
+                                inputMode="decimal"
+                                min="0.01"
+                                step="0.01"
+                                type="number"
+                                value={costQuantity}
+                                aria-invalid={
+                                  Boolean(costError) &&
+                                  (!Number.isFinite(Number(costQuantity)) ||
+                                    Number(costQuantity) <= 0)
+                                    ? true
+                                    : undefined
+                                }
+                                onChange={(event) =>
+                                  setCostQuantity(event.target.value)
+                                }
+                              />
+                            </FieldContent>
+                          </Field>
+
+                          <Field
+                            data-invalid={
+                              Boolean(costError) &&
+                              (!Number.isFinite(Number(costUnitPrice)) ||
+                                Number(costUnitPrice) < 0)
+                            }
+                          >
+                            <FieldLabel htmlFor="job-cost-unit-price">
+                              Unit price
+                            </FieldLabel>
+                            <FieldContent>
+                              <Input
+                                id="job-cost-unit-price"
+                                inputMode="decimal"
+                                min="0"
+                                step="0.01"
+                                type="number"
+                                value={costUnitPrice}
+                                aria-invalid={
+                                  Boolean(costError) &&
+                                  (!Number.isFinite(Number(costUnitPrice)) ||
+                                    Number(costUnitPrice) < 0)
+                                    ? true
+                                    : undefined
+                                }
+                                onChange={(event) =>
+                                  setCostUnitPrice(event.target.value)
+                                }
+                              />
+                            </FieldContent>
+                          </Field>
+                        </div>
+
+                        <Field
+                          data-invalid={
+                            Boolean(costError) &&
+                            costDescription.trim().length === 0
+                          }
+                        >
+                          <FieldLabel htmlFor="job-cost-description">
+                            Cost description
+                          </FieldLabel>
+                          <FieldContent>
+                            <Input
+                              id="job-cost-description"
+                              ref={costDescriptionRef}
+                              value={costDescription}
+                              aria-invalid={
+                                Boolean(costError) &&
+                                costDescription.trim().length === 0
+                                  ? true
+                                  : undefined
+                              }
+                              onChange={(event) =>
+                                setCostDescription(event.target.value)
+                              }
+                            />
+                            <FieldDescription>
+                              Keep it short: what was used or what work was
+                              carried out.
+                            </FieldDescription>
+                            <FieldError>{costError}</FieldError>
+                          </FieldContent>
+                        </Field>
+                      </FieldGroup>
+
+                      <div className="flex">
+                        <Button
+                          type="submit"
+                          loading={costLineResult.waiting}
+                          className="w-full sm:w-fit"
+                        >
+                          {costLineResult.waiting ? (
+                            "Adding..."
+                          ) : (
+                            <>
+                              <HugeiconsIcon
+                                icon={Briefcase01Icon}
+                                strokeWidth={2}
+                                data-icon="inline-start"
+                              />
+                              Add cost line
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </form>
+                  </>
+                ) : (
+                  <Alert>
+                    <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
+                    <AlertTitle>Cost tracking is limited here.</AlertTitle>
+                    <AlertDescription>
+                      Members can only add costs on jobs assigned to them.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <Separator />
+
+                {detail.costLines.length === 0 ? (
+                  <DetailEmpty
+                    title="No costs added yet."
+                    description="Add labour or materials once the work creates a real cost."
+                  />
+                ) : (
+                  <ul className="flex flex-col gap-3">
+                    {detail.costLines.map((costLine) => (
+                      <li
+                        key={costLine.id}
+                        className="border-b py-3 first:pt-0 last:border-b-0 last:pb-0"
+                      >
+                        <div className="flex flex-col gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                              <Badge variant="secondary">
+                                {COST_LINE_TYPE_LABELS[costLine.type]}
+                              </Badge>
+                              <span>
+                                {formatQuantity(costLine.quantity)} x{" "}
+                                {formatMoneyMinor(costLine.unitPriceMinor)}
+                              </span>
+                            </div>
+                            <span className="text-sm font-semibold text-foreground">
+                              Line total{" "}
+                              {formatMoneyMinor(costLine.lineTotalMinor)}
+                            </span>
+                          </div>
+                          <p className="text-sm leading-7 whitespace-pre-wrap">
+                            {costLine.description}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
                   </ul>
                 )}
               </div>
@@ -1196,6 +1497,20 @@ function formatDuration(durationMinutes: number) {
   return `${hours}h logged`;
 }
 
+function formatMoneyMinor(value: number) {
+  return new Intl.NumberFormat("en-IE", {
+    currency: "EUR",
+    style: "currency",
+  }).format(value / 100);
+}
+
+function formatQuantity(value: number) {
+  return new Intl.NumberFormat("en", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+  }).format(value);
+}
+
 function describeActivity(
   actorName: string | undefined,
   payload: JobDetailResponse["activity"][number]["payload"]
@@ -1213,7 +1528,7 @@ function describeActivity(
       return `${actorPrefix}updated the contact.`;
     }
     case "cost_line_added": {
-      return `${actorPrefix}added a cost line.`;
+      return `${actorPrefix}added a ${COST_LINE_TYPE_LABELS[payload.costLineType].toLowerCase()} cost line.`;
     }
     case "coordinator_changed": {
       return `${actorPrefix}updated the coordinator.`;

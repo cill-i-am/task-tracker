@@ -48,6 +48,7 @@ const mockedReopenJob = vi.fn<AsyncMutationMock>();
 const mockedPatchJob = vi.fn<AsyncMutationMock>();
 const mockedAddComment = vi.fn<AsyncMutationMock>();
 const mockedAddVisit = vi.fn<AsyncMutationMock>();
+const mockedAddCostLine = vi.fn<AsyncMutationMock>();
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockedNavigate,
@@ -260,7 +261,12 @@ vi.mock("#/components/ui/textarea", () => ({
   Textarea: (props: ComponentProps<"textarea">) => <textarea {...props} />,
 }));
 
+vi.mock("#/hotkeys/use-app-hotkey", () => ({
+  useAppHotkey: vi.fn<() => void>(),
+}));
+
 vi.mock("./jobs-detail-state", () => ({
+  addJobCostLineMutationAtomFamily: (id: string) => `cost:${id}`,
   addJobCommentMutationAtomFamily: (id: string) => `comment:${id}`,
   addJobVisitMutationAtomFamily: (id: string) => `visit:${id}`,
   jobDetailStateAtomFamily: (id: string) => `detail:${id}`,
@@ -288,6 +294,7 @@ describe("jobs detail sheet", () => {
     mockedPatchJob.mockReset();
     mockedAddComment.mockReset();
     mockedAddVisit.mockReset();
+    mockedAddCostLine.mockReset();
 
     mockedUseAtomValue.mockImplementation((atom: unknown) => {
       if (atom === `detail:${workItemId}`) {
@@ -309,6 +316,11 @@ describe("jobs detail sheet", () => {
       if (atom === `visit:${workItemId}`) {
         return { waiting: false };
       }
+
+      if (atom === `cost:${workItemId}`) {
+        return { waiting: false };
+      }
+
       if (atom === `patch:${workItemId}`) {
         return { waiting: false };
       }
@@ -361,6 +373,10 @@ describe("jobs detail sheet", () => {
 
       if (atom === `visit:${workItemId}`) {
         return mockedAddVisit;
+      }
+
+      if (atom === `cost:${workItemId}`) {
+        return mockedAddCostLine;
       }
 
       return vi.fn<NavigateMock>();
