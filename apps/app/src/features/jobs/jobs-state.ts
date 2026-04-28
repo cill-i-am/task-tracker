@@ -135,10 +135,16 @@ export const visibleJobsAtom = Atom.make((get) => {
     }
 
     if (filters.query.trim().length > 0) {
-      const siteName =
-        item.siteId === undefined ? undefined : siteById.get(item.siteId)?.name;
-      const searchable =
-        `${item.title} ${item.kind} ${siteName ?? ""}`.toLowerCase();
+      const site =
+        item.siteId === undefined ? undefined : siteById.get(item.siteId);
+      const searchable = [
+        item.title,
+        item.kind,
+        site?.name,
+        site?.serviceAreaName,
+      ]
+        .join(" ")
+        .toLowerCase();
 
       if (!searchable.includes(filters.query.trim().toLowerCase())) {
         return false;

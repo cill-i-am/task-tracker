@@ -442,6 +442,34 @@ describe("jobs page", () => {
       ).not.toBeInTheDocument();
     }
   );
+
+  it(
+    "searches jobs by service area name",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+
+      renderJobsPage();
+      const queuePanel = getPrimaryQueuePanel();
+
+      await user.type(
+        screen.getByRole("textbox", { name: /search jobs/i }),
+        "West"
+      );
+
+      expect(within(queuePanel).queryAllByText("Inspect boiler")).toHaveLength(
+        0
+      );
+      expect(within(queuePanel).queryAllByText("Await materials")).toHaveLength(
+        0
+      );
+      expect(
+        within(queuePanel).getAllByText("Finalize snag list").length
+      ).toBeGreaterThan(0);
+    }
+  );
 });
 
 async function chooseCommandFilter(
