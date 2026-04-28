@@ -1,15 +1,19 @@
 import { HttpServerRequest } from "@effect/platform";
-import { SqlError } from "@effect/sql";
+import { SqlError } from "@effect/sql/SqlError";
 import {
   ActivityId,
   BlockedReasonRequiredError,
+  calculateJobCostLineTotalMinor,
+  calculateJobCostSummary,
   CommentId,
+  CostLineId,
   JobLabelId,
   JobAccessDeniedError,
+  JobCostSummaryLimitExceededError,
   JobSchema,
   JobStorageError,
   OrganizationMemberNotFoundError,
-  RegionNotFoundError,
+  ServiceAreaNotFoundError,
   VisitId,
   VisitDurationIncrementError,
   WorkItemId,
@@ -19,6 +23,7 @@ import type {
   CreateSiteInput,
   Job,
   JobComment,
+  JobCostLine,
   JobActivity,
   JobActivityPayload,
   JobDetail,
@@ -26,11 +31,13 @@ import type {
   JobListResponse,
   JobMemberOption,
   JobOptionsResponse,
-  JobRegionOption,
+  ServiceArea,
   JobSiteOption,
   JobVisit,
+  OrganizationActivityListResponse,
+  OrganizationActivityQuery,
   OrganizationIdType as OrganizationId,
-  RegionIdType as RegionId,
+  ServiceAreaIdType as ServiceAreaId,
   SiteIdType as SiteId,
   UserId,
 } from "@task-tracker/jobs-core";
@@ -49,6 +56,7 @@ import { JobsAuthorization } from "./authorization.js";
 import { CurrentJobsActor } from "./current-jobs-actor.js";
 import type { JobsActor } from "./current-jobs-actor.js";
 import {
+  ConfigurationRepository,
   ContactsRepository,
   JobsRepository,
   JobLabelsRepository,
@@ -61,6 +69,7 @@ const decodeJob = ParseResult.decodeUnknownSync(JobSchema);
 const decodeActivityId = Schema.decodeUnknownSync(ActivityId);
 const decodeCommentId = Schema.decodeUnknownSync(CommentId);
 const decodeJobLabelId = Schema.decodeUnknownSync(JobLabelId);
+const decodeCostLineId = Schema.decodeUnknownSync(CostLineId);
 const decodeVisitId = Schema.decodeUnknownSync(VisitId);
 const decodeWorkItemId = Schema.decodeUnknownSync(WorkItemId);
 const undefinedValue = undefined as undefined;
@@ -69,9 +78,10 @@ const workItemId = decodeWorkItemId("11111111-1111-4111-8111-111111111111");
 const siteId = "22222222-2222-4222-8222-222222222222" as SiteId;
 const contactId = "33333333-3333-4333-8333-333333333333" as ContactId;
 const actorUserId = "44444444-4444-4444-8444-444444444444" as UserId;
-const regionId = "99999999-9999-4999-8999-999999999999" as RegionId;
+const serviceAreaId = "99999999-9999-4999-8999-999999999999" as ServiceAreaId;
 const visitId = decodeVisitId("55555555-5555-4555-8555-555555555555");
 const labelId = decodeJobLabelId("88888888-8888-4888-8888-888888888888");
+const costLineId = decodeCostLineId("99999999-9999-4999-8999-999999999998");
 const geocodedAt = "2026-04-22T10:00:00.000Z";
 const inlineSiteInput = {
   addressLine1: "1 Custom House Quay",
@@ -121,8 +131,10 @@ interface JobsServiceHarnessOptions {
   readonly archiveRemovedWorkItemIds?: readonly WorkItemId[];
   readonly assignLabelChanged?: boolean;
   readonly lockedJob?: Job;
-  readonly regionFailure?: RegionNotFoundError | SqlError.SqlError;
   readonly removeLabelChanged?: boolean;
+  readonly costLineFailure?: JobCostSummaryLimitExceededError;
+  readonly serviceAreaFailure?: ServiceAreaNotFoundError;
+  readonly serviceAreaStorageFailure?: SqlError;
   readonly transactionFailure?: OrganizationMemberNotFoundError;
 }
 
@@ -130,17 +142,19 @@ interface JobsServiceHarness {
   readonly activityPayloads: JobActivityPayload[];
   readonly calls: {
     addActivity: number;
+    addCostLine: number;
     addVisit: number;
     archiveLabel: number;
     assignLabel: number;
     create: number;
     createLabel: number;
     createSite: number;
-    ensureRegion: number;
+    ensureServiceArea: number;
     findByIdForUpdate: number;
     geocode: number;
     listLabels: number;
     linkContact: number;
+    listOrganizationActivity: number;
     patch: number;
     removeLabel: number;
     transition: number;
@@ -158,17 +172,19 @@ function makeHarness(
   const lockedJob = options.lockedJob ?? makeJob();
   const calls = {
     addActivity: 0,
+    addCostLine: 0,
     addVisit: 0,
     archiveLabel: 0,
     assignLabel: 0,
     create: 0,
     createLabel: 0,
     createSite: 0,
-    ensureRegion: 0,
+    ensureServiceArea: 0,
     findByIdForUpdate: 0,
     geocode: 0,
     listLabels: 0,
     linkContact: 0,
+    listOrganizationActivity: 0,
     patch: 0,
     removeLabel: 0,
     transition: 0,
@@ -213,6 +229,37 @@ function makeHarness(
         id: decodeCommentId("77777777-7777-4777-8777-777777777777"),
         workItemId: input.workItemId,
       } satisfies JobComment),
+    addCostLine: (input: {
+      readonly authorUserId: UserId;
+      readonly description: string;
+      readonly organizationId: OrganizationId;
+      readonly quantity: number;
+      readonly taxRateBasisPoints?: number;
+      readonly type: "labour" | "material";
+      readonly unitPriceMinor: number;
+      readonly workItemId: Job["id"];
+    }) =>
+      options.costLineFailure === undefined
+        ? Effect.sync(() => {
+            calls.addCostLine += 1;
+
+            return {
+              authorUserId: input.authorUserId,
+              createdAt: "2026-04-22T14:00:00.000Z",
+              description: input.description,
+              id: costLineId,
+              lineTotalMinor: calculateJobCostLineTotalMinor({
+                quantity: input.quantity,
+                unitPriceMinor: input.unitPriceMinor,
+              }),
+              quantity: input.quantity,
+              taxRateBasisPoints: input.taxRateBasisPoints,
+              type: input.type,
+              unitPriceMinor: input.unitPriceMinor,
+              workItemId: input.workItemId,
+            } satisfies JobCostLine;
+          })
+        : Effect.fail(options.costLineFailure),
     addVisit: (input: {
       readonly authorUserId: UserId;
       readonly durationMinutes: number;
@@ -269,6 +316,8 @@ function makeHarness(
         Option.some({
           activity: [],
           comments: [],
+          costLines: [],
+          costSummary: calculateJobCostSummary([]),
           job: {
             ...lockedJob,
             labels:
@@ -286,6 +335,18 @@ function makeHarness(
       } satisfies JobListResponse),
     listMemberOptions: (_organizationId: OrganizationId) =>
       Effect.succeed([] satisfies readonly JobMemberOption[]),
+    listOrganizationActivity: (
+      _organizationId: OrganizationId,
+      _query: OrganizationActivityQuery
+    ) =>
+      Effect.sync(() => {
+        calls.listOrganizationActivity += 1;
+
+        return {
+          items: [],
+          nextCursor: undefined,
+        } satisfies OrganizationActivityListResponse;
+      }),
     patch: (
       _organizationId: OrganizationId,
       _workItemId: Job["id"],
@@ -340,7 +401,7 @@ function makeHarness(
       readonly longitude: number;
       readonly name: string;
       readonly organizationId: OrganizationId;
-      readonly regionId?: RegionId;
+      readonly serviceAreaId?: ServiceAreaId;
       readonly town?: string;
     }) =>
       Effect.sync(() => {
@@ -361,20 +422,24 @@ function makeHarness(
 
         return siteId;
       }),
-    ensureRegionInOrganization: (
+    ensureServiceAreaInOrganization: (
       organizationId: OrganizationId,
-      requestedRegionId: RegionId
+      requestedServiceAreaId: ServiceAreaId
     ) =>
       Effect.gen(function* () {
-        calls.ensureRegion += 1;
+        calls.ensureServiceArea += 1;
         expect(organizationId).toBe(actor.organizationId);
-        expect(requestedRegionId).toBe(regionId);
+        expect(requestedServiceAreaId).toBe(serviceAreaId);
 
-        if (options.regionFailure !== undefined) {
-          return yield* Effect.fail(options.regionFailure);
+        if (options.serviceAreaFailure !== undefined) {
+          return yield* Effect.fail(options.serviceAreaFailure);
         }
 
-        return requestedRegionId;
+        if (options.serviceAreaStorageFailure !== undefined) {
+          return yield* Effect.fail(options.serviceAreaStorageFailure);
+        }
+
+        return requestedServiceAreaId;
       }),
     findById: (_organizationId: OrganizationId, _siteId: SiteId) =>
       Effect.succeed(Option.some(siteId)),
@@ -391,13 +456,25 @@ function makeHarness(
       }).pipe(Effect.as(undefinedValue)),
     listOptions: (_organizationId: OrganizationId) =>
       Effect.succeed([] satisfies readonly JobSiteOption[]),
-    listRegions: (_organizationId: OrganizationId) =>
-      Effect.succeed([] satisfies readonly JobRegionOption[]),
     update: (
       _organizationId: OrganizationId,
       _siteId: SiteId,
       _input: unknown
     ) => Effect.succeed(Option.none()),
+  });
+
+  const configurationRepository = ConfigurationRepository.make({
+    createServiceArea: (_input: unknown) =>
+      Effect.die(new Error("Unexpected repository call: createServiceArea")),
+    listServiceAreaOptions: (_organizationId: OrganizationId) =>
+      Effect.succeed([] satisfies JobOptionsResponse["serviceAreas"]),
+    listServiceAreas: (_organizationId: OrganizationId) =>
+      Effect.succeed([] satisfies readonly ServiceArea[]),
+    updateServiceArea: (
+      _organizationId: OrganizationId,
+      _serviceAreaId: ServiceAreaId,
+      _input: unknown
+    ) => Effect.die(new Error("Unexpected repository call: updateServiceArea")),
   });
 
   const contactsRepository = ContactsRepository.make({
@@ -515,6 +592,7 @@ function makeHarness(
     Layer.succeed(JobsRepository, jobsRepository),
     Layer.succeed(JobLabelsRepository, jobLabelsRepository),
     Layer.succeed(SitesRepository, sitesRepository),
+    Layer.succeed(ConfigurationRepository, configurationRepository),
     Layer.succeed(ContactsRepository, contactsRepository),
     Layer.succeed(SiteGeocoder, siteGeocoder)
   );
@@ -583,6 +661,26 @@ function getFailure<Value, Error>(exit: Exit.Exit<Value, Error>) {
 }
 
 describe("jobs service", () => {
+  it("lets owners list organization activity", async () => {
+    const harness = makeHarness({ actor: makeActor("owner") });
+
+    await expect(
+      runJobsService(
+        Effect.gen(function* () {
+          const jobs = yield* JobsService;
+
+          return yield* jobs.listOrganizationActivity({});
+        }),
+        harness
+      )
+    ).resolves.toStrictEqual({
+      items: [],
+      nextCursor: undefined,
+    });
+
+    expect(harness.calls.listOrganizationActivity).toBe(1);
+  }, 10_000);
+
   it("lets elevated users create, list, update, and archive organization job labels", async () => {
     const harness = makeHarness();
 
@@ -757,6 +855,22 @@ describe("jobs service", () => {
     expect(harness.activityPayloads).toStrictEqual([]);
   }, 10_000);
 
+  it("denies members listing organization activity", async () => {
+    const harness = makeHarness({ actor: makeActor("member") });
+
+    const exit = await runJobsServiceExit(
+      Effect.gen(function* () {
+        const jobs = yield* JobsService;
+
+        return yield* jobs.listOrganizationActivity({});
+      }),
+      harness
+    );
+
+    expect(getFailure(exit)).toBeInstanceOf(JobAccessDeniedError);
+    expect(harness.calls.listOrganizationActivity).toBe(0);
+  }, 10_000);
+
   it("geocodes inline site creation before creating the job", async () => {
     const harness = makeHarness();
 
@@ -815,16 +929,16 @@ describe("jobs service", () => {
     expect(harness.calls.addActivity).toBe(1);
   }, 10_000);
 
-  it("validates inline site regions before geocoding", async () => {
+  it("validates inline site service areas before geocoding", async () => {
     const actor = makeActor("owner");
-    const failure = new RegionNotFoundError({
-      message: "Region does not exist in the organization",
+    const failure = new ServiceAreaNotFoundError({
+      message: "Service area does not exist in the organization",
       organizationId: actor.organizationId,
-      regionId,
+      serviceAreaId,
     });
     const harness = makeHarness({
       actor,
-      regionFailure: failure,
+      serviceAreaFailure: failure,
     });
 
     const exit = await runJobsServiceExit(
@@ -835,7 +949,7 @@ describe("jobs service", () => {
           site: {
             input: {
               ...inlineSiteInput,
-              regionId,
+              serviceAreaId,
             },
             kind: "create",
           },
@@ -846,17 +960,17 @@ describe("jobs service", () => {
     );
 
     expect(getFailure(exit)).toStrictEqual(failure);
-    expect(harness.calls.ensureRegion).toBe(1);
+    expect(harness.calls.ensureServiceArea).toBe(1);
     expect(harness.calls.geocode).toBe(0);
     expect(harness.calls.createSite).toBe(0);
     expect(harness.calls.create).toBe(0);
     expect(harness.calls.addActivity).toBe(0);
   }, 10_000);
 
-  it("maps inline site region lookup storage failures before geocoding", async () => {
+  it("maps inline site service area storage failures before geocoding", async () => {
     const harness = makeHarness({
-      regionFailure: new SqlError.SqlError({
-        message: "region lookup failed",
+      serviceAreaStorageFailure: new SqlError({
+        message: "database unavailable",
       }),
     });
 
@@ -868,7 +982,7 @@ describe("jobs service", () => {
           site: {
             input: {
               ...inlineSiteInput,
-              regionId,
+              serviceAreaId,
             },
             kind: "create",
           },
@@ -879,7 +993,11 @@ describe("jobs service", () => {
     );
 
     expect(getFailure(exit)).toBeInstanceOf(JobStorageError);
-    expect(harness.calls.ensureRegion).toBe(1);
+    expect(getFailure(exit)).toMatchObject({
+      cause: "database unavailable",
+      message: "Jobs storage operation failed",
+    });
+    expect(harness.calls.ensureServiceArea).toBe(1);
     expect(harness.calls.geocode).toBe(0);
     expect(harness.calls.createSite).toBe(0);
     expect(harness.calls.create).toBe(0);
@@ -929,6 +1047,101 @@ describe("jobs service", () => {
 
     expect(harness.calls.findByIdForUpdate).toBe(0);
     expect(harness.calls.addVisit).toBe(0);
+    expect(harness.calls.addActivity).toBe(0);
+  }, 10_000);
+
+  it("adds a job cost line and records activity for the assigned user", async () => {
+    const harness = makeHarness({
+      actor: makeActor("member"),
+      lockedJob: makeJob({
+        assigneeId: actorUserId,
+      }),
+    });
+
+    await expect(
+      runJobsService(
+        Effect.gen(function* () {
+          const jobs = yield* JobsService;
+
+          return yield* jobs.addCostLine(workItemId, {
+            description: "Replacement valve",
+            quantity: 1.5,
+            taxRateBasisPoints: 2300,
+            type: "material",
+            unitPriceMinor: 4200,
+          });
+        }),
+        harness
+      )
+    ).resolves.toMatchObject({
+      description: "Replacement valve",
+      lineTotalMinor: 6300,
+      type: "material",
+    });
+
+    expect(harness.calls.findByIdForUpdate).toBe(1);
+    expect(harness.calls.addCostLine).toBe(1);
+    expect(harness.calls.addActivity).toBe(1);
+  }, 10_000);
+
+  it("rejects cost line creation for unassigned regular members", async () => {
+    const harness = makeHarness({
+      actor: makeActor("member"),
+      lockedJob: makeJob({
+        assigneeId: "unassigned_user" as UserId,
+      }),
+    });
+
+    const exit = await runJobsServiceExit(
+      Effect.gen(function* () {
+        const jobs = yield* JobsService;
+
+        return yield* jobs.addCostLine(workItemId, {
+          description: "Replacement valve",
+          quantity: 1,
+          type: "material",
+          unitPriceMinor: 4200,
+        });
+      }),
+      harness
+    );
+
+    expect(getFailure(exit)).toBeInstanceOf(JobAccessDeniedError);
+    expect(harness.calls.findByIdForUpdate).toBe(1);
+    expect(harness.calls.addCostLine).toBe(0);
+    expect(harness.calls.addActivity).toBe(0);
+  }, 10_000);
+
+  it("surfaces the cost summary limit error without recording activity", async () => {
+    const failure = new JobCostSummaryLimitExceededError({
+      message: "Job cost summary subtotal would exceed a safe integer",
+      workItemId,
+    });
+    const harness = makeHarness({
+      actor: makeActor("member"),
+      costLineFailure: failure,
+      lockedJob: makeJob({
+        assigneeId: actorUserId,
+      }),
+    });
+
+    const exit = await runJobsServiceExit(
+      Effect.gen(function* () {
+        const jobs = yield* JobsService;
+
+        return yield* jobs.addCostLine(workItemId, {
+          description: "Replacement valve",
+          quantity: 1,
+          type: "material",
+          unitPriceMinor: 4200,
+        });
+      }),
+      harness
+    );
+
+    expect(getFailure(exit)).toStrictEqual(failure);
+    expect(harness.calls.findByIdForUpdate).toBe(1);
+    expect(harness.calls.addCostLine).toBe(0);
     expect(harness.calls.addActivity).toBe(0);
   }, 10_000);
 

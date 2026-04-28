@@ -166,9 +166,7 @@ expect(Object.keys(spec.paths)).toStrictEqual([
   "/sites/{siteId}",
 ]);
 
-expect(spec.paths["/job-labels"]?.get?.operationId).toBe(
-  "jobs.listJobLabels"
-);
+expect(spec.paths["/job-labels"]?.get?.operationId).toBe("jobs.listJobLabels");
 expect(spec.paths["/job-labels"]?.post?.operationId).toBe(
   "jobs.createJobLabel"
 );
@@ -296,7 +294,9 @@ export type AssignJobLabelInput = Schema.Schema.Type<
 >;
 
 export const JobLabelResponseSchema = JobLabelSchema;
-export type JobLabelResponse = Schema.Schema.Type<typeof JobLabelResponseSchema>;
+export type JobLabelResponse = Schema.Schema.Type<
+  typeof JobLabelResponseSchema
+>;
 
 export const JobLabelsResponseSchema = Schema.Struct({
   labels: Schema.Array(JobLabelSchema),
@@ -440,7 +440,9 @@ git commit -m "feat: add shared job label contracts"
 Add a new test to `apps/api/src/domains/jobs/repositories.integration.test.ts`:
 
 ```ts
-it("creates, assigns, removes, archives, and filters organization job labels", async (context: { skip: (note?: string) => never }) => {
+it("creates, assigns, removes, archives, and filters organization job labels", async (context: {
+  skip: (note?: string) => never;
+}) => {
   const testDatabase = await createTestDatabase({ prefix: "jobs_labels" });
   cleanup.push(testDatabase.cleanup);
 
@@ -451,7 +453,9 @@ it("creates, assigns, removes, archives, and filters organization job labels", a
   );
 
   if (!canReachDatabase) {
-    context.skip("Jobs integration database unavailable; skipping label coverage");
+    context.skip(
+      "Jobs integration database unavailable; skipping label coverage"
+    );
   }
 
   await applyAllMigrations(databaseUrl);
@@ -629,7 +633,10 @@ export const jobLabel = pgTable(
       table.name,
       table.id
     ),
-    check("job_labels_name_not_empty_chk", sql`length(trim(${table.name})) > 0`),
+    check(
+      "job_labels_name_not_empty_chk",
+      sql`length(trim(${table.name})) > 0`
+    ),
     check(
       "job_labels_normalized_name_not_empty_chk",
       sql`length(trim(${table.normalizedName})) > 0`
@@ -794,7 +801,9 @@ Add decoders:
 ```ts
 const decodeJobLabel = Schema.decodeUnknownSync(JobLabelSchema);
 const decodeJobLabelId = Schema.decodeUnknownSync(JobLabelIdSchema);
-const decodeJobLabelsResponse = Schema.decodeUnknownSync(JobLabelsResponseSchema);
+const decodeJobLabelsResponse = Schema.decodeUnknownSync(
+  JobLabelsResponseSchema
+);
 ```
 
 - [ ] **Step 7: Load labels into list and detail**
@@ -818,10 +827,12 @@ Include `${labelFilterJoin}` in the SQL query before `${sitesJoin}`.
 After fetching `rows`, load labels:
 
 ```ts
-const labelsByWorkItemId = yield* listLabelsForWorkItems(
-  organizationId,
-  rows.slice(0, limit).map((row) => decodeWorkItemId(row.id))
-);
+const labelsByWorkItemId =
+  yield *
+  listLabelsForWorkItems(
+    organizationId,
+    rows.slice(0, limit).map((row) => decodeWorkItemId(row.id))
+  );
 const items = rows
   .slice(0, limit)
   .map((row) => mapJobListItemRow(row, labelsByWorkItemId.get(row.id) ?? []));
@@ -880,7 +891,10 @@ export class JobLabelsRepository extends Effect.Service<JobLabelsRepository>()(
             .returning("*")}
         `.pipe(
           Effect.catchTag("SqlError", (error) =>
-            isUniqueConstraintError(error, "job_labels_organization_normalized_active_idx")
+            isUniqueConstraintError(
+              error,
+              "job_labels_organization_normalized_active_idx"
+            )
               ? Effect.fail(
                   new JobLabelNameConflictError({
                     message: "A job label with that name already exists",
@@ -928,7 +942,10 @@ export class JobLabelsRepository extends Effect.Service<JobLabelsRepository>()(
           returning *
         `.pipe(
           Effect.catchTag("SqlError", (error) =>
-            isUniqueConstraintError(error, "job_labels_organization_normalized_active_idx")
+            isUniqueConstraintError(
+              error,
+              "job_labels_organization_normalized_active_idx"
+            )
               ? Effect.fail(
                   new JobLabelNameConflictError({
                     message: "A job label with that name already exists",
@@ -973,25 +990,28 @@ export class JobLabelsRepository extends Effect.Service<JobLabelsRepository>()(
         return Option.fromNullable(rows[0]).pipe(Option.map(mapJobLabelRow));
       });
 
-      const assignToJob = Effect.fn("JobLabelsRepository.assignToJob")(function* (
-        input: AssignJobLabelRecordInput
-      ) {
-        const label = yield* findById(input.organizationId, input.labelId).pipe(
-          Effect.map(Option.getOrUndefined)
-        );
+      const assignToJob = Effect.fn("JobLabelsRepository.assignToJob")(
+        function* (input: AssignJobLabelRecordInput) {
+          const label = yield* findById(
+            input.organizationId,
+            input.labelId
+          ).pipe(Effect.map(Option.getOrUndefined));
 
-        if (label === undefined) {
-          return yield* Effect.fail(
-            new JobLabelNotFoundError({
-              labelId: input.labelId,
-              message: "Job label does not exist in the organization",
-            })
+          if (label === undefined) {
+            return yield* Effect.fail(
+              new JobLabelNotFoundError({
+                labelId: input.labelId,
+                message: "Job label does not exist in the organization",
+              })
+            );
+          }
+
+          yield* ensureWorkItemOrganizationMatches(
+            input.organizationId,
+            input.workItemId
           );
-        }
 
-        yield* ensureWorkItemOrganizationMatches(input.organizationId, input.workItemId);
-
-        yield* sql`
+          yield* sql`
           insert into work_item_labels ${sql.insert({
             label_id: input.labelId,
             organization_id: input.organizationId,
@@ -1000,36 +1020,41 @@ export class JobLabelsRepository extends Effect.Service<JobLabelsRepository>()(
           on conflict do nothing
         `;
 
-        return label;
-      });
-
-      const removeFromJob = Effect.fn("JobLabelsRepository.removeFromJob")(function* (
-        input: AssignJobLabelRecordInput
-      ) {
-        const label = yield* findById(input.organizationId, input.labelId).pipe(
-          Effect.map(Option.getOrUndefined)
-        );
-
-        if (label === undefined) {
-          return yield* Effect.fail(
-            new JobLabelNotFoundError({
-              labelId: input.labelId,
-              message: "Job label does not exist in the organization",
-            })
-          );
+          return label;
         }
+      );
 
-        yield* ensureWorkItemOrganizationMatches(input.organizationId, input.workItemId);
+      const removeFromJob = Effect.fn("JobLabelsRepository.removeFromJob")(
+        function* (input: AssignJobLabelRecordInput) {
+          const label = yield* findById(
+            input.organizationId,
+            input.labelId
+          ).pipe(Effect.map(Option.getOrUndefined));
 
-        yield* sql`
+          if (label === undefined) {
+            return yield* Effect.fail(
+              new JobLabelNotFoundError({
+                labelId: input.labelId,
+                message: "Job label does not exist in the organization",
+              })
+            );
+          }
+
+          yield* ensureWorkItemOrganizationMatches(
+            input.organizationId,
+            input.workItemId
+          );
+
+          yield* sql`
           delete from work_item_labels
           where organization_id = ${input.organizationId}
             and work_item_id = ${input.workItemId}
             and label_id = ${input.labelId}
         `;
 
-        return label;
-      });
+          return label;
+        }
+      );
 
       return {
         archive,
@@ -1065,7 +1090,10 @@ function normalizeJobLabelName(name: string): string {
   return name.trim().replaceAll(/\s+/g, " ").toLocaleLowerCase("en");
 }
 
-function isUniqueConstraintError(error: unknown, constraintName: string): boolean {
+function isUniqueConstraintError(
+  error: unknown,
+  constraintName: string
+): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -1180,7 +1208,10 @@ it("allows assigned members to label their jobs", async () => {
   );
 
   await expectAuthorizationFails(
-    JobsAuthorization.ensureCanAssignJobLabels(makeActor("member"), unassignedJob),
+    JobsAuthorization.ensureCanAssignJobLabels(
+      makeActor("member"),
+      unassignedJob
+    ),
     "Members can only label jobs assigned to them"
   );
 });
@@ -1336,19 +1367,21 @@ Update `apps/api/src/domains/jobs/service.ts` imports for label DTOs/errors and 
 In `JobsServiceLive`, yield:
 
 ```ts
-const jobLabelsRepository = yield* JobLabelsRepository;
+const jobLabelsRepository = yield * JobLabelsRepository;
 ```
 
 Extend `getOptions`:
 
 ```ts
-const [members, regions, sites, contacts, labels] = yield* Effect.all([
-  jobsRepository.listMemberOptions(actor.organizationId),
-  sitesRepository.listRegions(actor.organizationId),
-  sitesRepository.listOptions(actor.organizationId),
-  contactsRepository.listOptions(actor.organizationId),
-  jobLabelsRepository.list(actor.organizationId),
-]).pipe(Effect.catchTag("SqlError", failJobsStorageError));
+const [members, regions, sites, contacts, labels] =
+  yield *
+  Effect.all([
+    jobsRepository.listMemberOptions(actor.organizationId),
+    sitesRepository.listRegions(actor.organizationId),
+    sitesRepository.listOptions(actor.organizationId),
+    contactsRepository.listOptions(actor.organizationId),
+    jobLabelsRepository.list(actor.organizationId),
+  ]).pipe(Effect.catchTag("SqlError", failJobsStorageError));
 
 return { contacts, labels, members, regions, sites } as const;
 ```
@@ -1521,7 +1554,10 @@ const createLabelResponse = await api.handler(
   )
 );
 expect(createLabelResponse.status).toBe(201);
-const label = (await createLabelResponse.json()) as { id: string; name: string };
+const label = (await createLabelResponse.json()) as {
+  id: string;
+  name: string;
+};
 
 const assignResponse = await api.handler(
   makeJsonRequest(
@@ -1575,8 +1611,7 @@ Update `initialList` in `apps/app/src/features/jobs/jobs-page.test.tsx` to inclu
 ```ts
 const labelNoAccessId =
   "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as JobLabelIdType;
-const labelInvoiceId =
-  "dddddddd-dddd-4ddd-8ddd-dddddddddddd" as JobLabelIdType;
+const labelInvoiceId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd" as JobLabelIdType;
 
 const labelNoAccess = {
   id: labelNoAccessId,
@@ -1597,12 +1632,16 @@ it("renders labels and filters jobs by label", async () => {
   renderJobsPage();
   const queuePanel = getPrimaryQueuePanel();
 
-  expect(within(queuePanel).getAllByText("No access").length).toBeGreaterThan(0);
+  expect(within(queuePanel).getAllByText("No access").length).toBeGreaterThan(
+    0
+  );
 
   await chooseCommandFilter(user, /label filter/i, "No access");
 
   expect(within(queuePanel).getByText("Inspect boiler")).toBeVisible();
-  expect(within(queuePanel).queryByText("Await materials")).not.toBeInTheDocument();
+  expect(
+    within(queuePanel).queryByText("Await materials")
+  ).not.toBeInTheDocument();
   expect(screen.getByText("Label: No access")).toBeVisible();
 });
 ```
@@ -1729,7 +1768,11 @@ if (filters.labelId !== defaultJobsListFilters.labelId) {
 Add helper in `jobs-page.tsx`:
 
 ```tsx
-function JobLabelBadges({ labels }: { readonly labels: JobListItem["labels"] }) {
+function JobLabelBadges({
+  labels,
+}: {
+  readonly labels: JobListItem["labels"];
+}) {
   if (labels.length === 0) {
     return null;
   }
@@ -1737,7 +1780,11 @@ function JobLabelBadges({ labels }: { readonly labels: JobListItem["labels"] }) 
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1">
       {labels.map((label) => (
-        <Badge key={label.id} variant="outline" className="max-w-36 rounded-full">
+        <Badge
+          key={label.id}
+          variant="outline"
+          className="max-w-36 rounded-full"
+        >
           <span className="truncate">{label.name}</span>
         </Badge>
       ))}
@@ -1959,15 +2006,25 @@ Use `Briefcase01Icon` for label controls in this task so the plan only reference
 Add mutation hooks:
 
 ```ts
-const assignLabelResult = useAtomValue(assignJobLabelMutationAtomFamily(workItemId));
-const removeLabelResult = useAtomValue(removeJobLabelMutationAtomFamily(workItemId));
+const assignLabelResult = useAtomValue(
+  assignJobLabelMutationAtomFamily(workItemId)
+);
+const removeLabelResult = useAtomValue(
+  removeJobLabelMutationAtomFamily(workItemId)
+);
 const createLabelResult = useAtomValue(createJobLabelMutationAtom);
-const assignJobLabel = useAtomSet(assignJobLabelMutationAtomFamily(workItemId), {
-  mode: "promiseExit",
-});
-const removeJobLabel = useAtomSet(removeJobLabelMutationAtomFamily(workItemId), {
-  mode: "promiseExit",
-});
+const assignJobLabel = useAtomSet(
+  assignJobLabelMutationAtomFamily(workItemId),
+  {
+    mode: "promiseExit",
+  }
+);
+const removeJobLabel = useAtomSet(
+  removeJobLabelMutationAtomFamily(workItemId),
+  {
+    mode: "promiseExit",
+  }
+);
 const createJobLabel = useAtomSet(createJobLabelMutationAtom, {
   mode: "promiseExit",
 });
@@ -2036,7 +2093,11 @@ function JobLabelsEditor({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         {assignedLabels.map((label) => (
-          <Badge key={label.id} variant="outline" className="gap-1 rounded-full">
+          <Badge
+            key={label.id}
+            variant="outline"
+            className="gap-1 rounded-full"
+          >
             {label.name}
             {canEditLabels ? (
               <button
@@ -2055,13 +2116,26 @@ function JobLabelsEditor({
       </div>
       {canEditLabels ? (
         <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger render={<Button type="button" size="sm" variant="outline" />}>
-            <HugeiconsIcon icon={Add01Icon} strokeWidth={2} data-icon="inline-start" />
+          <PopoverTrigger
+            render={<Button type="button" size="sm" variant="outline" />}
+          >
+            <HugeiconsIcon
+              icon={Add01Icon}
+              strokeWidth={2}
+              data-icon="inline-start"
+            />
             Add label
           </PopoverTrigger>
-          <PopoverContent className="w-[var(--anchor-width)] min-w-72 p-0" align="start">
+          <PopoverContent
+            className="w-[var(--anchor-width)] min-w-72 p-0"
+            align="start"
+          >
             <Command>
-              <CommandInput value={query} onValueChange={setQuery} placeholder="Label" />
+              <CommandInput
+                value={query}
+                onValueChange={setQuery}
+                placeholder="Label"
+              />
               <CommandList>
                 <CommandEmpty>No matching labels.</CommandEmpty>
                 {canCreateLabels && createName ? (
@@ -2074,7 +2148,10 @@ function JobLabelsEditor({
                         setQuery("");
                       }}
                     >
-                      Create label: <span className="text-muted-foreground">&quot;{createName}&quot;</span>
+                      Create label:{" "}
+                      <span className="text-muted-foreground">
+                        &quot;{createName}&quot;
+                      </span>
                     </CommandItem>
                   </CommandGroup>
                 ) : null}
@@ -2163,13 +2240,17 @@ git commit -m "feat: manage labels from job detail"
 Update mocks in `organization-settings-page.test.tsx` for jobs client or mock the new panel module depending on final imports. Prefer testing through UI with mocked jobs API methods:
 
 ```ts
-const { mockedListJobLabels, mockedCreateJobLabel, mockedUpdateJobLabel, mockedDeleteJobLabel } =
-  vi.hoisted(() => ({
-    mockedListJobLabels: vi.fn(),
-    mockedCreateJobLabel: vi.fn(),
-    mockedUpdateJobLabel: vi.fn(),
-    mockedDeleteJobLabel: vi.fn(),
-  }));
+const {
+  mockedListJobLabels,
+  mockedCreateJobLabel,
+  mockedUpdateJobLabel,
+  mockedDeleteJobLabel,
+} = vi.hoisted(() => ({
+  mockedListJobLabels: vi.fn(),
+  mockedCreateJobLabel: vi.fn(),
+  mockedUpdateJobLabel: vi.fn(),
+  mockedDeleteJobLabel: vi.fn(),
+}));
 ```
 
 Add test:
@@ -2249,13 +2330,15 @@ export const organizationLabelsStateAtom = Atom.make<JobLabelsResponse>({
   labels: [],
 }).pipe(Atom.keepAlive);
 
-export const loadOrganizationLabelsAtom = Atom.fn<AppJobsError, JobLabelsResponse>(
-  (_, get) =>
-    listBrowserJobLabels().pipe(
-      Effect.tap((response) =>
-        Effect.sync(() => get.set(organizationLabelsStateAtom, response))
-      )
+export const loadOrganizationLabelsAtom = Atom.fn<
+  AppJobsError,
+  JobLabelsResponse
+>((_, get) =>
+  listBrowserJobLabels().pipe(
+    Effect.tap((response) =>
+      Effect.sync(() => get.set(organizationLabelsStateAtom, response))
     )
+  )
 );
 
 export const createOrganizationLabelAtom = Atom.fn<
@@ -2290,7 +2373,9 @@ export const updateOrganizationLabelAtom = Atom.fn<
         const current = get(organizationLabelsStateAtom);
         get.set(organizationLabelsStateAtom, {
           labels: insertSortedLabel(
-            current.labels.filter((currentLabel) => currentLabel.id !== label.id),
+            current.labels.filter(
+              (currentLabel) => currentLabel.id !== label.id
+            ),
             label
           ),
         });
@@ -2309,7 +2394,9 @@ export const deleteOrganizationLabelAtom = Atom.fn<
       Effect.sync(() => {
         const current = get(organizationLabelsStateAtom);
         get.set(organizationLabelsStateAtom, {
-          labels: current.labels.filter((currentLabel) => currentLabel.id !== label.id),
+          labels: current.labels.filter(
+            (currentLabel) => currentLabel.id !== label.id
+          ),
         });
       })
     )
@@ -2367,7 +2454,13 @@ import type { JobLabel } from "@task-tracker/jobs-core";
 import { Exit } from "effect";
 import * as React from "react";
 
-import { AppRowList, AppRowListActions, AppRowListBody, AppRowListItem, AppRowListLeading } from "#/components/app-row-list";
+import {
+  AppRowList,
+  AppRowListActions,
+  AppRowListBody,
+  AppRowListItem,
+  AppRowListLeading,
+} from "#/components/app-row-list";
 import { AppUtilityPanel } from "#/components/app-utility-panel";
 import { Alert, AlertDescription, AlertTitle } from "#/components/ui/alert";
 import { Badge } from "#/components/ui/badge";
@@ -2385,10 +2478,18 @@ import {
 
 export function OrganizationLabelsPanel() {
   const labels = useAtomValue(organizationLabelsStateAtom).labels;
-  const loadLabels = useAtomSet(loadOrganizationLabelsAtom, { mode: "promiseExit" });
-  const createLabel = useAtomSet(createOrganizationLabelAtom, { mode: "promiseExit" });
-  const updateLabel = useAtomSet(updateOrganizationLabelAtom, { mode: "promiseExit" });
-  const deleteLabel = useAtomSet(deleteOrganizationLabelAtom, { mode: "promiseExit" });
+  const loadLabels = useAtomSet(loadOrganizationLabelsAtom, {
+    mode: "promiseExit",
+  });
+  const createLabel = useAtomSet(createOrganizationLabelAtom, {
+    mode: "promiseExit",
+  });
+  const updateLabel = useAtomSet(updateOrganizationLabelAtom, {
+    mode: "promiseExit",
+  });
+  const deleteLabel = useAtomSet(deleteOrganizationLabelAtom, {
+    mode: "promiseExit",
+  });
   const createResult = useAtomValue(createOrganizationLabelAtom);
   const [name, setName] = React.useState("");
   const [editingLabel, setEditingLabel] = React.useState<JobLabel | null>(null);
@@ -2454,7 +2555,10 @@ export function OrganizationLabelsPanel() {
           </Alert>
         ))
         .render()}
-      <form className="flex max-w-xl flex-col gap-3 sm:flex-row" onSubmit={handleCreate}>
+      <form
+        className="flex max-w-xl flex-col gap-3 sm:flex-row"
+        onSubmit={handleCreate}
+      >
         <Input
           aria-label="New label name"
           value={name}
@@ -2462,7 +2566,11 @@ export function OrganizationLabelsPanel() {
           onChange={(event) => setName(event.target.value)}
         />
         <Button type="submit">
-          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} data-icon="inline-start" />
+          <HugeiconsIcon
+            icon={Add01Icon}
+            strokeWidth={2}
+            data-icon="inline-start"
+          />
           Create label
         </Button>
       </form>

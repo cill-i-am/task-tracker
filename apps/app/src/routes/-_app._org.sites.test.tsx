@@ -1,11 +1,12 @@
 /* oxlint-disable vitest/prefer-import-in-mock */
 import { decodeOrganizationId } from "@task-tracker/identity-core";
-import type { SiteIdType } from "@task-tracker/jobs-core";
+import type { SiteIdType, UserIdType } from "@task-tracker/jobs-core";
 import { render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
 type AsyncLoaderMock = (...args: unknown[]) => Promise<unknown>;
 const organizationId = decodeOrganizationId("org_123");
+const userId = "user_123" as UserIdType;
 
 const {
   mockedEnsureActiveOrganizationId,
@@ -56,45 +57,39 @@ describe("sites route loader", () => {
     { timeout: 10_000 },
     async () => {
       const siteOptions = {
-        regions: [],
+        serviceAreas: [],
         sites: [],
       };
 
-      mockedEnsureActiveOrganizationId.mockResolvedValue({
-        activeOrganizationId: organizationId,
-        activeOrganizationSync: {
-          required: false,
-          targetOrganizationId: organizationId,
-        },
-        session: {
-          user: {
-            id: "user_123",
-          },
-        },
-      });
-      mockedGetCurrentOrganizationMemberRole.mockResolvedValue({
-        role: "owner",
-      });
       mockedGetCurrentServerSiteOptions.mockResolvedValue(siteOptions);
 
       const { loadSitesRouteData } = await import("./_app._org.sites");
 
-      await expect(loadSitesRouteData()).resolves.toStrictEqual({
+      await expect(
+        loadSitesRouteData({
+          activeOrganizationId: organizationId,
+          activeOrganizationSync: {
+            required: false,
+            targetOrganizationId: organizationId,
+          },
+          currentOrganizationRole: "owner",
+          currentUserId: userId,
+        })
+      ).resolves.toStrictEqual({
         options: {
           contacts: [],
           labels: [],
           members: [],
-          regions: [],
+          serviceAreas: [],
           sites: [],
         },
         viewer: {
           role: "owner",
-          userId: "user_123",
+          userId,
         },
       });
-      expect(mockedGetCurrentOrganizationMemberRole).toHaveBeenCalledWith(
-        organizationId
-      );
+      expect(mockedEnsureActiveOrganizationId).not.toHaveBeenCalled();
+      expect(mockedGetCurrentOrganizationMemberRole).not.toHaveBeenCalled();
       expect(mockedGetCurrentServerSiteOptions).toHaveBeenCalledOnce();
     }
   );
@@ -113,7 +108,7 @@ describe("sites route loader", () => {
             contacts: [],
             labels: [],
             members: [],
-            regions: [],
+            serviceAreas: [],
             sites: [
               {
                 addressLine1: "1 Custom House Quay",
@@ -131,7 +126,7 @@ describe("sites route loader", () => {
           }}
           viewer={{
             role: "owner",
-            userId: "user_123",
+            userId,
           }}
         />
       );

@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  calculateJobCostLineTotalMinor,
+  JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG,
   OrganizationId,
-  RegionId,
+  ServiceAreaId,
   SiteId,
   UserId,
   WorkItemId,
@@ -15,10 +17,11 @@ import { AppEffectSqlRuntimeLive } from "../../platform/database/database.js";
 import {
   member,
   organization,
-  serviceRegion,
+  serviceArea,
   site,
   user,
   workItem,
+  workItemActivity,
 } from "../../platform/database/schema.js";
 import {
   applyAllMigrations,
@@ -27,10 +30,12 @@ import {
   withPool,
 } from "../../platform/database/test-database.js";
 import {
+  ConfigurationRepository,
   ContactsRepository,
   JobLabelsRepository,
   JobsRepositoriesLive,
   JobsRepository,
+  RateCardsRepository,
   SitesRepository,
   withJobsTransaction,
 } from "./repositories.js";
@@ -63,7 +68,7 @@ describe("jobs repositories integration", () => {
     await applyAllMigrations(databaseUrl);
 
     const identity = await seedIdentityRecords(databaseUrl);
-    const regionId = await insertRegion(
+    const serviceAreaId = await insertServiceArea(
       databaseUrl,
       identity.organizationId,
       "Dublin"
@@ -81,7 +86,7 @@ describe("jobs repositories integration", () => {
         geocodingProvider: "google",
         name: "Docklands Campus",
         organizationId: identity.organizationId,
-        regionId,
+        serviceAreaId,
         latitude: 53.3498,
         longitude: -6.2603,
         town: "Dublin",
@@ -100,7 +105,7 @@ describe("jobs repositories integration", () => {
         longitude: -6.2603,
         name: "Overflow Yard",
         organizationId: identity.organizationId,
-        regionId,
+        serviceAreaId,
         town: "Dublin",
       })
     );
@@ -109,6 +114,7 @@ describe("jobs repositories integration", () => {
       ContactsRepository.create({
         email: "site-contact@example.com",
         name: "Aoife Byrne",
+        notes: "Prefers morning calls.",
         organizationId: identity.organizationId,
         phone: "+353871234567",
       })
@@ -139,6 +145,7 @@ describe("jobs repositories integration", () => {
           const job = yield* JobsRepository.create({
             contactId: createdContactId,
             createdByUserId: identity.ownerUserId,
+            externalReference: "PO-4471",
             organizationId: identity.organizationId,
             priority: "high",
             siteId: createdSiteId,
@@ -169,6 +176,16 @@ describe("jobs repositories integration", () => {
             visitDate: "2026-04-21",
             workItemId: job.id,
           });
+          yield* JobsRepository.addCostLine({
+            authorUserId: identity.ownerUserId,
+            description: "Replacement seal kit",
+            organizationId: identity.organizationId,
+            quantity: 2,
+            taxRateBasisPoints: 2300,
+            type: "material",
+            unitPriceMinor: 2599,
+            workItemId: job.id,
+          });
 
           return job;
         })
@@ -184,8 +201,16 @@ describe("jobs repositories integration", () => {
 
     expect(detailValue.job.kind).toBe("job");
     expect(detailValue.job.title).toBe("Replace damaged window seal");
+    expect(detailValue.job.externalReference).toBe("PO-4471");
     expect(detailValue.job.siteId).toBe(createdSiteId);
     expect(detailValue.job.contactId).toBe(createdContactId);
+    expect(detailValue.contact).toMatchObject({
+      email: "site-contact@example.com",
+      id: createdContactId,
+      name: "Aoife Byrne",
+      notes: "Prefers morning calls.",
+      phone: "+353871234567",
+    });
     expect(detailValue.comments).toHaveLength(1);
     expect(detailValue.comments[0]?.body).toContain("water ingress");
     expect(detailValue.activity).toHaveLength(1);
@@ -193,6 +218,18 @@ describe("jobs repositories integration", () => {
     expect(detailValue.visits).toHaveLength(1);
     expect(detailValue.visits[0]?.visitDate).toBe("2026-04-21");
     expect(detailValue.visits[0]?.durationMinutes).toBe(120);
+    expect(detailValue.costLines).toHaveLength(1);
+    expect(detailValue.costLines[0]).toMatchObject({
+      description: "Replacement seal kit",
+      lineTotalMinor: 5198,
+      quantity: 2,
+      taxRateBasisPoints: 2300,
+      type: "material",
+      unitPriceMinor: 2599,
+    });
+    expect(detailValue.costSummary).toStrictEqual({
+      subtotalMinor: 5198,
+    });
 
     const siteOptions = await runJobsEffect(
       databaseUrl,
@@ -218,13 +255,25 @@ describe("jobs repositories integration", () => {
       latitude: 53.3498,
       longitude: -6.2603,
       name: "Docklands Campus",
-      regionId,
+      serviceAreaId,
+      serviceAreaName: "Dublin",
       town: "Dublin",
     });
     expect(createdSiteOption?.addressLine2).toBeUndefined();
     expect(createdSiteOption?.county).toBe("Dublin");
     expect(Option.getOrUndefined(createdSiteOptionById)).toStrictEqual(
       createdSiteOption
+    );
+
+    const list = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.list(identity.organizationId, {})
+    );
+    expect(list.items).toContainEqual(
+      expect.objectContaining({
+        externalReference: "PO-4471",
+        id: createdJob.id,
+      })
     );
 
     const foundSiteId = await runJobsEffect(
@@ -244,10 +293,13 @@ describe("jobs repositories integration", () => {
     );
 
     expect(createdContactOption).toMatchObject({
+      email: "site-contact@example.com",
       id: createdContactId,
       name: "Aoife Byrne",
+      phone: "+353871234567",
       siteIds: expect.arrayContaining([createdSiteId, overflowSiteId]),
     });
+    expect(createdContactOption).not.toHaveProperty("notes");
     expect(Option.getOrUndefined(foundSiteId)).toBe(createdSiteId);
     expect(Option.getOrUndefined(foundContactId)).toBe(createdContactId);
   }, 30_000);
@@ -273,12 +325,12 @@ describe("jobs repositories integration", () => {
     await applyAllMigrations(databaseUrl);
 
     const identity = await seedIdentityRecords(databaseUrl);
-    const northRegionId = await insertRegion(
+    const northServiceAreaId = await insertServiceArea(
       databaseUrl,
       identity.organizationId,
       "North"
     );
-    const southRegionId = await insertRegion(
+    const southServiceAreaId = await insertServiceArea(
       databaseUrl,
       identity.organizationId,
       "South"
@@ -286,13 +338,13 @@ describe("jobs repositories integration", () => {
     const northSiteId = await insertSite(
       databaseUrl,
       identity.organizationId,
-      northRegionId,
+      northServiceAreaId,
       "North Site"
     );
     const southSiteId = await insertSite(
       databaseUrl,
       identity.organizationId,
-      southRegionId,
+      southServiceAreaId,
       "South Site"
     );
 
@@ -391,9 +443,11 @@ describe("jobs repositories integration", () => {
     ]);
     expect(secondPage.nextCursor).toBeUndefined();
 
-    const byRegion = await runJobsEffect(
+    const byServiceArea = await runJobsEffect(
       databaseUrl,
-      JobsRepository.list(identity.organizationId, { regionId: northRegionId })
+      JobsRepository.list(identity.organizationId, {
+        serviceAreaId: northServiceAreaId,
+      })
     );
     const byAssignee = await runJobsEffect(
       databaseUrl,
@@ -420,7 +474,7 @@ describe("jobs repositories integration", () => {
       JobsRepository.list(identity.organizationId, { status: "blocked" })
     );
 
-    expect(byRegion.items.map((item) => item.id)).toStrictEqual([
+    expect(byServiceArea.items.map((item) => item.id)).toStrictEqual([
       newestJobId,
       oldestJobId,
     ]);
@@ -773,6 +827,429 @@ describe("jobs repositories integration", () => {
     });
   }, 30_000);
 
+  it("lists organization activity with organization and filter boundaries", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({ prefix: "jobs_repo" });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping organization activity coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    const identity = await seedIdentityRecords(databaseUrl);
+    const foreignIdentity = await seedIdentityRecords(databaseUrl);
+
+    const middleJobId = decodeWorkItemId(
+      "00000000-0000-4000-8000-000000000102"
+    );
+    const newestJobId = decodeWorkItemId(
+      "00000000-0000-4000-8000-000000000103"
+    );
+    const foreignJobId = decodeWorkItemId(
+      "00000000-0000-4000-8000-000000000104"
+    );
+    const middleCreatedActivityId = "00000000-0000-4000-8000-000000000201";
+    const middleStatusActivityId = "00000000-0000-4000-8000-000000000202";
+    const newestActivityId = "00000000-0000-4000-8000-000000000203";
+
+    await withPool(databaseUrl, async (pool) => {
+      const db = drizzle(pool);
+
+      await db.insert(workItem).values([
+        {
+          assigneeId: null,
+          blockedReason: null,
+          completedAt: null,
+          completedByUserId: null,
+          contactId: null,
+          coordinatorId: null,
+          createdAt: new Date("2026-04-21T10:00:00.000Z"),
+          createdByUserId: identity.ownerUserId,
+          id: middleJobId,
+          kind: "job",
+          organizationId: identity.organizationId,
+          priority: "none",
+          siteId: null,
+          status: "in_progress",
+          title: "Middle activity job",
+          updatedAt: new Date("2026-04-21T10:00:00.000Z"),
+        },
+        {
+          assigneeId: null,
+          blockedReason: null,
+          completedAt: null,
+          completedByUserId: null,
+          contactId: null,
+          coordinatorId: null,
+          createdAt: new Date("2026-04-22T10:00:00.000Z"),
+          createdByUserId: identity.ownerUserId,
+          id: newestJobId,
+          kind: "job",
+          organizationId: identity.organizationId,
+          priority: "none",
+          siteId: null,
+          status: "in_progress",
+          title: "Newest activity job",
+          updatedAt: new Date("2026-04-22T10:00:00.000Z"),
+        },
+        {
+          assigneeId: null,
+          blockedReason: null,
+          completedAt: null,
+          completedByUserId: null,
+          contactId: null,
+          coordinatorId: null,
+          createdAt: new Date("2026-04-22T10:00:00.000Z"),
+          createdByUserId: foreignIdentity.ownerUserId,
+          id: foreignJobId,
+          kind: "job",
+          organizationId: foreignIdentity.organizationId,
+          priority: "none",
+          siteId: null,
+          status: "new",
+          title: "Foreign activity job",
+          updatedAt: new Date("2026-04-22T10:00:00.000Z"),
+        },
+      ]);
+
+      const activityRows: (typeof workItemActivity.$inferInsert)[] = [
+        {
+          actorUserId: identity.ownerUserId,
+          createdAt: new Date("2026-04-21T10:00:00.000Z"),
+          eventType: "job_created",
+          id: middleCreatedActivityId,
+          organizationId: identity.organizationId,
+          payload: {
+            eventType: "job_created",
+            kind: "job",
+            priority: "none",
+            title: "Middle activity job",
+          },
+          workItemId: middleJobId,
+        },
+        {
+          actorUserId: identity.assigneeUserId,
+          createdAt: new Date("2026-04-21T10:00:00.000Z"),
+          eventType: "status_changed",
+          id: middleStatusActivityId,
+          organizationId: identity.organizationId,
+          payload: {
+            eventType: "status_changed",
+            fromStatus: "new",
+            toStatus: "in_progress",
+          },
+          workItemId: middleJobId,
+        },
+        {
+          actorUserId: identity.ownerUserId,
+          createdAt: new Date("2026-04-22T10:00:00.000Z"),
+          eventType: "status_changed",
+          id: newestActivityId,
+          organizationId: identity.organizationId,
+          payload: {
+            eventType: "status_changed",
+            fromStatus: "in_progress",
+            toStatus: "blocked",
+          },
+          workItemId: newestJobId,
+        },
+        {
+          actorUserId: foreignIdentity.ownerUserId,
+          createdAt: new Date("2026-04-22T10:00:00.000Z"),
+          eventType: "job_created",
+          id: randomUUID(),
+          organizationId: foreignIdentity.organizationId,
+          payload: {
+            eventType: "job_created",
+            kind: "job",
+            priority: "none",
+            title: "Foreign activity job",
+          },
+          workItemId: foreignJobId,
+        },
+      ];
+
+      await db.insert(workItemActivity).values(activityRows);
+    });
+
+    const firstPage = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        limit: 2,
+      })
+    );
+    const secondPage = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        cursor: firstPage.nextCursor,
+        limit: 2,
+      })
+    );
+    const all = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {})
+    );
+    const byActor = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        actorUserId: identity.ownerUserId,
+      })
+    );
+    const byEvent = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        eventType: "status_changed",
+      })
+    );
+    const byDate = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        fromDate: "2026-04-21",
+        toDate: "2026-04-21",
+      })
+    );
+    const byJobTitle = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        jobTitle: "Middle",
+      })
+    );
+    const malformedCursorExit = await runJobsEffectExit(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        cursor: "not-json" as never,
+      })
+    );
+    const nonUuidCursor = Buffer.from(
+      JSON.stringify({
+        id: "not-a-uuid",
+        createdAt: "2026-04-21T10:00:00.000Z",
+      })
+    ).toString("base64url");
+    const nonUuidCursorExit = await runJobsEffectExit(
+      databaseUrl,
+      JobsRepository.listOrganizationActivity(identity.organizationId, {
+        cursor: nonUuidCursor as never,
+      })
+    );
+
+    expect(firstPage.items.map((item) => item.id)).toStrictEqual([
+      newestActivityId,
+      middleStatusActivityId,
+    ]);
+    expect(firstPage.nextCursor).toBeDefined();
+    expect(secondPage.items.map((item) => item.id)).toStrictEqual([
+      middleCreatedActivityId,
+    ]);
+    expect(secondPage.nextCursor).toBeUndefined();
+    expect(all.items.map((item) => item.id)).toStrictEqual([
+      newestActivityId,
+      middleStatusActivityId,
+      middleCreatedActivityId,
+    ]);
+    expect(byActor.items).toHaveLength(2);
+    expect(byEvent.items.map((item) => item.eventType)).toStrictEqual([
+      "status_changed",
+      "status_changed",
+    ]);
+    expect(byDate.items.map((item) => item.createdAt)).toStrictEqual([
+      "2026-04-21T10:00:00.000Z",
+      "2026-04-21T10:00:00.000Z",
+    ]);
+    expect(byJobTitle.items.map((item) => item.jobTitle)).toStrictEqual([
+      "Middle activity job",
+      "Middle activity job",
+    ]);
+    expectFailureTag(
+      malformedCursorExit,
+      "@task-tracker/jobs-core/OrganizationActivityCursorInvalidError"
+    );
+    expectFailureTag(
+      nonUuidCursorExit,
+      "@task-tracker/jobs-core/OrganizationActivityCursorInvalidError"
+    );
+  }, 30_000);
+
+  it("rejects cost lines that would make the job subtotal unsafe and leaves detail decodable", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({ prefix: "jobs_repo" });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping repository cost subtotal coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    const identity = await seedIdentityRecords(databaseUrl);
+    const firstLine = {
+      authorUserId: identity.ownerUserId,
+      description: "Major equipment package",
+      organizationId: identity.organizationId,
+      quantity: 4_194_304,
+      type: "material" as const,
+      unitPriceMinor: 2_147_483_647,
+    };
+
+    const createdJob = await runJobsEffect(
+      databaseUrl,
+      withJobsTransaction(
+        Effect.gen(function* () {
+          const job = yield* JobsRepository.create({
+            createdByUserId: identity.ownerUserId,
+            organizationId: identity.organizationId,
+            title: "Replace plant room equipment",
+          });
+
+          yield* JobsRepository.addCostLine({
+            ...firstLine,
+            workItemId: job.id,
+          });
+
+          return job;
+        })
+      )
+    );
+
+    const overflowingLineExit = await runJobsEffectExit(
+      databaseUrl,
+      withJobsTransaction(
+        JobsRepository.addCostLine({
+          authorUserId: identity.ownerUserId,
+          description: "Overflowing follow-up line",
+          organizationId: identity.organizationId,
+          quantity: 1,
+          type: "material",
+          unitPriceMinor: 5_000_000,
+          workItemId: createdJob.id,
+        })
+      )
+    );
+
+    expectFailureTag(
+      overflowingLineExit,
+      JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG
+    );
+
+    const detail = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.getDetail(identity.organizationId, createdJob.id)
+    );
+    const detailValue = expectSome(detail);
+
+    expect(detailValue.costLines).toHaveLength(1);
+    expect(detailValue.costSummary).toStrictEqual({
+      subtotalMinor: calculateJobCostLineTotalMinor(firstLine),
+    });
+  }, 30_000);
+
+  it("uses canonical decimal line totals when checking the job subtotal limit", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({ prefix: "jobs_repo" });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping repository decimal subtotal coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    const identity = await seedIdentityRecords(databaseUrl);
+    const createdJob = await runJobsEffect(
+      databaseUrl,
+      withJobsTransaction(
+        Effect.gen(function* () {
+          const job = yield* JobsRepository.create({
+            createdByUserId: identity.ownerUserId,
+            organizationId: identity.organizationId,
+            title: "Replace plant room equipment",
+          });
+
+          yield* JobsRepository.addCostLine({
+            authorUserId: identity.ownerUserId,
+            description: "Major equipment package",
+            organizationId: identity.organizationId,
+            quantity: 4_194_304,
+            type: "material",
+            unitPriceMinor: 2_147_483_647,
+            workItemId: job.id,
+          });
+          yield* JobsRepository.addCostLine({
+            authorUserId: identity.ownerUserId,
+            description: "Final safe subtotal line",
+            organizationId: identity.organizationId,
+            quantity: 1,
+            type: "material",
+            unitPriceMinor: 4_194_289,
+            workItemId: job.id,
+          });
+
+          return job;
+        })
+      )
+    );
+
+    const fractionalOverflowExit = await runJobsEffectExit(
+      databaseUrl,
+      withJobsTransaction(
+        JobsRepository.addCostLine({
+          authorUserId: identity.ownerUserId,
+          description: "Fractional line that rounds over the limit",
+          organizationId: identity.organizationId,
+          quantity: 0.29,
+          type: "material",
+          unitPriceMinor: 50,
+          workItemId: createdJob.id,
+        })
+      )
+    );
+
+    expectFailureTag(
+      fractionalOverflowExit,
+      JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG
+    );
+
+    const detail = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.getDetail(identity.organizationId, createdJob.id)
+    );
+    const detailValue = expectSome(detail);
+
+    expect(detailValue.costLines).toHaveLength(2);
+    expect(detailValue.costSummary.subtotalMinor).toBe(
+      Number.MAX_SAFE_INTEGER - 14
+    );
+  }, 30_000);
+
   it("rejects foreign-organization references on writes", async (context: {
     skip: (note?: string) => never;
   }) => {
@@ -795,12 +1272,12 @@ describe("jobs repositories integration", () => {
 
     const primaryIdentity = await seedIdentityRecords(databaseUrl);
     const foreignIdentity = await seedIdentityRecords(databaseUrl);
-    const primaryRegionId = await insertRegion(
+    const primaryServiceAreaId = await insertServiceArea(
       databaseUrl,
       primaryIdentity.organizationId,
       "Primary"
     );
-    const foreignRegionId = await insertRegion(
+    const foreignServiceAreaId = await insertServiceArea(
       databaseUrl,
       foreignIdentity.organizationId,
       "Foreign"
@@ -816,7 +1293,7 @@ describe("jobs repositories integration", () => {
         geocodingProvider: "stub",
         name: "Primary Site",
         organizationId: primaryIdentity.organizationId,
-        regionId: primaryRegionId,
+        serviceAreaId: primaryServiceAreaId,
         latitude: 51.899,
         longitude: -8.475,
       })
@@ -832,7 +1309,7 @@ describe("jobs repositories integration", () => {
         geocodingProvider: "stub",
         name: "Foreign Site",
         organizationId: foreignIdentity.organizationId,
-        regionId: foreignRegionId,
+        serviceAreaId: foreignServiceAreaId,
         latitude: 53.2734,
         longitude: -9.0511,
       })
@@ -919,6 +1396,35 @@ describe("jobs repositories integration", () => {
         workItemId: primaryJob.id,
       })
     );
+
+    await expect(
+      withPool(databaseUrl, async (pool) => {
+        await pool.query(
+          `
+          insert into work_item_cost_lines (
+            id,
+            work_item_id,
+            organization_id,
+            author_user_id,
+            type,
+            description,
+            quantity,
+            unit_price_minor
+          )
+          values ($1, $2, $3, $4, 'material', 'Cross-org material', 1, 100)
+          `,
+          [
+            randomUUID(),
+            primaryJob.id,
+            foreignIdentity.organizationId,
+            foreignIdentity.ownerUserId,
+          ]
+        );
+      })
+    ).rejects.toMatchObject({
+      code: "23503",
+      constraint: "work_item_cost_lines_work_item_organization_fk",
+    });
 
     expectFailureTag(
       createWithForeignContactExit,
@@ -1233,6 +1739,145 @@ describe("jobs repositories integration", () => {
 
     expect(jobs.items).toHaveLength(0);
   }, 30_000);
+
+  it("manages service areas and rate cards through configuration repositories", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({ prefix: "jobs_repo" });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping configuration repository coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    const identity = await seedIdentityRecords(databaseUrl);
+
+    const createdServiceArea = await runJobsEffect(
+      databaseUrl,
+      ConfigurationRepository.createServiceArea({
+        description: "City centre jobs",
+        name: "Dublin",
+        organizationId: identity.organizationId,
+      })
+    );
+    const updatedServiceArea = await runJobsEffect(
+      databaseUrl,
+      ConfigurationRepository.updateServiceArea(
+        identity.organizationId,
+        createdServiceArea.id,
+        {
+          description: "Updated city centre jobs",
+          name: "Dublin Central",
+        }
+      )
+    );
+    const serviceAreas = await runJobsEffect(
+      databaseUrl,
+      ConfigurationRepository.listServiceAreas(identity.organizationId)
+    );
+
+    expect(updatedServiceArea).toMatchObject({
+      description: "Updated city centre jobs",
+      id: createdServiceArea.id,
+      name: "Dublin Central",
+    });
+    expect(serviceAreas).toContainEqual(updatedServiceArea);
+
+    const clearedServiceArea = await runJobsEffect(
+      databaseUrl,
+      ConfigurationRepository.updateServiceArea(
+        identity.organizationId,
+        createdServiceArea.id,
+        {
+          description: null,
+        }
+      )
+    );
+
+    expect(clearedServiceArea).toMatchObject({
+      id: createdServiceArea.id,
+      name: "Dublin Central",
+    });
+    expect(clearedServiceArea.description).toBeUndefined();
+
+    const createdRateCard = await runJobsEffect(
+      databaseUrl,
+      RateCardsRepository.create({
+        lines: [
+          {
+            kind: "labour",
+            name: "Engineer",
+            position: 2,
+            unit: "hour",
+            value: 95.5,
+          },
+          {
+            kind: "callout",
+            name: "Standard callout",
+            position: 1,
+            unit: "visit",
+            value: 125,
+          },
+        ],
+        name: "Standard",
+        organizationId: identity.organizationId,
+      })
+    );
+
+    expect(createdRateCard.name).toBe("Standard");
+    expect(createdRateCard.lines.map((line) => line.name)).toStrictEqual([
+      "Standard callout",
+      "Engineer",
+    ]);
+    expect(createdRateCard.lines.map((line) => line.value)).toStrictEqual([
+      125, 95.5,
+    ]);
+
+    const updatedRateCard = await runJobsEffect(
+      databaseUrl,
+      RateCardsRepository.update(identity.organizationId, createdRateCard.id, {
+        lines: [
+          {
+            kind: "material_markup",
+            name: "Filter kit",
+            position: 1,
+            unit: "each",
+            value: 42.25,
+          },
+        ],
+        name: "Standard 2026",
+      })
+    );
+    const rateCards = await runJobsEffect(
+      databaseUrl,
+      RateCardsRepository.list(identity.organizationId)
+    );
+
+    expect(updatedRateCard).toMatchObject({
+      id: createdRateCard.id,
+      name: "Standard 2026",
+    });
+    expect(updatedRateCard.lines).toHaveLength(1);
+    expect(updatedRateCard.lines[0]).toMatchObject({
+      kind: "material_markup",
+      name: "Filter kit",
+      position: 1,
+      rateCardId: createdRateCard.id,
+      unit: "each",
+      value: 42.25,
+    });
+    expect(rateCards).toContainEqual(updatedRateCard);
+  }, 30_000);
 });
 
 async function runJobsEffect<Value, Error, Requirements>(
@@ -1340,18 +1985,18 @@ async function seedIdentityRecords(databaseUrl: string) {
   };
 }
 
-async function insertRegion(
+async function insertServiceArea(
   databaseUrl: string,
   organizationId: Schema.Schema.Type<typeof OrganizationId>,
   name: string
 ) {
-  const regionId = decodeRegionId(randomUUID());
+  const serviceAreaId = decodeServiceAreaId(randomUUID());
 
   await withPool(databaseUrl, async (pool) => {
     const db = drizzle(pool);
 
-    await db.insert(serviceRegion).values({
-      id: regionId,
+    await db.insert(serviceArea).values({
+      id: serviceAreaId,
       name,
       organizationId,
       slug: name.toLowerCase(),
@@ -1360,13 +2005,13 @@ async function insertRegion(
     });
   });
 
-  return regionId;
+  return serviceAreaId;
 }
 
 async function insertSite(
   databaseUrl: string,
   organizationId: Schema.Schema.Type<typeof OrganizationId>,
-  regionId: Schema.Schema.Type<typeof RegionId>,
+  serviceAreaId: Schema.Schema.Type<typeof ServiceAreaId>,
   name: string
 ) {
   const siteId = decodeSiteId(randomUUID());
@@ -1386,7 +2031,7 @@ async function insertSite(
       longitude: -6.2603,
       name,
       organizationId,
-      regionId,
+      serviceAreaId,
       updatedAt: new Date(),
       createdAt: new Date(),
     });
@@ -1396,7 +2041,7 @@ async function insertSite(
 }
 
 const decodeOrganizationId = Schema.decodeUnknownSync(OrganizationId);
-const decodeRegionId = Schema.decodeUnknownSync(RegionId);
+const decodeServiceAreaId = Schema.decodeUnknownSync(ServiceAreaId);
 const decodeSiteId = Schema.decodeUnknownSync(SiteId);
 const decodeUserId = Schema.decodeUnknownSync(UserId);
 const decodeWorkItemId = Schema.decodeUnknownSync(WorkItemId);

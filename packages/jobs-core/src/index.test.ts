@@ -1,38 +1,237 @@
 import { OpenApi } from "@effect/platform";
 import { ParseResult, Schema } from "effect";
+import * as Vitest from "vitest";
 
 import {
+  AddJobCostLineInputSchema,
   AddJobCommentInputSchema,
   AddJobVisitInputSchema,
+  calculateJobCostLineTotalMinor,
+  calculateJobCostSummary,
   CreateJobInputSchema,
+  CreateRateCardInputSchema,
+  CreateServiceAreaInputSchema,
+  CreateServiceAreaResponseSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
   JobActivityBlockedReasonChangedPayloadSchema,
   JobActivityJobCreatedPayloadSchema,
   JobActivityLabelAddedPayloadSchema,
   JobDetailResponseSchema,
+  JobContactOptionSchema,
   JobLabelNameSchema,
   JobLabelSchema,
-  JobListQuerySchema,
   JobListItemSchema,
+  JobListQuerySchema,
+  JobMemberOptionsResponseSchema,
   JobPrioritySchema,
+  JobOptionsResponseSchema,
   JobSiteOptionSchema,
   JobStatusSchema,
   JobsApi,
   JobsApiGroup,
   JobsContextSchema,
+  JobCostSummaryLimitExceededError,
   JobTitleSchema,
+  OrganizationActivityCursor,
+  OrganizationActivityCursorInvalidError,
+  OrganizationActivityListResponseSchema,
+  OrganizationActivityQuerySchema,
   PatchJobInputSchema,
+  RateCardSchema,
+  RateCardsApiGroup,
+  ServiceAreasApiGroup,
+  ServiceAreaOptionSchema,
+  ServiceAreaSchema,
   SitesOptionsResponseSchema,
   SitesApiGroup,
   SiteGeocodingFailedError,
+  UpdateServiceAreaInputSchema,
+  UpdateServiceAreaResponseSchema,
   UserId,
   VisitDurationIncrementError,
   WorkItemId,
   normalizeJobLabelName,
 } from "./index.js";
 
+const { describe, expect, it } = Vitest;
+
 describe("jobs-core", () => {
+  it("decodes service area contracts", () => {
+    const serviceArea = {
+      description: "North city and hospitals",
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "North Dublin",
+    };
+
+    expect(
+      Schema.decodeUnknownSync(ServiceAreaSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
+    expect(
+      Schema.decodeUnknownSync(CreateServiceAreaResponseSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
+    expect(
+      Schema.decodeUnknownSync(UpdateServiceAreaResponseSchema)(serviceArea)
+    ).toStrictEqual(serviceArea);
+
+    expect(
+      Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
+        description: "  Retail sites  ",
+        name: "  Retail  ",
+      })
+    ).toStrictEqual({
+      description: "Retail sites",
+      name: "Retail",
+    });
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
+        name: "",
+      })
+    ).toThrow(/Expected/);
+
+    expect(
+      Schema.decodeUnknownSync(UpdateServiceAreaInputSchema)({
+        description: null,
+        name: "  Retail Core  ",
+      })
+    ).toStrictEqual({
+      description: null,
+      name: "Retail Core",
+    });
+
+    expect(
+      Schema.decodeUnknownSync(ServiceAreaOptionSchema)({
+        id: serviceArea.id,
+        name: serviceArea.name,
+      })
+    ).toStrictEqual({
+      id: serviceArea.id,
+      name: serviceArea.name,
+    });
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateServiceAreaInputSchema)({
+        name: "A".repeat(121),
+      })
+    ).toThrow(/maxLength/);
+  }, 5000);
+
+  it("decodes rate card input contracts", () => {
+    const decoded = Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+      lines: [
+        {
+          kind: "labour",
+          name: "  Labour  ",
+          position: 1,
+          unit: "hour",
+          value: 85,
+        },
+        {
+          kind: "material_markup",
+          name: "Materials markup",
+          position: 2,
+          unit: "percent",
+          value: 15,
+        },
+      ],
+      name: "  Standard  ",
+    });
+
+    expect(decoded.name).toBe("Standard");
+    expect(decoded.lines[0]?.name).toBe("Labour");
+    expect(decoded.lines[1]?.kind).toBe("material_markup");
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: [
+          {
+            kind: "custom",
+            name: "Bad",
+            position: 1,
+            unit: "hour",
+            value: -1,
+          },
+        ],
+        name: "Standard",
+      })
+    ).toThrow(/greaterThanOrEqualTo/);
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: [
+          {
+            kind: "labour",
+            name: "Labour",
+            position: 1,
+            unit: "hour",
+            value: 85,
+          },
+          {
+            kind: "callout",
+            name: "Callout",
+            position: 1,
+            unit: "visit",
+            value: 120,
+          },
+        ],
+        name: "Standard",
+      })
+    ).toThrow(/positions must be unique/);
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: Array.from({ length: 51 }, (_, index) => ({
+          kind: "custom",
+          name: `Line ${index + 1}`,
+          position: index + 1,
+          unit: "each",
+          value: index + 1,
+        })),
+        name: "Standard",
+      })
+    ).toThrow(/maxItems/);
+
+    expect(() =>
+      Schema.decodeUnknownSync(CreateRateCardInputSchema)({
+        lines: [
+          {
+            kind: "custom",
+            name: "A".repeat(121),
+            position: 1,
+            unit: "each",
+            value: 1,
+          },
+        ],
+        name: "Standard",
+      })
+    ).toThrow(/maxLength/);
+  }, 5000);
+
+  it("decodes rate card response contracts", () => {
+    const rateCard = {
+      id: "550e8400-e29b-41d4-a716-446655440020",
+      name: "Standard",
+      createdAt: "2026-04-22T10:00:00.000Z",
+      updatedAt: "2026-04-22T11:00:00.000Z",
+      lines: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440021",
+          rateCardId: "550e8400-e29b-41d4-a716-446655440020",
+          kind: "callout",
+          name: "Callout",
+          position: 1,
+          unit: "visit",
+          value: 120,
+        },
+      ],
+    };
+
+    expect(Schema.decodeUnknownSync(RateCardSchema)(rateCard)).toStrictEqual(
+      rateCard
+    );
+  }, 5000);
+
   it("exports the closed job enums", () => {
     expect(ParseResult.decodeUnknownSync(JobStatusSchema)("in_progress")).toBe(
       "in_progress"
@@ -50,6 +249,10 @@ describe("jobs-core", () => {
       ParseResult.decodeUnknownSync(JobDetailResponseSchema)({
         activity: [],
         comments: [],
+        costLines: [],
+        costSummary: {
+          subtotalMinor: 0,
+        },
         job: {
           createdAt: "2026-04-23T11:00:00.000Z",
           createdByUserId: "",
@@ -114,6 +317,65 @@ describe("jobs-core", () => {
     ).toStrictEqual({
       body: "Confirmed on site",
     });
+
+    expect(
+      ParseResult.decodeUnknownSync(CreateJobInputSchema)({
+        title: "  Replace boiler  ",
+        externalReference: "  PO-4471  ",
+        contact: {
+          kind: "create",
+          input: {
+            name: "  Alex Contact  ",
+            email: "  alex@example.com  ",
+            phone: "  +353 87 123 4567  ",
+            notes: "  Prefers morning calls.  ",
+          },
+        },
+      })
+    ).toStrictEqual({
+      title: "Replace boiler",
+      externalReference: "PO-4471",
+      contact: {
+        kind: "create",
+        input: {
+          name: "Alex Contact",
+          email: "alex@example.com",
+          phone: "+353 87 123 4567",
+          notes: "Prefers morning calls.",
+        },
+      },
+    });
+
+    expect(
+      ParseResult.decodeUnknownSync(JobContactOptionSchema)({
+        id: "550e8400-e29b-41d4-a716-446655440001",
+        name: "Alex Contact",
+        email: "alex@example.com",
+        phone: "+353 87 123 4567",
+        siteIds: [],
+      })
+    ).toStrictEqual({
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      name: "Alex Contact",
+      email: "alex@example.com",
+      phone: "+353 87 123 4567",
+      siteIds: [],
+    });
+  }, 5000);
+
+  it("rejects invalid contact emails at DTO boundaries", () => {
+    expect(() =>
+      ParseResult.decodeUnknownSync(CreateJobInputSchema)({
+        title: "Replace boiler",
+        contact: {
+          kind: "create",
+          input: {
+            name: "Alex Contact",
+            email: "not-an-email",
+          },
+        },
+      })
+    ).toThrow(/a valid email/);
   }, 5000);
 
   it("rejects coordinates when creating a site", () => {
@@ -431,6 +693,263 @@ describe("jobs-core", () => {
     });
   }, 5000);
 
+  it("exports organization activity query and response DTOs", () => {
+    expect(
+      ParseResult.decodeUnknownSync(OrganizationActivityQuerySchema)({
+        actorUserId: "user_123",
+        cursor: "activity_cursor_1",
+        eventType: "status_changed",
+        fromDate: "2026-04-01",
+        jobTitle: "  Replace boiler  ",
+        limit: "25",
+        toDate: "2026-04-28",
+      })
+    ).toStrictEqual({
+      actorUserId: "user_123",
+      cursor: "activity_cursor_1",
+      eventType: "status_changed",
+      fromDate: "2026-04-01",
+      jobTitle: "Replace boiler",
+      limit: 25,
+      toDate: "2026-04-28",
+    });
+
+    expect(
+      ParseResult.decodeUnknownSync(OrganizationActivityListResponseSchema)({
+        items: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440020",
+            workItemId: "550e8400-e29b-41d4-a716-446655440000",
+            jobTitle: "Replace boiler",
+            actor: {
+              id: "user_123",
+              name: "Ada Lovelace",
+              email: "ada@example.com",
+            },
+            eventType: "status_changed",
+            payload: {
+              eventType: "status_changed",
+              fromStatus: "new",
+              toStatus: "in_progress",
+            },
+            createdAt: "2026-04-23T11:00:00.000Z",
+          },
+        ],
+        nextCursor: "activity_cursor_2",
+      })
+    ).toStrictEqual({
+      items: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440020",
+          workItemId: "550e8400-e29b-41d4-a716-446655440000",
+          jobTitle: "Replace boiler",
+          actor: {
+            id: "user_123",
+            name: "Ada Lovelace",
+            email: "ada@example.com",
+          },
+          eventType: "status_changed",
+          payload: {
+            eventType: "status_changed",
+            fromStatus: "new",
+            toStatus: "in_progress",
+          },
+          createdAt: "2026-04-23T11:00:00.000Z",
+        },
+      ],
+      nextCursor: "activity_cursor_2",
+    });
+
+    expect(OrganizationActivityCursor).toBeDefined();
+    expect(
+      ParseResult.decodeUnknownSync(JobMemberOptionsResponseSchema)({
+        members: [
+          {
+            id: "user_123",
+            name: "Ada Lovelace",
+          },
+        ],
+      })
+    ).toStrictEqual({
+      members: [
+        {
+          id: "user_123",
+          name: "Ada Lovelace",
+        },
+      ],
+    });
+    expect(() =>
+      ParseResult.decodeUnknownSync(OrganizationActivityQuerySchema)({
+        limit: "101",
+      })
+    ).toThrow(/lessThanOrEqualTo/);
+  }, 5000);
+
+  it("rejects organization activity items whose event type differs from the payload", () => {
+    expect(() =>
+      ParseResult.decodeUnknownSync(OrganizationActivityListResponseSchema)({
+        items: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440020",
+            workItemId: "550e8400-e29b-41d4-a716-446655440000",
+            jobTitle: "Replace boiler",
+            eventType: "status_changed",
+            payload: {
+              eventType: "priority_changed",
+              fromPriority: "none",
+              toPriority: "high",
+            },
+            createdAt: "2026-04-23T11:00:00.000Z",
+          },
+        ],
+      })
+    ).toThrow(/eventType/);
+  }, 5000);
+
+  it("validates add cost line input at the boundary", () => {
+    const decode = ParseResult.decodeUnknownSync(AddJobCostLineInputSchema);
+
+    expect(
+      decode({
+        description: "Install replacement valve",
+        quantity: 1.23,
+        taxRateBasisPoints: 2300,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toStrictEqual({
+      description: "Install replacement valve",
+      quantity: 1.23,
+      taxRateBasisPoints: 2300,
+      type: "labour",
+      unitPriceMinor: 6500,
+    });
+
+    expect(() =>
+      decode({
+        description: "",
+        quantity: 0,
+        type: "material",
+        unitPriceMinor: -1,
+      })
+    ).toThrow(/Expected/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1,
+        type: "labour",
+        unitPriceMinor: 6500,
+        unexpected: true,
+      })
+    ).toThrow(/unexpected/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: Number.POSITIVE_INFINITY,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/positive finite quantity/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1.234,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/at most two decimal places/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 10_000_000_000,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/less than or equal to 9999999999.99/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1,
+        type: "labour",
+        unitPriceMinor: 65.5,
+      })
+    ).toThrow(/Expected an integer/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1,
+        type: "labour",
+        unitPriceMinor: 2_147_483_648,
+      })
+    ).toThrow(/less than or equal to 2147483647/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 9_999_999_999.99,
+        type: "labour",
+        unitPriceMinor: 2_147_483_647,
+      })
+    ).toThrow(/safe integer line total/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1,
+        taxRateBasisPoints: 10_001,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/less than or equal to 10000/);
+  }, 5000);
+
+  it("calculates line totals and job cost summaries in minor units", () => {
+    expect(
+      calculateJobCostLineTotalMinor({
+        quantity: 1.5,
+        unitPriceMinor: 6500,
+      })
+    ).toBe(9750);
+    expect(
+      calculateJobCostLineTotalMinor({
+        quantity: 0.29,
+        unitPriceMinor: 50,
+      })
+    ).toBe(15);
+
+    expect(
+      calculateJobCostSummary([
+        {
+          lineTotalMinor: 9750,
+        },
+        {
+          lineTotalMinor: 2599,
+        },
+      ])
+    ).toStrictEqual({
+      subtotalMinor: 12_349,
+    });
+  }, 5000);
+
+  it("rejects job cost summaries with unsafe aggregate subtotals", () => {
+    expect(() =>
+      calculateJobCostSummary([
+        {
+          lineTotalMinor: Number.MAX_SAFE_INTEGER,
+        },
+        {
+          lineTotalMinor: 1,
+        },
+      ])
+    ).toThrow(/safe integer job cost subtotal/);
+  }, 5000);
+
   it("keeps site options rich enough for maps and links", () => {
     const siteOption = {
       id: "550e8400-e29b-41d4-a716-446655440010",
@@ -446,8 +965,8 @@ describe("jobs-core", () => {
       longitude: -6.2603,
       geocodingProvider: "google",
       geocodedAt: "2026-04-22T10:00:00.000Z",
-      regionId: "550e8400-e29b-41d4-a716-446655440011",
-      regionName: "Dublin",
+      serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+      serviceAreaName: "Dublin",
     };
 
     expect(
@@ -466,8 +985,8 @@ describe("jobs-core", () => {
       longitude: -6.2603,
       geocodingProvider: "google",
       geocodedAt: "2026-04-22T10:00:00.000Z",
-      regionId: "550e8400-e29b-41d4-a716-446655440011",
-      regionName: "Dublin",
+      serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+      serviceAreaName: "Dublin",
     });
     expect(
       ParseResult.decodeUnknownSync(CreateSiteResponseSchema)(siteOption)
@@ -482,6 +1001,8 @@ describe("jobs-core", () => {
     expect(Object.keys(spec.paths)).toStrictEqual([
       "/jobs",
       "/jobs/options",
+      "/jobs/member-options",
+      "/activity",
       "/jobs/{workItemId}",
       "/jobs/{workItemId}/transitions",
       "/jobs/{workItemId}/reopen",
@@ -491,6 +1012,11 @@ describe("jobs-core", () => {
       "/jobs/{workItemId}/labels/{labelId}",
       "/job-labels",
       "/job-labels/{labelId}",
+      "/jobs/{workItemId}/cost-lines",
+      "/service-areas",
+      "/service-areas/{serviceAreaId}",
+      "/rate-cards",
+      "/rate-cards/{rateCardId}",
       "/sites/options",
       "/sites",
       "/sites/{siteId}",
@@ -528,6 +1054,51 @@ describe("jobs-core", () => {
     );
   }, 5000);
 
+  it("surfaces the rate cards api contract with the expected paths", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+
+    expect(spec.paths["/rate-cards"]?.get?.operationId).toBe(
+      "rateCards.listRateCards"
+    );
+    expect(spec.paths["/rate-cards"]?.post?.operationId).toBe(
+      "rateCards.createRateCard"
+    );
+    expect(spec.paths["/rate-cards"]?.post?.responses["201"]).toBeDefined();
+    expect(spec.paths["/rate-cards/{rateCardId}"]?.patch?.operationId).toBe(
+      "rateCards.updateRateCard"
+    );
+    expect(
+      spec.paths["/rate-cards/{rateCardId}"]?.patch?.responses["404"]
+    ).toBeDefined();
+  }, 5000);
+
+  it("surfaces the service areas api contract with the expected paths", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+
+    expect(spec.paths["/service-areas"]?.get?.operationId).toBe(
+      "serviceAreas.listServiceAreas"
+    );
+    expect(spec.paths["/service-areas"]?.post?.operationId).toBe(
+      "serviceAreas.createServiceArea"
+    );
+    expect(spec.paths["/service-areas"]?.post?.responses["201"]).toBeDefined();
+    expect(
+      spec.paths["/service-areas/{serviceAreaId}"]?.patch?.operationId
+    ).toBe("serviceAreas.updateServiceArea");
+    expect(
+      spec.paths["/service-areas/{serviceAreaId}"]?.patch?.responses["404"]
+    ).toBeDefined();
+  }, 5000);
+
+  it("surfaces the job cost line api contract", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+    const addCostLine =
+      spec.paths["/jobs/{workItemId}/cost-lines"]?.post ?? null;
+
+    expect(addCostLine?.operationId).toBe("jobs.addJobCostLine");
+    expect(addCostLine?.responses["422"]).toBeDefined();
+  }, 5000);
+
   it("documents standalone site creation responses", () => {
     const spec = OpenApi.fromApi(JobsApi);
 
@@ -554,13 +1125,15 @@ describe("jobs-core", () => {
 
   it("exports the shared api group", () => {
     expect(JobsApiGroup.identifier).toBe("jobs");
+    expect(RateCardsApiGroup.identifier).toBe("rateCards");
+    expect(ServiceAreasApiGroup.identifier).toBe("serviceAreas");
     expect(SitesApiGroup.identifier).toBe("sites");
   }, 5000);
 
   it("exports a lean sites options response", () => {
     expect(
       ParseResult.decodeUnknownSync(SitesOptionsResponseSchema)({
-        regions: [
+        serviceAreas: [
           {
             id: "550e8400-e29b-41d4-a716-446655440011",
             name: "Dublin",
@@ -582,7 +1155,7 @@ describe("jobs-core", () => {
         ],
       })
     ).toStrictEqual({
-      regions: [
+      serviceAreas: [
         {
           id: "550e8400-e29b-41d4-a716-446655440011",
           name: "Dublin",
@@ -602,6 +1175,64 @@ describe("jobs-core", () => {
           geocodedAt: "2026-04-22T10:00:00.000Z",
         },
       ],
+    });
+  }, 5000);
+
+  it("exports service areas in job options", () => {
+    expect(
+      ParseResult.decodeUnknownSync(JobOptionsResponseSchema)({
+        members: [],
+        serviceAreas: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440011",
+            name: "Dublin",
+          },
+        ],
+        sites: [
+          {
+            id: "550e8400-e29b-41d4-a716-446655440010",
+            name: "Docklands Campus",
+            serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+            serviceAreaName: "Dublin",
+            addressLine1: "1 Custom House Quay",
+            county: "Dublin",
+            country: "IE",
+            eircode: "D01 X2X2",
+            latitude: 53.3498,
+            longitude: -6.2603,
+            geocodingProvider: "google",
+            geocodedAt: "2026-04-22T10:00:00.000Z",
+          },
+        ],
+        contacts: [],
+        labels: [],
+      })
+    ).toStrictEqual({
+      members: [],
+      serviceAreas: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440011",
+          name: "Dublin",
+        },
+      ],
+      sites: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440010",
+          name: "Docklands Campus",
+          serviceAreaId: "550e8400-e29b-41d4-a716-446655440011",
+          serviceAreaName: "Dublin",
+          addressLine1: "1 Custom House Quay",
+          county: "Dublin",
+          country: "IE",
+          eircode: "D01 X2X2",
+          latitude: 53.3498,
+          longitude: -6.2603,
+          geocodingProvider: "google",
+          geocodedAt: "2026-04-22T10:00:00.000Z",
+        },
+      ],
+      contacts: [],
+      labels: [],
     });
   }, 5000);
 
@@ -641,6 +1272,26 @@ describe("jobs-core", () => {
       "@task-tracker/jobs-core/SiteGeocodingFailedError"
     );
     expect(geocodingError.country).toBe("IE");
+
+    const costSummaryError = new JobCostSummaryLimitExceededError({
+      message: "Job cost summary subtotal would exceed a safe integer",
+      workItemId: Schema.decodeUnknownSync(WorkItemId)(
+        "550e8400-e29b-41d4-a716-446655440000"
+      ),
+    });
+
+    expect(costSummaryError._tag).toBe(
+      "@task-tracker/jobs-core/JobCostSummaryLimitExceededError"
+    );
+
+    const activityCursorError = new OrganizationActivityCursorInvalidError({
+      cursor: "bad-cursor",
+      message: "Organization activity cursor is invalid",
+    });
+
+    expect(activityCursorError._tag).toBe(
+      "@task-tracker/jobs-core/OrganizationActivityCursorInvalidError"
+    );
   }, 5000);
 
   it("keeps title schema trimming strict", () => {

@@ -12,6 +12,7 @@ import {
 } from "@task-tracker/jobs-core";
 import type {
   AddJobCommentInput,
+  AddJobCostLineInput,
   AddJobVisitInput,
   AssignJobLabelInput,
   ContactIdType as ContactId,
@@ -22,9 +23,12 @@ import type {
   Job,
   JobDetail,
   JobLabelIdType as JobLabelId,
+  JobMemberOptionsResponse,
   JobListQuery,
+  OrganizationActivityQuery,
   OrganizationIdType as OrganizationId,
   PatchJobInput,
+  ServiceAreaOption,
   SiteIdType as SiteId,
   TransitionJobInput,
   UpdateJobLabelInput,
@@ -38,6 +42,7 @@ import { JobsAuthorization } from "./authorization.js";
 import { CurrentJobsActor } from "./current-jobs-actor.js";
 import {
   ContactsRepository,
+  ConfigurationRepository,
   JobLabelsRepository,
   JobsRepositoriesLive,
   JobsRepository,
@@ -63,6 +68,7 @@ export class JobsService extends Effect.Service<JobsService>()(
     effect: Effect.gen(function* JobsServiceLive() {
       const activityRecorder = yield* JobsActivityRecorder;
       const authorization = yield* JobsAuthorization;
+      const configurationRepository = yield* ConfigurationRepository;
       const contactsRepository = yield* ContactsRepository;
       const currentJobsActor = yield* CurrentJobsActor;
       const jobLabelsRepository = yield* JobLabelsRepository;
@@ -93,19 +99,23 @@ export class JobsService extends Effect.Service<JobsService>()(
         const actor = yield* loadActor();
         yield* authorization.ensureCanView(actor);
 
-        const [members, regions, sites, contacts, labels] = yield* Effect.all([
+        const [members, sites, contacts, labels] = yield* Effect.all([
           jobsRepository.listMemberOptions(actor.organizationId),
-          sitesRepository.listRegions(actor.organizationId),
           sitesRepository.listOptions(actor.organizationId),
           contactsRepository.listOptions(actor.organizationId),
           jobLabelsRepository.list(actor.organizationId),
         ]).pipe(Effect.catchTag("SqlError", failJobsStorageError));
+        const serviceAreas = hasElevatedAccess(actor)
+          ? yield* configurationRepository
+              .listServiceAreaOptions(actor.organizationId)
+              .pipe(Effect.catchTag("SqlError", failJobsStorageError))
+          : deriveServiceAreaOptionsFromSites(sites);
 
         return {
           contacts,
           labels,
           members,
-          regions,
+          serviceAreas,
           sites,
         } as const;
       });
@@ -120,6 +130,21 @@ export class JobsService extends Effect.Service<JobsService>()(
             .pipe(Effect.catchTag("SqlError", failJobsStorageError));
 
           return { labels } as const;
+        }
+      );
+
+      const getMemberOptions = Effect.fn("JobsService.getMemberOptions")(
+        function* () {
+          const actor = yield* loadActor();
+          yield* authorization.ensureCanView(actor);
+
+          const members = yield* jobsRepository
+            .listMemberOptions(actor.organizationId)
+            .pipe(Effect.catchTag("SqlError", failJobsStorageError));
+
+          return {
+            members,
+          } satisfies JobMemberOptionsResponse;
         }
       );
 
@@ -226,6 +251,16 @@ export class JobsService extends Effect.Service<JobsService>()(
         }
       );
 
+      const listOrganizationActivity = Effect.fn(
+        "JobsService.listOrganizationActivity"
+      )(function* (query: OrganizationActivityQuery) {
+        const actor = yield* loadActor();
+        yield* authorization.ensureCanViewOrganizationActivity(actor);
+
+        return yield* jobsRepository
+          .listOrganizationActivity(actor.organizationId, query)
+          .pipe(Effect.catchTag("SqlError", failJobsStorageError));
+      });
       const create = Effect.fn("JobsService.create")(function* (
         input: CreateJobInput
       ) {
@@ -234,12 +269,12 @@ export class JobsService extends Effect.Service<JobsService>()(
 
         if (
           input.site?.kind === "create" &&
-          input.site.input.regionId !== undefined
+          input.site.input.serviceAreaId !== undefined
         ) {
           yield* sitesRepository
-            .ensureRegionInOrganization(
+            .ensureServiceAreaInOrganization(
               actor.organizationId,
-              input.site.input.regionId
+              input.site.input.serviceAreaId
             )
             .pipe(Effect.catchTag("SqlError", failJobsStorageError));
         }
@@ -275,6 +310,7 @@ export class JobsService extends Effect.Service<JobsService>()(
               const job = yield* jobsRepository.create({
                 contactId,
                 createdByUserId: actor.userId,
+                externalReference: input.externalReference,
                 organizationId: actor.organizationId,
                 priority: input.priority,
                 siteId,
@@ -880,17 +916,94 @@ export class JobsService extends Effect.Service<JobsService>()(
         }
       });
 
+      const addCostLine = Effect.fn("JobsService.addCostLine")(function* (
+        workItemId: WorkItemId,
+        input: AddJobCostLineInput
+      ) {
+        const actor = yield* loadActor(workItemId);
+
+        const result = yield* jobsRepository
+          .withTransaction(
+            Effect.gen(function* () {
+              const job = yield* jobsRepository
+                .findByIdForUpdate(actor.organizationId, workItemId)
+                .pipe(Effect.map(Option.getOrUndefined));
+
+              if (job === undefined) {
+                return yield* Effect.fail(
+                  new JobNotFoundError({
+                    message: "Job does not exist",
+                    workItemId,
+                  })
+                );
+              }
+
+              yield* authorization.ensureCanAddCostLine(actor, job);
+
+              const costLine = yield* jobsRepository.addCostLine({
+                authorUserId: actor.userId,
+                description: input.description,
+                organizationId: actor.organizationId,
+                quantity: input.quantity,
+                taxRateBasisPoints: input.taxRateBasisPoints,
+                type: input.type,
+                unitPriceMinor: input.unitPriceMinor,
+                workItemId,
+              });
+
+              yield* activityRecorder.recordCostLineAdded(actor, {
+                costLineId: costLine.id,
+                costLineType: costLine.type,
+                workItemId,
+              });
+
+              return costLine;
+            })
+          )
+          .pipe(Effect.either);
+
+        if (Either.isRight(result)) {
+          return result.right;
+        }
+
+        switch (result.left._tag) {
+          case ORGANIZATION_MEMBER_NOT_FOUND_ERROR_TAG: {
+            return yield* result.left.userId === actor.userId
+              ? Effect.fail(
+                  new JobAccessDeniedError({
+                    message:
+                      "Your organization access changed while the request was running",
+                    workItemId,
+                  })
+                )
+              : Effect.die(result.left);
+          }
+          case WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG: {
+            return yield* Effect.die(result.left);
+          }
+          case "SqlError": {
+            return yield* failJobsStorageError(result.left);
+          }
+          default: {
+            return yield* Effect.fail(result.left);
+          }
+        }
+      });
+
       return {
         addComment,
+        addCostLine,
         addVisit,
         archiveJobLabel,
         assignJobLabel,
         create,
         createJobLabel,
         getDetail,
+        getMemberOptions,
         getOptions,
         list,
         listJobLabels,
+        listOrganizationActivity,
         patch,
         removeJobLabel,
         reopen,
@@ -976,6 +1089,7 @@ function hasPatchChanges(input: PatchJobInput): boolean {
     input.assigneeId !== undefined ||
     input.contactId !== undefined ||
     input.coordinatorId !== undefined ||
+    input.externalReference !== undefined ||
     input.priority !== undefined ||
     input.siteId !== undefined ||
     input.title !== undefined
@@ -1035,9 +1149,52 @@ function resolveCreateSiteId(
     name: input.input.name,
     organizationId,
     longitude: geocodedLocation.longitude,
-    regionId: input.input.regionId,
+    serviceAreaId: input.input.serviceAreaId,
     town: input.input.town,
   });
+}
+
+function hasElevatedAccess(actor: { readonly role: string }): boolean {
+  return actor.role === "owner" || actor.role === "admin";
+}
+
+function deriveServiceAreaOptionsFromSites(
+  sites: readonly {
+    readonly serviceAreaId?: ServiceAreaOption["id"] | undefined;
+    readonly serviceAreaName?: string | undefined;
+  }[]
+): readonly ServiceAreaOption[] {
+  const serviceAreasById = new Map<
+    ServiceAreaOption["id"],
+    ServiceAreaOption
+  >();
+
+  for (const site of sites) {
+    if (
+      site.serviceAreaId === undefined ||
+      site.serviceAreaName === undefined
+    ) {
+      continue;
+    }
+
+    serviceAreasById.set(site.serviceAreaId, {
+      id: site.serviceAreaId,
+      name: site.serviceAreaName,
+    });
+  }
+
+  return [...serviceAreasById.values()].toSorted(compareServiceAreaOptions);
+}
+
+function compareServiceAreaOptions(
+  left: ServiceAreaOption,
+  right: ServiceAreaOption
+): number {
+  const nameComparison = left.name.localeCompare(right.name);
+
+  return nameComparison === 0
+    ? left.id.localeCompare(right.id)
+    : nameComparison;
 }
 
 function resolvePatchedOptionalValue<Value>(

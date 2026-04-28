@@ -54,6 +54,10 @@ const detailResponse: JobDetailResponse = {
   },
   comments: [],
   activity: [],
+  costLines: [],
+  costSummary: {
+    subtotalMinor: 0,
+  },
   visits: [],
 };
 
@@ -72,7 +76,7 @@ const createSiteResponse: CreateSiteResponse = {
 };
 
 const siteOptionsResponse: SitesOptionsResponse = {
-  regions: [],
+  serviceAreas: [],
   sites: [createSiteResponse],
 };
 

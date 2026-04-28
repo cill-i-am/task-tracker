@@ -1,5 +1,5 @@
 {
-  "id": "12b962a3-1752-4fd2-9399-1b794a8fe4b5",
+  "id": "12b163f0-a9df-4c34-ae90-5c2d284353ac",
   "prevId": "d13b3f3f-8399-4b24-b02e-ce9ea420b90b",
   "version": "7",
   "dialect": "postgresql",
@@ -380,162 +380,6 @@
         "invitation_role_chk": {
           "name": "invitation_role_chk",
           "value": "\"invitation\".\"role\" in ('owner', 'admin', 'member')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.job_labels": {
-      "name": "job_labels",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "normalized_name": {
-          "name": "normalized_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "archived_at": {
-          "name": "archived_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "job_labels_organization_normalized_active_idx": {
-          "name": "job_labels_organization_normalized_active_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "normalized_name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"job_labels\".\"archived_at\" is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "job_labels_organization_name_idx": {
-          "name": "job_labels_organization_name_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {},
-          "where": "\"job_labels\".\"archived_at\" is null"
-        },
-        "job_labels_id_organization_idx": {
-          "name": "job_labels_id_organization_idx",
-          "columns": [
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "job_labels_organization_id_organization_id_fk": {
-          "name": "job_labels_organization_id_organization_id_fk",
-          "tableFrom": "job_labels",
-          "tableTo": "organization",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "job_labels_name_not_empty_chk": {
-          "name": "job_labels_name_not_empty_chk",
-          "value": "length(trim(\"job_labels\".\"name\")) > 0"
-        },
-        "job_labels_name_max_length_chk": {
-          "name": "job_labels_name_max_length_chk",
-          "value": "length(trim(\"job_labels\".\"name\")) <= 48"
-        },
-        "job_labels_normalized_name_not_empty_chk": {
-          "name": "job_labels_normalized_name_not_empty_chk",
-          "value": "length(trim(\"job_labels\".\"normalized_name\")) > 0"
-        },
-        "job_labels_normalized_name_max_length_chk": {
-          "name": "job_labels_normalized_name_max_length_chk",
-          "value": "length(trim(\"job_labels\".\"normalized_name\")) <= 48"
         }
       },
       "isRLSEnabled": false
@@ -1534,6 +1378,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "external_reference": {
+          "name": "external_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -1797,27 +1647,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "work_items_id_organization_idx": {
-          "name": "work_items_id_organization_idx",
-          "columns": [
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -2059,7 +1888,7 @@
       "checkConstraints": {
         "work_item_activity_event_type_chk": {
           "name": "work_item_activity_event_type_chk",
-          "value": "\"work_item_activity\".\"event_type\" in ('job_created', 'status_changed', 'blocked_reason_changed', 'priority_changed', 'assignee_changed', 'coordinator_changed', 'site_changed', 'contact_changed', 'job_reopened', 'visit_logged', 'label_added', 'label_removed')"
+          "value": "\"work_item_activity\".\"event_type\" in ('job_created', 'status_changed', 'blocked_reason_changed', 'priority_changed', 'assignee_changed', 'coordinator_changed', 'site_changed', 'contact_changed', 'job_reopened', 'visit_logged')"
         }
       },
       "isRLSEnabled": false
@@ -2150,105 +1979,6 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.work_item_labels": {
-      "name": "work_item_labels",
-      "schema": "",
-      "columns": {
-        "work_item_id": {
-          "name": "work_item_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "label_id": {
-          "name": "label_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "organization_id": {
-          "name": "organization_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "work_item_labels_label_work_item_idx": {
-          "name": "work_item_labels_label_work_item_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "label_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "work_item_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "work_item_labels_organization_id_organization_id_fk": {
-          "name": "work_item_labels_organization_id_organization_id_fk",
-          "tableFrom": "work_item_labels",
-          "tableTo": "organization",
-          "columnsFrom": ["organization_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "work_item_labels_work_item_org_fk": {
-          "name": "work_item_labels_work_item_org_fk",
-          "tableFrom": "work_item_labels",
-          "tableTo": "work_items",
-          "columnsFrom": ["work_item_id", "organization_id"],
-          "columnsTo": ["id", "organization_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "work_item_labels_label_org_fk": {
-          "name": "work_item_labels_label_org_fk",
-          "tableFrom": "work_item_labels",
-          "tableTo": "job_labels",
-          "columnsFrom": ["label_id", "organization_id"],
-          "columnsTo": ["id", "organization_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "work_item_labels_work_item_id_label_id_pk": {
-          "name": "work_item_labels_work_item_id_label_id_pk",
-          "columns": ["work_item_id", "label_id"]
-        }
-      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

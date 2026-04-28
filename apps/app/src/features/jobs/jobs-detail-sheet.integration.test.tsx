@@ -5,9 +5,10 @@ import type {
   ActivityIdType,
   CommentIdType,
   ContactIdType,
+  CostLineIdType,
   JobDetailResponse,
   JobLabelIdType,
-  RegionIdType,
+  ServiceAreaIdType,
   SiteIdType,
   UserIdType,
   VisitIdType,
@@ -34,12 +35,14 @@ const workItemId = "11111111-1111-4111-8111-111111111111" as WorkItemIdType;
 const actorUserId = "22222222-2222-4222-8222-222222222222" as UserIdType;
 const siteId = "33333333-3333-4333-8333-333333333333" as SiteIdType;
 const contactId = "44444444-4444-4444-8444-444444444444" as ContactIdType;
-const regionId = "55555555-5555-4555-8555-555555555555" as RegionIdType;
 const urgentLabelId = "99999999-9999-4999-8999-999999999999" as JobLabelIdType;
 const newLabelId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as JobLabelIdType;
+const serviceAreaId =
+  "55555555-5555-4555-8555-555555555555" as ServiceAreaIdType;
 const organizationId = decodeOrganizationId("org_123");
 
 const {
+  mockedAddJobCostLine,
   mockedAddJobComment,
   mockedAddJobVisit,
   mockedAssignJobLabel,
@@ -49,9 +52,11 @@ const {
   mockedMakeBrowserJobsClient,
   mockedNavigate,
   mockedRemoveJobLabel,
+  mockedPatchJob,
   mockedReopenJob,
   mockedTransitionJob,
 } = vi.hoisted(() => ({
+  mockedAddJobCostLine: vi.fn<EffectClientMock>(),
   mockedAddJobComment: vi.fn<EffectClientMock>(),
   mockedAddJobVisit: vi.fn<EffectClientMock>(),
   mockedAssignJobLabel: vi.fn<EffectClientMock>(),
@@ -61,6 +66,7 @@ const {
   mockedMakeBrowserJobsClient: vi.fn<EffectClientMock>(),
   mockedNavigate: vi.fn<NavigateMock>(),
   mockedRemoveJobLabel: vi.fn<EffectClientMock>(),
+  mockedPatchJob: vi.fn<EffectClientMock>(),
   mockedReopenJob: vi.fn<EffectClientMock>(),
   mockedTransitionJob: vi.fn<EffectClientMock>(),
 }));
@@ -191,6 +197,7 @@ vi.mock("./jobs-client", async () => {
 
 describe("jobs detail sheet integration", () => {
   beforeEach(() => {
+    mockedAddJobCostLine.mockReset();
     mockedAddJobComment.mockReset();
     mockedAddJobVisit.mockReset();
     mockedAssignJobLabel.mockReset();
@@ -200,12 +207,14 @@ describe("jobs detail sheet integration", () => {
     mockedMakeBrowserJobsClient.mockReset();
     mockedNavigate.mockReset();
     mockedRemoveJobLabel.mockReset();
+    mockedPatchJob.mockReset();
     mockedReopenJob.mockReset();
     mockedTransitionJob.mockReset();
 
     mockedMakeBrowserJobsClient.mockImplementation(() =>
       Effect.succeed({
         jobs: {
+          addJobCostLine: mockedAddJobCostLine,
           addJobComment: mockedAddJobComment,
           addJobVisit: mockedAddJobVisit,
           assignJobLabel: mockedAssignJobLabel,
@@ -213,6 +222,7 @@ describe("jobs detail sheet integration", () => {
           getJobDetail: mockedGetJobDetail,
           listJobs: mockedListJobs,
           removeJobLabel: mockedRemoveJobLabel,
+          patchJob: mockedPatchJob,
           reopenJob: mockedReopenJob,
           transitionJob: mockedTransitionJob,
         },
@@ -380,6 +390,12 @@ describe("jobs detail sheet integration", () => {
       });
 
       expect(screen.getByText("Completed")).toBeInTheDocument();
+      expect(screen.getAllByText("PO-4471").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("pat@example.com").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("+353 87 765 4321").length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText("Use email for routine updates.").length
+      ).toBeGreaterThan(0);
       expect(
         screen.getByText("Use reception and the south gate.")
       ).toBeInTheDocument();
@@ -479,6 +495,90 @@ describe("jobs detail sheet integration", () => {
       ).not.toBeInTheDocument();
     }
   );
+
+  it(
+    "shows cost totals and keeps a newly added cost line visible when refresh fails",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedAddJobCostLine.mockReturnValue(
+        Effect.succeed({
+          authorUserId: actorUserId,
+          createdAt: "2026-04-24T13:00:00.000Z",
+          description: "Two hours install labour",
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab" as CostLineIdType,
+          lineTotalMinor: 13_000,
+          quantity: 2,
+          type: "labour",
+          unitPriceMinor: 6500,
+          workItemId,
+        })
+      );
+      mockedGetJobDetail.mockReturnValue(
+        Effect.fail(new Error("refresh failed"))
+      );
+
+      const user = userEvent.setup();
+      renderDetailSheet();
+
+      expect(screen.getByText("Cost total")).toBeInTheDocument();
+      expect(screen.getByText("€45.00")).toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText("Cost type"), "labour");
+      await user.type(
+        screen.getByLabelText("Cost description"),
+        "Two hours install labour"
+      );
+      await user.clear(screen.getByLabelText("Quantity"));
+      await user.type(screen.getByLabelText("Quantity"), "2");
+      await user.clear(screen.getByLabelText("Unit price"));
+      await user.type(screen.getByLabelText("Unit price"), "65");
+      await user.click(screen.getByRole("button", { name: /add cost line/i }));
+
+      await expect(
+        screen.findByText("Two hours install labour")
+      ).resolves.toBeInTheDocument();
+      expect(screen.getByText("€175.00")).toBeInTheDocument();
+      expect(
+        screen.queryByText(/that update didn't land/i)
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it(
+    "clears stale rich contact detail when site reassignment clears the contact and refresh fails",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedPatchJob.mockReturnValue(
+        Effect.succeed({
+          ...buildDetail().job,
+          contactId: undefined,
+          siteId: undefined,
+          updatedAt: "2026-04-24T13:00:00.000Z",
+        })
+      );
+      mockedGetJobDetail.mockReturnValue(
+        Effect.fail(new Error("refresh failed"))
+      );
+
+      const user = userEvent.setup();
+      renderDetailSheet();
+
+      await user.selectOptions(screen.getByLabelText("Site"), "__none__");
+      await user.click(screen.getByRole("button", { name: /save site/i }));
+
+      await waitFor(() => {
+        expect(screen.getAllByText("No contact yet").length).toBeGreaterThan(0);
+      });
+      expect(
+        screen.queryByText("Use email for routine updates.")
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("pat@example.com")).not.toBeInTheDocument();
+    }
+  );
 });
 
 function renderDetailSheet(detail: JobDetailResponse = buildDetail()) {
@@ -493,6 +593,7 @@ function renderDetailSheet(detail: JobDetailResponse = buildDetail()) {
                 assigneeId: actorUserId,
                 contactId,
                 createdAt: "2026-04-23T10:00:00.000Z",
+                externalReference: "PO-4471",
                 id: workItemId,
                 kind: "job",
                 labels: detail.job.labels,
@@ -511,8 +612,10 @@ function renderDetailSheet(detail: JobDetailResponse = buildDetail()) {
           seedJobsOptionsState(organizationId, {
             contacts: [
               {
+                email: "pat@example.com",
                 id: contactId,
                 name: "Pat Contact",
+                phone: "+353 87 765 4321",
                 siteIds: [siteId],
               },
             ],
@@ -523,9 +626,9 @@ function renderDetailSheet(detail: JobDetailResponse = buildDetail()) {
                 name: "Taylor Owner",
               },
             ],
-            regions: [
+            serviceAreas: [
               {
-                id: regionId,
+                id: serviceAreaId,
                 name: "North",
               },
             ],
@@ -543,8 +646,8 @@ function renderDetailSheet(detail: JobDetailResponse = buildDetail()) {
                 id: siteId,
                 name: "Depot",
                 longitude: -6.2603,
-                regionId,
-                regionName: "North",
+                serviceAreaId,
+                serviceAreaName: "North",
                 town: "Dublin",
               },
             ],
@@ -623,11 +726,35 @@ function buildDetail(
         workItemId,
       },
     ],
+    costLines: [
+      {
+        authorUserId: actorUserId,
+        createdAt: "2026-04-23T12:00:00.000Z",
+        description: "Replacement relay",
+        id: "99999999-9999-4999-8999-999999999999" as CostLineIdType,
+        lineTotalMinor: 4500,
+        quantity: 1,
+        type: "material",
+        unitPriceMinor: 4500,
+        workItemId,
+      },
+    ],
+    costSummary: {
+      subtotalMinor: 4500,
+    },
+    contact: {
+      email: "pat@example.com",
+      id: contactId,
+      name: "Pat Contact",
+      notes: "Use email for routine updates.",
+      phone: "+353 87 765 4321",
+    },
     job: {
       assigneeId: actorUserId,
       contactId,
       createdAt: "2026-04-23T10:00:00.000Z",
       createdByUserId: actorUserId,
+      externalReference: "PO-4471",
       id: workItemId,
       kind: "job",
       labels: overrides.labels ?? [],

@@ -15,7 +15,7 @@ import type {
   JobPriority,
   JobStatus,
   Job,
-  RegionIdType,
+  ServiceAreaIdType,
   SiteIdType,
   UserIdType,
 } from "@task-tracker/jobs-core";
@@ -26,13 +26,18 @@ import type { AppJobsError } from "./jobs-errors";
 
 export type JobsStatusFilter = "active" | "all" | JobStatus;
 
+export type JobsAssigneeFilter =
+  | { readonly kind: "all" }
+  | { readonly kind: "unassigned" }
+  | { readonly kind: "user"; readonly userId: UserIdType };
+
 export interface JobsListFilters {
-  readonly assigneeId: UserIdType | "all";
+  readonly assigneeId: JobsAssigneeFilter;
   readonly coordinatorId: UserIdType | "all";
   readonly labelId: JobLabelIdType | "all";
   readonly priority: JobPriority | "all";
   readonly query: string;
-  readonly regionId: RegionIdType | "all";
+  readonly serviceAreaId: ServiceAreaIdType | "all";
   readonly siteId: SiteIdType | "all";
   readonly status: JobsStatusFilter;
 }
@@ -57,17 +62,17 @@ export const emptyJobOptions: JobOptionsResponse = {
   contacts: [],
   labels: [],
   members: [],
-  regions: [],
+  serviceAreas: [],
   sites: [],
 };
 
 export const defaultJobsListFilters: JobsListFilters = {
-  assigneeId: "all",
+  assigneeId: { kind: "all" },
   coordinatorId: "all",
   labelId: "all",
   priority: "all",
   query: "",
-  regionId: "all",
+  serviceAreaId: "all",
   siteId: "all",
   status: "active",
 };
@@ -100,7 +105,9 @@ export const jobsLookupAtom = Atom.make((get) => {
     ),
     memberById: new Map(options.members.map((member) => [member.id, member])),
     labelById: new Map(options.labels.map((label) => [label.id, label])),
-    regionById: new Map(options.regions.map((region) => [region.id, region])),
+    serviceAreaById: new Map(
+      options.serviceAreas.map((serviceArea) => [serviceArea.id, serviceArea])
+    ),
     siteById: new Map(options.sites.map((site) => [site.id, site])),
   };
 }).pipe(Atom.keepAlive);
@@ -108,9 +115,20 @@ export const jobsLookupAtom = Atom.make((get) => {
 export const visibleJobsAtom = Atom.make((get) => {
   const { items } = get(jobsListStateAtom);
   const filters = get(jobsListFiltersAtom);
-  const { siteById } = get(jobsLookupAtom);
+  const { contactById, siteById } = get(jobsLookupAtom);
+  const normalizedQuery = filters.query.trim().toLowerCase();
 
-  return items.filter((item) => matchesJobListFilters(item, filters, siteById));
+  return items.filter((item) =>
+    matchesVisibleJob(
+      item,
+      filters,
+      {
+        contactById,
+        siteById,
+      },
+      normalizedQuery
+    )
+  );
 }).pipe(Atom.keepAlive);
 
 export const jobsSummaryAtom = Atom.make((get) => {
@@ -335,6 +353,34 @@ function isActiveStatus(status: JobStatus) {
   );
 }
 
+function matchesAssigneeFilter(
+  assigneeId: UserIdType | undefined,
+  filter: JobsAssigneeFilter
+) {
+  if (filter.kind === "all") {
+    return true;
+  }
+
+  if (filter.kind === "unassigned") {
+    return assigneeId === undefined;
+  }
+
+  return assigneeId === filter.userId;
+}
+
+export function isJobsAssigneeFilterEqual(
+  left: JobsAssigneeFilter,
+  right: JobsAssigneeFilter
+) {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  return left.kind === "user" && right.kind === "user"
+    ? left.userId === right.userId
+    : true;
+}
+
 function matchesStatusFilter(status: JobStatus, filter: JobsStatusFilter) {
   if (filter === "all") {
     return true;
@@ -345,41 +391,6 @@ function matchesStatusFilter(status: JobStatus, filter: JobsStatusFilter) {
   }
 
   return status === filter;
-}
-
-function matchesJobListFilters(
-  item: JobListItem,
-  filters: JobsListFilters,
-  siteById: ReadonlyMap<
-    SiteIdType,
-    { readonly name: string; readonly regionId?: RegionIdType | undefined }
-  >
-) {
-  return (
-    matchesStatusFilter(item.status, filters.status) &&
-    matchesAssigneeFilter(item, filters) &&
-    matchesCoordinatorFilter(item, filters) &&
-    matchesPriorityFilter(item, filters) &&
-    matchesLabelFilter(item, filters) &&
-    matchesSiteFilter(item, filters) &&
-    matchesQueryFilter(item, filters.query, siteById) &&
-    matchesRegionFilter(item, filters.regionId, siteById)
-  );
-}
-
-function matchesAssigneeFilter(item: JobListItem, filters: JobsListFilters) {
-  return filters.assigneeId === "all" || item.assigneeId === filters.assigneeId;
-}
-
-function matchesCoordinatorFilter(item: JobListItem, filters: JobsListFilters) {
-  return (
-    filters.coordinatorId === "all" ||
-    item.coordinatorId === filters.coordinatorId
-  );
-}
-
-function matchesPriorityFilter(item: JobListItem, filters: JobsListFilters) {
-  return filters.priority === "all" || item.priority === filters.priority;
 }
 
 function matchesLabelFilter(item: JobListItem, filters: JobsListFilters) {
@@ -393,41 +404,91 @@ function matchesSiteFilter(item: JobListItem, filters: JobsListFilters) {
   return filters.siteId === "all" || item.siteId === filters.siteId;
 }
 
-function matchesQueryFilter(
-  item: JobListItem,
-  query: string,
-  siteById: ReadonlyMap<SiteIdType, { readonly name: string }>
-) {
-  const trimmedQuery = query.trim().toLowerCase();
-
-  if (trimmedQuery.length === 0) {
-    return true;
-  }
-
-  const siteName =
-    item.siteId === undefined ? undefined : siteById.get(item.siteId)?.name;
-  const searchable =
-    `${item.title} ${item.kind} ${siteName ?? ""}`.toLowerCase();
-
-  return searchable.includes(trimmedQuery);
+interface VisibleJobsLookup {
+  readonly contactById: ReadonlyMap<JobContactOption["id"], JobContactOption>;
+  readonly siteById: ReadonlyMap<
+    JobOptionsResponse["sites"][number]["id"],
+    JobOptionsResponse["sites"][number]
+  >;
 }
 
-function matchesRegionFilter(
+function matchesVisibleJob(
   item: JobListItem,
-  regionId: JobsListFilters["regionId"],
-  siteById: ReadonlyMap<
-    SiteIdType,
-    { readonly regionId?: RegionIdType | undefined }
-  >
+  filters: JobsListFilters,
+  lookup: VisibleJobsLookup,
+  normalizedQuery: string
 ) {
-  if (regionId === "all") {
+  return (
+    matchesStatusFilter(item.status, filters.status) &&
+    matchesAssigneeFilter(item.assigneeId, filters.assigneeId) &&
+    matchesOptionalFilter(item.coordinatorId, filters.coordinatorId) &&
+    matchesOptionalFilter(item.priority, filters.priority) &&
+    matchesLabelFilter(item, filters) &&
+    matchesSiteFilter(item, filters) &&
+    matchesQueryFilter(item, normalizedQuery, lookup) &&
+    matchesServiceAreaFilter(item, filters.serviceAreaId, lookup.siteById)
+  );
+}
+
+function matchesOptionalFilter<Value extends string>(
+  value: Value | undefined,
+  filter: Value | "all"
+) {
+  return filter === "all" || value === filter;
+}
+
+function matchesQueryFilter(
+  item: JobListItem,
+  normalizedQuery: string,
+  lookup: VisibleJobsLookup
+) {
+  return (
+    normalizedQuery.length === 0 ||
+    buildJobSearchText(item, lookup).includes(normalizedQuery)
+  );
+}
+
+function buildJobSearchText(item: JobListItem, lookup: VisibleJobsLookup) {
+  const siteName =
+    item.siteId === undefined
+      ? undefined
+      : lookup.siteById.get(item.siteId)?.name;
+  const contact =
+    item.contactId === undefined
+      ? undefined
+      : lookup.contactById.get(item.contactId);
+
+  return [
+    item.title,
+    item.kind,
+    item.externalReference ?? "",
+    siteName ?? "",
+    item.siteId === undefined
+      ? ""
+      : (lookup.siteById.get(item.siteId)?.serviceAreaName ?? ""),
+    contact?.name ?? "",
+    contact?.email ?? "",
+    contact?.phone ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function matchesServiceAreaFilter(
+  item: JobListItem,
+  serviceAreaFilter: JobsListFilters["serviceAreaId"],
+  siteById: VisibleJobsLookup["siteById"]
+) {
+  if (serviceAreaFilter === "all") {
     return true;
   }
 
-  const itemRegionId =
-    item.siteId === undefined ? undefined : siteById.get(item.siteId)?.regionId;
+  const serviceAreaId =
+    item.siteId === undefined
+      ? undefined
+      : siteById.get(item.siteId)?.serviceAreaId;
 
-  return itemRegionId === regionId;
+  return serviceAreaId === serviceAreaFilter;
 }
 
 type JobListItemSource = Pick<
@@ -436,6 +497,7 @@ type JobListItemSource = Pick<
   | "contactId"
   | "coordinatorId"
   | "createdAt"
+  | "externalReference"
   | "id"
   | "kind"
   | "labels"
@@ -452,6 +514,7 @@ export function toJobListItem(job: JobListItemSource): JobListItem {
     contactId: job.contactId,
     coordinatorId: job.coordinatorId,
     createdAt: job.createdAt,
+    externalReference: job.externalReference,
     id: job.id,
     kind: job.kind,
     labels: job.labels,

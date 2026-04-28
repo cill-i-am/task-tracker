@@ -49,6 +49,30 @@ export class JobsAuthorization extends Effect.Service<JobsAuthorization>()(
             )
       );
 
+      const ensureCanManageConfiguration = Effect.fn(
+        "JobsAuthorization.ensureCanManageConfiguration"
+      )((actor: JobsActor) =>
+        hasElevatedAccess(actor)
+          ? Effect.void
+          : Effect.fail(
+              makeAccessDenied(
+                "Only organization owners and admins can manage job configuration"
+              )
+            )
+      );
+
+      const ensureCanViewOrganizationActivity = Effect.fn(
+        "JobsAuthorization.ensureCanViewOrganizationActivity"
+      )((actor: JobsActor) =>
+        hasElevatedAccess(actor)
+          ? Effect.void
+          : Effect.fail(
+              makeAccessDenied(
+                "Only organization owners and admins can view organization activity"
+              )
+            )
+      );
+
       const ensureCanPatch = Effect.fn("JobsAuthorization.ensureCanPatch")(
         (actor: JobsActor, workItemId: WorkItemId) =>
           hasElevatedAccess(actor)
@@ -103,6 +127,19 @@ export class JobsAuthorization extends Effect.Service<JobsAuthorization>()(
             )
       );
 
+      const ensureCanAddCostLine = Effect.fn(
+        "JobsAuthorization.ensureCanAddCostLine"
+      )((actor: JobsActor, job: Job) =>
+        hasElevatedAccess(actor) || job.assigneeId === actor.userId
+          ? Effect.void
+          : Effect.fail(
+              makeAccessDenied(
+                "Members can only add cost lines on jobs assigned to them",
+                job.id
+              )
+            )
+      );
+
       const ensureCanTransition = Effect.fn(
         "JobsAuthorization.ensureCanTransition"
       )((actor: JobsActor, job: Job, nextStatus: JobStatus) => {
@@ -144,16 +181,19 @@ export class JobsAuthorization extends Effect.Service<JobsAuthorization>()(
       );
 
       return {
+        ensureCanAddCostLine,
         ensureCanAddVisit,
         ensureCanAssignLabels,
         ensureCanComment,
         ensureCanCreate,
         ensureCanCreateSite,
+        ensureCanManageConfiguration,
         ensureCanManageLabels,
         ensureCanPatch,
         ensureCanReopen,
         ensureCanTransition,
         ensureCanView,
+        ensureCanViewOrganizationActivity,
       };
     }),
   }

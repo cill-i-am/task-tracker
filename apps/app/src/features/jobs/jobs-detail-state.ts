@@ -3,6 +3,8 @@
 
 import { Atom } from "@effect-atom/atom-react";
 import type {
+  AddJobCostLineInput,
+  AddJobCostLineResponse,
   AddJobCommentInput,
   AddJobCommentResponse,
   AddJobVisitInput,
@@ -125,6 +127,24 @@ export const assignJobLabelMutationAtomFamily = Atom.family(
     )
 );
 
+export const addJobCostLineMutationAtomFamily = Atom.family(
+  (workItemId: WorkItemIdType) =>
+    Atom.fn<AppJobsError, AddJobCostLineResponse, AddJobCostLineInput>(
+      (input, get) =>
+        addBrowserJobCostLine(workItemId, input).pipe(
+          Effect.tap((costLine) =>
+            Effect.gen(function* () {
+              yield* Effect.sync(() => {
+                insertJobCostLine(get, workItemId, costLine);
+              });
+
+              yield* refreshJobDetailIfPossible(get, workItemId);
+            })
+          )
+        )
+    )
+);
+
 export const createAndAssignJobLabelMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppJobsError, JobDetailResponse, CreateJobLabelInput>(
@@ -227,6 +247,18 @@ function assignBrowserJobLabel(
   );
 }
 
+function addBrowserJobCostLine(
+  workItemId: WorkItemIdType,
+  input: AddJobCostLineInput
+) {
+  return runBrowserJobsRequest("JobsBrowser.addJobCostLine", (client) =>
+    client.jobs.addJobCostLine({
+      path: { workItemId },
+      payload: input,
+    })
+  );
+}
+
 function createBrowserJobLabel(input: CreateJobLabelInput) {
   return runBrowserJobsRequest("JobsBrowser.createJobLabel", (client) =>
     client.jobs.createJobLabel({
@@ -272,8 +304,12 @@ function updateJobDetailJob(
     return;
   }
 
+  const { contact, ...detailWithoutContact } = currentDetail;
+  const matchingContact = contact?.id === job.contactId ? { contact } : {};
+
   get.set(jobDetailStateAtomFamily(workItemId), {
-    ...currentDetail,
+    ...detailWithoutContact,
+    ...matchingContact,
     job,
   });
 }
@@ -388,5 +424,39 @@ function insertJobVisit(
         ? String(right.id).localeCompare(String(left.id))
         : dateOrder;
     }),
+  });
+}
+
+function insertJobCostLine(
+  get: Atom.FnContext,
+  workItemId: WorkItemIdType,
+  costLine: AddJobCostLineResponse
+) {
+  const currentDetail = get(jobDetailStateAtomFamily(workItemId));
+
+  if (currentDetail === null) {
+    return;
+  }
+
+  const costLines = [
+    costLine,
+    ...currentDetail.costLines.filter((current) => current.id !== costLine.id),
+  ].sort((left, right) => {
+    const createdAtOrder = right.createdAt.localeCompare(left.createdAt);
+
+    return createdAtOrder === 0
+      ? String(right.id).localeCompare(String(left.id))
+      : createdAtOrder;
+  });
+
+  get.set(jobDetailStateAtomFamily(workItemId), {
+    ...currentDetail,
+    costLines,
+    costSummary: {
+      subtotalMinor: costLines.reduce(
+        (subtotal, current) => subtotal + current.lineTotalMinor,
+        0
+      ),
+    },
   });
 }

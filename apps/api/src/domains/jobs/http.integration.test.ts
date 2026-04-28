@@ -1,15 +1,22 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  CreateRateCardResponseSchema,
+  CreateServiceAreaResponseSchema,
   CreateSiteResponseSchema,
+  JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG,
+  JOB_LABEL_NAME_CONFLICT_ERROR_TAG,
+  JOB_LABEL_NOT_FOUND_ERROR_TAG,
   JobDetailResponseSchema,
   JobLabelResponseSchema,
   JobLabelsResponseSchema,
   JobListResponseSchema,
-  JOB_LABEL_NAME_CONFLICT_ERROR_TAG,
-  JOB_LABEL_NOT_FOUND_ERROR_TAG,
-  REGION_NOT_FOUND_ERROR_TAG,
+  JobOptionsResponseSchema,
+  RateCardListResponseSchema,
+  SERVICE_AREA_NOT_FOUND_ERROR_TAG,
+  ServiceAreaListResponseSchema,
   SitesOptionsResponseSchema,
+  UpdateServiceAreaResponseSchema,
 } from "@task-tracker/jobs-core";
 import { ParseResult } from "effect";
 import type { Pool } from "pg";
@@ -247,15 +254,180 @@ describe("jobs http integration", () => {
       const options = (await optionsResponse.json()) as {
         readonly contacts: readonly unknown[];
         readonly members: readonly { name: string }[];
-        readonly regions: readonly unknown[];
+        readonly serviceAreas: readonly unknown[];
         readonly sites: readonly unknown[];
       };
       expect(options.members.map((member) => member.name)).toStrictEqual(
         expect.arrayContaining(["Owner User", "Member User"])
       );
-      expect(options.regions).toHaveLength(0);
+      expect(options.serviceAreas).toHaveLength(0);
       expect(options.sites).toHaveLength(0);
       expect(options.contacts).toHaveLength(0);
+
+      const createServiceAreaResponse = await api.handler(
+        makeJsonRequest(
+          "/service-areas",
+          {
+            description: "City centre jobs",
+            name: "Dublin",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(createServiceAreaResponse.status).toBe(201);
+      const createdServiceArea = ParseResult.decodeUnknownSync(
+        CreateServiceAreaResponseSchema
+      )(await createServiceAreaResponse.json());
+      expect(createdServiceArea).toMatchObject({
+        description: "City centre jobs",
+        name: "Dublin",
+      });
+
+      const listServiceAreasResponse = await api.handler(
+        makeRequest("/service-areas", {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(listServiceAreasResponse.status).toBe(200);
+      const serviceAreas = ParseResult.decodeUnknownSync(
+        ServiceAreaListResponseSchema
+      )(await listServiceAreasResponse.json());
+      expect(serviceAreas.items).toContainEqual(createdServiceArea);
+
+      const clearServiceAreaDescriptionResponse = await api.handler(
+        makeJsonRequest(
+          `/service-areas/${createdServiceArea.id}`,
+          {
+            description: null,
+          },
+          {
+            cookieJar: ownerCookieJar,
+            method: "PATCH",
+          }
+        )
+      );
+      expect(clearServiceAreaDescriptionResponse.status).toBe(200);
+      const clearedServiceArea = ParseResult.decodeUnknownSync(
+        UpdateServiceAreaResponseSchema
+      )(await clearServiceAreaDescriptionResponse.json());
+      expect(clearedServiceArea).toMatchObject({
+        id: createdServiceArea.id,
+        name: "Dublin",
+      });
+      expect(clearedServiceArea.description).toBeUndefined();
+
+      const memberCreateServiceAreaResponse = await api.handler(
+        makeJsonRequest(
+          "/service-areas",
+          {
+            name: "Member Area",
+          },
+          {
+            cookieJar: memberCookieJar,
+          }
+        )
+      );
+      expect(memberCreateServiceAreaResponse.status).toBe(403);
+
+      const memberListServiceAreasResponse = await api.handler(
+        makeRequest("/service-areas", {
+          cookieJar: memberCookieJar,
+        })
+      );
+      expect(memberListServiceAreasResponse.status).toBe(403);
+
+      const memberOptionsBeforeSiteResponse = await api.handler(
+        makeRequest("/jobs/options", {
+          cookieJar: memberCookieJar,
+        })
+      );
+      expect(memberOptionsBeforeSiteResponse.status).toBe(200);
+      await expect(
+        memberOptionsBeforeSiteResponse.json()
+      ).resolves.toMatchObject({
+        serviceAreas: [],
+      });
+
+      const duplicateRateCardPositionResponse = await api.handler(
+        makeJsonRequest(
+          "/rate-cards",
+          {
+            lines: [
+              {
+                kind: "callout",
+                name: "Standard callout",
+                position: 1,
+                unit: "visit",
+                value: 125,
+              },
+              {
+                kind: "labour",
+                name: "Labour",
+                position: 1,
+                unit: "hour",
+                value: 85,
+              },
+            ],
+            name: "Invalid duplicate positions",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(duplicateRateCardPositionResponse.status).toBe(400);
+
+      const createRateCardResponse = await api.handler(
+        makeJsonRequest(
+          "/rate-cards",
+          {
+            lines: [
+              {
+                kind: "callout",
+                name: "Standard callout",
+                position: 1,
+                unit: "visit",
+                value: 125,
+              },
+            ],
+            name: "Standard",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(createRateCardResponse.status).toBe(201);
+      const createdRateCard = ParseResult.decodeUnknownSync(
+        CreateRateCardResponseSchema
+      )(await createRateCardResponse.json());
+      expect(createdRateCard).toMatchObject({
+        name: "Standard",
+      });
+      expect(createdRateCard.lines[0]).toMatchObject({
+        name: "Standard callout",
+        value: 125,
+      });
+
+      const listRateCardsResponse = await api.handler(
+        makeRequest("/rate-cards", {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(listRateCardsResponse.status).toBe(200);
+      const rateCards = ParseResult.decodeUnknownSync(
+        RateCardListResponseSchema
+      )(await listRateCardsResponse.json());
+      expect(rateCards.items).toContainEqual(createdRateCard);
+
+      const memberListRateCardsResponse = await api.handler(
+        makeRequest("/rate-cards", {
+          cookieJar: memberCookieJar,
+        })
+      );
+      expect(memberListRateCardsResponse.status).toBe(403);
 
       const createSiteResponse = await api.handler(
         makeJsonRequest(
@@ -266,6 +438,7 @@ describe("jobs http integration", () => {
             county: "Dublin",
             eircode: "D01 X2X2",
             name: "Docklands Campus",
+            serviceAreaId: createdServiceArea.id,
             town: "Dublin",
           },
           {
@@ -279,6 +452,8 @@ describe("jobs http integration", () => {
       )(await createSiteResponse.json());
       expect(createdSite).toMatchObject({
         name: "Docklands Campus",
+        serviceAreaId: createdServiceArea.id,
+        serviceAreaName: "Dublin",
       });
 
       const siteOptionsAfterSiteResponse = await api.handler(
@@ -295,6 +470,30 @@ describe("jobs http integration", () => {
           id: createdSite.id,
           name: "Docklands Campus",
         })
+      );
+      expect(siteOptionsAfterSite.serviceAreas).toContainEqual({
+        id: createdServiceArea.id,
+        name: "Dublin",
+      });
+      expect(JSON.stringify(siteOptionsAfterSite.serviceAreas)).not.toContain(
+        "description"
+      );
+
+      const memberOptionsAfterSiteResponse = await api.handler(
+        makeRequest("/jobs/options", {
+          cookieJar: memberCookieJar,
+        })
+      );
+      expect(memberOptionsAfterSiteResponse.status).toBe(200);
+      const memberOptionsAfterSite = ParseResult.decodeUnknownSync(
+        JobOptionsResponseSchema
+      )(await memberOptionsAfterSiteResponse.json());
+      expect(memberOptionsAfterSite.serviceAreas).toContainEqual({
+        id: createdServiceArea.id,
+        name: "Dublin",
+      });
+      expect(JSON.stringify(memberOptionsAfterSite.serviceAreas)).not.toContain(
+        "description"
       );
 
       const invalidSitePayloadResponse = await api.handler(
@@ -313,7 +512,7 @@ describe("jobs http integration", () => {
       );
       expect(invalidSitePayloadResponse.status).toBe(400);
 
-      const missingRegionResponse = await api.handler(
+      const missingAreaResponse = await api.handler(
         makeJsonRequest(
           "/sites",
           {
@@ -321,17 +520,17 @@ describe("jobs http integration", () => {
             country: "IE",
             county: "Dublin",
             eircode: "D01 X2X2",
-            name: "Missing Region Site",
-            regionId: "55555555-5555-4555-8555-555555555555",
+            name: "Missing Area Site",
+            serviceAreaId: "55555555-5555-4555-8555-555555555555",
           },
           {
             cookieJar: ownerCookieJar,
           }
         )
       );
-      expect(missingRegionResponse.status).toBe(404);
-      await expect(missingRegionResponse.json()).resolves.toMatchObject({
-        _tag: REGION_NOT_FOUND_ERROR_TAG,
+      expect(missingAreaResponse.status).toBe(404);
+      await expect(missingAreaResponse.json()).resolves.toMatchObject({
+        _tag: SERVICE_AREA_NOT_FOUND_ERROR_TAG,
       });
 
       const memberCreateSiteResponse = await api.handler(
@@ -355,8 +554,18 @@ describe("jobs http integration", () => {
         makeJsonRequest(
           "/jobs",
           {
+            externalReference: "CLAIM-2026-0042",
             priority: "medium",
             title: "Replace boiler expansion vessel",
+            contact: {
+              kind: "create",
+              input: {
+                name: "Alex Contact",
+                email: "alex@example.com",
+                phone: "+353 87 123 4567",
+                notes: "Prefers morning calls.",
+              },
+            },
           },
           {
             cookieJar: ownerCookieJar,
@@ -365,9 +574,33 @@ describe("jobs http integration", () => {
       );
       expect(createJobResponse.status).toBe(201);
       const createdJob = (await createJobResponse.json()) as {
+        readonly externalReference?: string;
         readonly id: string;
         readonly status: string;
       };
+      expect(createdJob.externalReference).toBe("CLAIM-2026-0042");
+
+      const optionsAfterJobResponse = await api.handler(
+        makeRequest("/jobs/options", {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(optionsAfterJobResponse.status).toBe(200);
+      const optionsAfterJob = (await optionsAfterJobResponse.json()) as {
+        readonly contacts: readonly {
+          readonly email?: string;
+          readonly name: string;
+          readonly phone?: string;
+        }[];
+      };
+      expect(optionsAfterJob.contacts).toContainEqual(
+        expect.objectContaining({
+          email: "alex@example.com",
+          name: "Alex Contact",
+          phone: "+353 87 123 4567",
+        })
+      );
+      expect(optionsAfterJob.contacts[0]).not.toHaveProperty("notes");
 
       const patchAssigneeResponse = await api.handler(
         makeJsonRequest(
@@ -383,6 +616,40 @@ describe("jobs http integration", () => {
         )
       );
       expect(patchAssigneeResponse.status).toBe(200);
+
+      const ownerActivityResponse = await api.handler(
+        makeRequest("/activity", { cookieJar: ownerCookieJar })
+      );
+      expect(ownerActivityResponse.status).toBe(200);
+
+      const ownerActivityByActorResponse = await api.handler(
+        makeRequest(`/activity?actorUserId=${memberUserId}`, {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(ownerActivityByActorResponse.status).toBe(200);
+
+      const ownerActivityByEventAndDateResponse = await api.handler(
+        makeRequest(
+          "/activity?eventType=visit_logged&fromDate=2026-04-22&toDate=2026-04-22",
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(ownerActivityByEventAndDateResponse.status).toBe(200);
+
+      const ownerActivityByJobTitleResponse = await api.handler(
+        makeRequest("/activity?jobTitle=boiler", {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(ownerActivityByJobTitleResponse.status).toBe(200);
+
+      const memberActivityResponse = await api.handler(
+        makeRequest("/activity", { cookieJar: memberCookieJar })
+      );
+      expect(memberActivityResponse.status).toBe(403);
 
       const invalidCoordinatorResponse = await api.handler(
         makeJsonRequest(
@@ -703,9 +970,16 @@ describe("jobs http integration", () => {
       expect(memberDetailResponse.status).toBe(200);
       const memberDetail = (await memberDetailResponse.json()) as {
         readonly comments: readonly unknown[];
+        readonly contact?: {
+          readonly email?: string;
+          readonly name: string;
+          readonly notes?: string;
+          readonly phone?: string;
+        };
         readonly job: {
           readonly assigneeId?: string;
           readonly completedAt?: string;
+          readonly externalReference?: string;
           readonly status: string;
         };
         readonly visits: readonly unknown[];
@@ -760,6 +1034,109 @@ describe("jobs http integration", () => {
         )
       );
       expect(validVisitResponse.status).toBe(201);
+
+      const costLineResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${createdJob.id}/cost-lines`,
+          {
+            description: "Replacement expansion vessel",
+            quantity: 1,
+            taxRateBasisPoints: 2300,
+            type: "material",
+            unitPriceMinor: 18_500,
+          },
+          {
+            cookieJar: memberCookieJar,
+          }
+        )
+      );
+      expect(costLineResponse.status).toBe(201);
+      const costLine = (await costLineResponse.json()) as {
+        readonly lineTotalMinor: number;
+      };
+      expect(costLine.lineTotalMinor).toBe(18_500);
+
+      const overflowJobResponse = await api.handler(
+        makeJsonRequest(
+          "/jobs",
+          {
+            priority: "medium",
+            title: "Replace plant room equipment",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(overflowJobResponse.status).toBe(201);
+      const overflowJob = (await overflowJobResponse.json()) as {
+        readonly id: string;
+      };
+
+      const patchOverflowAssigneeResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${overflowJob.id}`,
+          {
+            assigneeId: memberUserId,
+          },
+          {
+            cookieJar: ownerCookieJar,
+            method: "PATCH",
+          }
+        )
+      );
+      expect(patchOverflowAssigneeResponse.status).toBe(200);
+
+      const majorCostLineResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${overflowJob.id}/cost-lines`,
+          {
+            description: "Major equipment package",
+            quantity: 4_194_304,
+            type: "material",
+            unitPriceMinor: 2_147_483_647,
+          },
+          {
+            cookieJar: memberCookieJar,
+          }
+        )
+      );
+      expect(majorCostLineResponse.status).toBe(201);
+
+      const safeSubtotalLineResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${overflowJob.id}/cost-lines`,
+          {
+            description: "Final safe subtotal line",
+            quantity: 1,
+            type: "material",
+            unitPriceMinor: 4_194_289,
+          },
+          {
+            cookieJar: memberCookieJar,
+          }
+        )
+      );
+      expect(safeSubtotalLineResponse.status).toBe(201);
+
+      const overflowingCostLineResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${overflowJob.id}/cost-lines`,
+          {
+            description: "Fractional line that rounds over the limit",
+            quantity: 0.29,
+            type: "material",
+            unitPriceMinor: 50,
+          },
+          {
+            cookieJar: memberCookieJar,
+          }
+        )
+      );
+      expect(overflowingCostLineResponse.status).toBe(422);
+      await expect(overflowingCostLineResponse.json()).resolves.toMatchObject({
+        _tag: JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG,
+      });
 
       const startedTransitionResponse = await api.handler(
         makeJsonRequest(
@@ -863,17 +1240,37 @@ describe("jobs http integration", () => {
       const finalDetail = (await finalDetailResponse.json()) as {
         readonly activity: readonly unknown[];
         readonly comments: readonly unknown[];
+        readonly costLines: readonly unknown[];
+        readonly costSummary: {
+          readonly subtotalMinor: number;
+        };
+        readonly contact?: {
+          readonly email?: string;
+          readonly name: string;
+          readonly notes?: string;
+          readonly phone?: string;
+        };
         readonly job: {
           readonly completedAt?: string;
+          readonly externalReference?: string;
           readonly status: string;
         };
         readonly visits: readonly unknown[];
       };
       expect(finalDetail.job.status).toBe("in_progress");
       expect(finalDetail.job.completedAt).toBeUndefined();
+      expect(finalDetail.job.externalReference).toBe("CLAIM-2026-0042");
+      expect(finalDetail.contact).toMatchObject({
+        email: "alex@example.com",
+        name: "Alex Contact",
+        notes: "Prefers morning calls.",
+        phone: "+353 87 123 4567",
+      });
       expect(finalDetail.comments).toHaveLength(1);
+      expect(finalDetail.costLines).toHaveLength(1);
+      expect(finalDetail.costSummary.subtotalMinor).toBe(18_500);
       expect(finalDetail.visits).toHaveLength(1);
-      expect(finalDetail.activity.length).toBeGreaterThanOrEqual(7);
+      expect(finalDetail.activity.length).toBeGreaterThanOrEqual(8);
     });
   }, 30_000);
 });

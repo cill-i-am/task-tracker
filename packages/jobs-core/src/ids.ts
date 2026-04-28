@@ -15,10 +15,20 @@ export const WorkItemId = Schema.UUID.pipe(
 );
 export type WorkItemId = Schema.Schema.Type<typeof WorkItemId>;
 
-export const RegionId = Schema.UUID.pipe(
-  Schema.brand("@task-tracker/jobs-core/RegionId")
+export const ServiceAreaId = Schema.UUID.pipe(
+  Schema.brand("@task-tracker/jobs-core/ServiceAreaId")
 );
-export type RegionId = Schema.Schema.Type<typeof RegionId>;
+export type ServiceAreaId = Schema.Schema.Type<typeof ServiceAreaId>;
+
+export const RateCardId = Schema.UUID.pipe(
+  Schema.brand("@task-tracker/jobs-core/RateCardId")
+);
+export type RateCardId = Schema.Schema.Type<typeof RateCardId>;
+
+export const RateCardLineId = Schema.UUID.pipe(
+  Schema.brand("@task-tracker/jobs-core/RateCardLineId")
+);
+export type RateCardLineId = Schema.Schema.Type<typeof RateCardLineId>;
 
 export const SiteId = Schema.UUID.pipe(
   Schema.brand("@task-tracker/jobs-core/SiteId")
@@ -49,3 +59,8 @@ export const JobLabelId = Schema.UUID.pipe(
   Schema.brand("@task-tracker/jobs-core/JobLabelId")
 );
 export type JobLabelId = Schema.Schema.Type<typeof JobLabelId>;
+
+export const CostLineId = Schema.UUID.pipe(
+  Schema.brand("@task-tracker/jobs-core/CostLineId")
+);
+export type CostLineId = Schema.Schema.Type<typeof CostLineId>;

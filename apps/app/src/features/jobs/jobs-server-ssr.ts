@@ -4,7 +4,10 @@ import type {
   JobListItem,
   JobListQuery,
   JobListResponse,
+  JobMemberOptionsResponse,
   JobOptionsResponse,
+  OrganizationActivityListResponse,
+  OrganizationActivityQuery,
   SitesOptionsResponse,
   WorkItemIdType,
 } from "@task-tracker/jobs-core";
@@ -95,6 +98,21 @@ export async function listAllCurrentServerJobsDirect(
   }
 }
 
+export async function listCurrentServerOrganizationActivityDirect(
+  query: OrganizationActivityQuery = {}
+): Promise<OrganizationActivityListResponse> {
+  const request = await readServerJobsRequestStrict();
+
+  return await runJobsClient(
+    request,
+    "JobsServer.listOrganizationActivity",
+    (client) =>
+      client.jobs.listOrganizationActivity({
+        urlParams: query,
+      })
+  );
+}
+
 export async function getCurrentServerJobDetailDirect(
   workItemId: WorkItemIdType
 ): Promise<JobDetailResponse> {
@@ -118,6 +136,16 @@ export async function getCurrentServerJobLabelsDirect(): Promise<JobLabelsRespon
 
   return await runJobsClient(request, "JobsServer.listJobLabels", (client) =>
     client.jobs.listJobLabels()
+  );
+}
+
+export async function getCurrentServerJobMemberOptionsDirect(): Promise<JobMemberOptionsResponse> {
+  const request = await readServerJobsRequestStrict();
+
+  return await runJobsClient(
+    request,
+    "JobsServer.getJobMemberOptions",
+    (client) => client.jobs.getJobMemberOptions()
   );
 }
 
