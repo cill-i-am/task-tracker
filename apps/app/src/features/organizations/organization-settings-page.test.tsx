@@ -28,6 +28,18 @@ vi.mock(import("#/lib/auth-client"), () => ({
   } as unknown as typeof AuthClient,
 }));
 
+vi.mock(import("./organization-service-areas-section"), () => ({
+  OrganizationServiceAreasSection: () => (
+    <section aria-label="Service areas test section" />
+  ),
+}));
+
+vi.mock(import("./organization-rate-card-section"), () => ({
+  OrganizationRateCardSection: () => (
+    <section aria-label="Rate card test section" />
+  ),
+}));
+
 vi.mock(import("@tanstack/react-router"), async (importOriginal) => {
   const actual = await importOriginal();
 
