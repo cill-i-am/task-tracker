@@ -89,26 +89,34 @@ const RateCardsHandlersLive = HttpApiBuilder.group(
     })
 );
 
-export const JobsHttpLive = HttpApiBuilder.api(JobsApi).pipe(
-  Layer.provide(
-    Layer.unwrapEffect(
-      Effect.gen(function* () {
-        const config = yield* loadAuthenticationConfig;
+const JobsCorsLive = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const config = yield* loadAuthenticationConfig;
 
-        return HttpApiBuilder.middlewareCors({
-          allowedOrigins: (origin) =>
-            matchesTrustedOrigin(origin, config.trustedOrigins),
-          credentials: true,
-        });
-      })
-    )
-  ),
-  Layer.provide(JobsHandlersLive),
-  Layer.provide(ServiceAreasHandlersLive),
-  Layer.provide(RateCardsHandlersLive),
-  Layer.provide(SitesHandlersLive),
-  Layer.provide(SiteGeocoder.Default),
-  Layer.provide(JobsService.Default),
-  Layer.provide(ConfigurationService.Default),
-  Layer.provide(SitesService.Default)
+    return HttpApiBuilder.middlewareCors({
+      allowedOrigins: (origin) =>
+        matchesTrustedOrigin(origin, config.trustedOrigins),
+      credentials: true,
+    });
+  })
+);
+
+const JobsHandlerGroupsLive = Layer.mergeAll(
+  JobsHandlersLive,
+  SitesHandlersLive,
+  ServiceAreasHandlersLive,
+  RateCardsHandlersLive
+);
+
+const JobsServicesLive = Layer.mergeAll(
+  JobsService.Default,
+  SitesService.Default,
+  ConfigurationService.Default,
+  SiteGeocoder.Default
+);
+
+export const JobsHttpLive = HttpApiBuilder.api(JobsApi).pipe(
+  Layer.provide(JobsCorsLive),
+  Layer.provide(JobsHandlerGroupsLive),
+  Layer.provide(JobsServicesLive)
 );

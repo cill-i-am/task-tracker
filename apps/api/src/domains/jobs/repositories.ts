@@ -754,7 +754,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           insert into work_items ${sql.insert(insertValues).returning("*")}
         `;
 
-        return mapJobRow(getRequiredRow(rows, "inserted work item"));
+        const row = yield* getRequiredRow(rows, "inserted work item");
+
+        return mapJobRow(row);
       });
 
       const patch = Effect.fn("JobsRepository.patch")(function* (
@@ -903,9 +905,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             .returning("*")}
         `;
 
-        return mapJobCommentRow(
-          getRequiredRow(rows, "inserted work item comment")
-        );
+        const row = yield* getRequiredRow(rows, "inserted work item comment");
+
+        return mapJobCommentRow(row);
       });
 
       const addActivity = Effect.fn("JobsRepository.addActivity")(function* (
@@ -936,9 +938,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             .returning("*")}
         `;
 
-        return mapJobActivityRow(
-          getRequiredRow(rows, "inserted work item activity")
-        );
+        const row = yield* getRequiredRow(rows, "inserted work item activity");
+
+        return mapJobActivityRow(row);
       });
 
       const addVisit = Effect.fn("JobsRepository.addVisit")(function* (
@@ -968,7 +970,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             .returning("*")}
         `;
 
-        return mapJobVisitRow(getRequiredRow(rows, "inserted work item visit"));
+        const row = yield* getRequiredRow(rows, "inserted work item visit");
+
+        return mapJobVisitRow(row);
       });
 
       return {
@@ -1087,7 +1091,9 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           insert into sites ${sql.insert(values).returning("id")}
         `;
 
-        return decodeSiteId(getRequiredRow(rows, "inserted site id").id);
+        const row = yield* getRequiredRow(rows, "inserted site id");
+
+        return decodeSiteId(row.id);
       });
 
       const update = Effect.fn("SitesRepository.update")(function* (
@@ -1311,7 +1317,9 @@ export class ConfigurationRepository extends Effect.Service<ConfigurationReposit
             .returning("*")}
         `;
 
-        return mapServiceAreaRow(getRequiredRow(rows, "inserted service area"));
+        const row = yield* getRequiredRow(rows, "inserted service area");
+
+        return mapServiceAreaRow(row);
       });
 
       const updateServiceArea = Effect.fn(
@@ -1424,7 +1432,7 @@ export class RateCardsRepository extends Effect.Service<RateCardsRepository>()(
                 })
                 .returning("*")}
             `;
-            getRequiredRow(rows, "inserted rate card");
+            yield* getRequiredRow(rows, "inserted rate card");
 
             yield* insertRateCardLines(rateCardId, input.lines);
 
@@ -1523,9 +1531,13 @@ export class RateCardsRepository extends Effect.Service<RateCardsRepository>()(
         rateCardId: RateCardId,
         lines: readonly RateCardLineInput[]
       ) {
-        for (const line of lines) {
-          yield* sql`
-            insert into rate_card_lines ${sql.insert({
+        if (lines.length === 0) {
+          return;
+        }
+
+        yield* sql`
+          insert into rate_card_lines ${sql.insert(
+            lines.map((line) => ({
               id: generateRateCardLineId(),
               kind: line.kind,
               name: line.name,
@@ -1533,9 +1545,9 @@ export class RateCardsRepository extends Effect.Service<RateCardsRepository>()(
               rate_card_id: rateCardId,
               unit: line.unit,
               value: line.value.toFixed(2),
-            })}
-          `;
-        }
+            }))
+          )}
+        `;
       });
 
       return {
@@ -1596,7 +1608,9 @@ export class ContactsRepository extends Effect.Service<ContactsRepository>()(
           insert into contacts ${sql.insert(values).returning("id")}
         `;
 
-        return decodeContactId(getRequiredRow(rows, "inserted contact id").id);
+        const row = yield* getRequiredRow(rows, "inserted contact id");
+
+        return decodeContactId(row.id);
       });
 
       const listOptions = Effect.fn("ContactsRepository.listOptions")(
@@ -1875,14 +1889,17 @@ function slugifyName(name: string): string {
   return slug.length === 0 ? "service-area" : slug;
 }
 
-function getRequiredRow<Value>(rows: readonly Value[], label: string): Value {
+function getRequiredRow<Value>(
+  rows: readonly Value[],
+  label: string
+): Effect.Effect<Value> {
   const [row] = rows;
 
   if (row === undefined) {
-    throw new Error(`Expected ${label} row to be returned`);
+    return Effect.die(new Error(`Expected ${label} row to be returned`));
   }
 
-  return row;
+  return Effect.succeed(row);
 }
 
 function parseIsoDateTime(value: string): Date {
