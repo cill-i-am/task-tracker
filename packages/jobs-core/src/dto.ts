@@ -174,6 +174,7 @@ export const OrganizationActivityQuerySchema = Schema.Struct({
   cursor: Schema.optional(OrganizationActivityCursor),
   eventType: Schema.optional(JobActivityEventTypeSchema),
   fromDate: Schema.optional(IsoDateString),
+  jobTitle: Schema.optional(NonEmptyTrimmedString),
   limit: Schema.optional(
     Schema.NumberFromString.pipe(
       Schema.int(),

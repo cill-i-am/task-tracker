@@ -367,6 +367,7 @@ describe("jobs-core", () => {
         cursor: "activity_cursor_1",
         eventType: "status_changed",
         fromDate: "2026-04-01",
+        jobTitle: "  Replace boiler  ",
         limit: "25",
         toDate: "2026-04-28",
       })
@@ -375,6 +376,7 @@ describe("jobs-core", () => {
       cursor: "activity_cursor_1",
       eventType: "status_changed",
       fromDate: "2026-04-01",
+      jobTitle: "Replace boiler",
       limit: 25,
       toDate: "2026-04-28",
     });

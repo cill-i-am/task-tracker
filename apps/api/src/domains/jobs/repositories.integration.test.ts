@@ -461,14 +461,11 @@ describe("jobs repositories integration", () => {
     const identity = await seedIdentityRecords(databaseUrl);
     const foreignIdentity = await seedIdentityRecords(databaseUrl);
 
-    const newestJobId = decodeWorkItemId(
-      "00000000-0000-4000-8000-000000000103"
-    );
     const middleJobId = decodeWorkItemId(
       "00000000-0000-4000-8000-000000000102"
     );
-    const oldestJobId = decodeWorkItemId(
-      "00000000-0000-4000-8000-000000000101"
+    const newestJobId = decodeWorkItemId(
+      "00000000-0000-4000-8000-000000000103"
     );
     const foreignJobId = decodeWorkItemId(
       "00000000-0000-4000-8000-000000000104"
@@ -478,24 +475,6 @@ describe("jobs repositories integration", () => {
       const db = drizzle(pool);
 
       await db.insert(workItem).values([
-        {
-          assigneeId: null,
-          blockedReason: null,
-          completedAt: null,
-          completedByUserId: null,
-          contactId: null,
-          coordinatorId: null,
-          createdAt: new Date("2026-04-20T10:00:00.000Z"),
-          createdByUserId: identity.ownerUserId,
-          id: oldestJobId,
-          kind: "job",
-          organizationId: identity.organizationId,
-          priority: "none",
-          siteId: null,
-          status: "new",
-          title: "Oldest activity job",
-          updatedAt: new Date("2026-04-20T10:00:00.000Z"),
-        },
         {
           assigneeId: null,
           blockedReason: null,
@@ -563,9 +542,9 @@ describe("jobs repositories integration", () => {
             eventType: "job_created",
             kind: "job",
             priority: "none",
-            title: "Oldest activity job",
+            title: "Middle activity job",
           },
-          workItemId: oldestJobId,
+          workItemId: middleJobId,
         },
         {
           actorUserId: identity.assigneeUserId,
@@ -639,13 +618,13 @@ describe("jobs repositories integration", () => {
       databaseUrl,
       JobsRepository.listOrganizationActivity(identity.organizationId, {
         jobTitle: "Middle",
-      } as never)
+      })
     );
 
     expect(all.items.map((item) => item.jobTitle)).toStrictEqual([
       "Newest activity job",
       "Middle activity job",
-      "Oldest activity job",
+      "Middle activity job",
     ]);
     expect(byActor.items).toHaveLength(2);
     expect(byEvent.items.map((item) => item.eventType)).toStrictEqual([
@@ -656,6 +635,7 @@ describe("jobs repositories integration", () => {
       "2026-04-21T10:00:00.000Z",
     ]);
     expect(byJobTitle.items.map((item) => item.jobTitle)).toStrictEqual([
+      "Middle activity job",
       "Middle activity job",
     ]);
   }, 30_000);

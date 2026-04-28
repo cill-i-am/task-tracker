@@ -587,9 +587,6 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
         query: OrganizationActivityQuery
       ) {
         const limit = clampJobListLimit(query.limit ?? boundedDefaultListLimit);
-        const queryWithTitle = query as OrganizationActivityQuery & {
-          readonly jobTitle?: string;
-        };
         const clauses = [
           sql`work_item_activity.organization_id = ${organizationId}`,
           sql`work_items.organization_id = ${organizationId}`,
@@ -621,10 +618,8 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           );
         }
 
-        if (queryWithTitle.jobTitle !== undefined) {
-          clauses.push(
-            sql`work_items.title ilike ${`%${queryWithTitle.jobTitle}%`}`
-          );
+        if (query.jobTitle !== undefined) {
+          clauses.push(sql`work_items.title ilike ${`%${query.jobTitle}%`}`);
         }
 
         if (query.cursor !== undefined) {
