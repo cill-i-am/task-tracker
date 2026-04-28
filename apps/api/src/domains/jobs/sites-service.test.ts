@@ -1,7 +1,7 @@
 import { HttpServerRequest } from "@effect/platform";
 import {
   JobAccessDeniedError,
-  RegionNotFoundError,
+  ServiceAreaNotFoundError,
   SiteGeocodingFailedError,
 } from "@task-tracker/jobs-core";
 import type {
@@ -10,7 +10,7 @@ import type {
   JobActivityPayload,
   JobListResponse,
   JobMemberOption,
-  JobRegionOption,
+  ServiceArea,
   JobSiteOption,
   OrganizationIdType as OrganizationId,
   SiteIdType as SiteId,
@@ -23,6 +23,7 @@ import { JobsAuthorization } from "./authorization.js";
 import { CurrentJobsActor } from "./current-jobs-actor.js";
 import type { JobsActor } from "./current-jobs-actor.js";
 import {
+  ConfigurationRepository,
   ContactsRepository,
   JobsRepository,
   SitesRepository,
@@ -31,8 +32,8 @@ import { SiteGeocoder } from "./site-geocoder.js";
 import { SitesService } from "./sites-service.js";
 
 const siteId = "22222222-2222-4222-8222-222222222222" as SiteId;
-const regionId = "33333333-3333-4333-8333-333333333333" as NonNullable<
-  JobSiteOption["regionId"]
+const serviceAreaId = "33333333-3333-4333-8333-333333333333" as NonNullable<
+  JobSiteOption["serviceAreaId"]
 >;
 const actorUserId = "44444444-4444-4444-8444-444444444444" as UserId;
 const undefinedValue = undefined as undefined;
@@ -43,7 +44,7 @@ const siteInput = {
   county: "Dublin",
   eircode: "D01 X2X2",
   name: "Docklands Campus",
-  regionId,
+  serviceAreaId,
   town: "Dublin",
 } satisfies CreateSiteInput;
 
@@ -62,7 +63,7 @@ function makeActor(
 interface SitesServiceHarness {
   readonly calls: {
     createSite: number;
-    ensureRegion: number;
+    ensureServiceArea: number;
     geocode: number;
     getOptionById: number;
   };
@@ -75,13 +76,13 @@ function makeHarness(
   options: {
     readonly actor?: JobsActor;
     readonly geocodingFailure?: SiteGeocodingFailedError;
-    readonly regionFailure?: RegionNotFoundError;
+    readonly serviceAreaFailure?: ServiceAreaNotFoundError;
   } = {}
 ): SitesServiceHarness {
   const actor = options.actor ?? makeActor("owner");
   const calls = {
     createSite: 0,
-    ensureRegion: 0,
+    ensureServiceArea: 0,
     geocode: 0,
     getOptionById: 0,
   };
@@ -96,8 +97,8 @@ function makeHarness(
     latitude: 53.3498,
     longitude: -6.2603,
     name: "Docklands Campus",
-    regionId,
-    regionName: "Dublin",
+    serviceAreaId,
+    serviceAreaName: "Dublin",
     town: "Dublin",
   };
   const unexpected = (label: string) =>
@@ -157,7 +158,7 @@ function makeHarness(
       readonly longitude: number;
       readonly name: string;
       readonly organizationId: OrganizationId;
-      readonly regionId?: typeof regionId;
+      readonly serviceAreaId?: typeof serviceAreaId;
       readonly town?: string;
     }) =>
       Effect.sync(() => {
@@ -173,26 +174,26 @@ function makeHarness(
           longitude: -6.2603,
           name: "Docklands Campus",
           organizationId: actor.organizationId,
-          regionId,
+          serviceAreaId,
           town: "Dublin",
         });
 
         return siteId;
       }),
-    ensureRegionInOrganization: (
+    ensureServiceAreaInOrganization: (
       organizationId: OrganizationId,
-      requestedRegionId: typeof regionId
+      requestedServiceAreaId: typeof serviceAreaId
     ) =>
       Effect.gen(function* () {
-        calls.ensureRegion += 1;
+        calls.ensureServiceArea += 1;
         expect(organizationId).toBe(actor.organizationId);
-        expect(requestedRegionId).toBe(regionId);
+        expect(requestedServiceAreaId).toBe(serviceAreaId);
 
-        if (options.regionFailure !== undefined) {
-          return yield* Effect.fail(options.regionFailure);
+        if (options.serviceAreaFailure !== undefined) {
+          return yield* Effect.fail(options.serviceAreaFailure);
         }
 
-        return requestedRegionId;
+        return requestedServiceAreaId;
       }),
     findById: (_organizationId: OrganizationId, _siteId: SiteId) =>
       Effect.succeed(Option.some(siteId)),
@@ -212,13 +213,23 @@ function makeHarness(
     }) => Effect.succeed(undefinedValue),
     listOptions: (_organizationId: OrganizationId) =>
       Effect.succeed([] satisfies readonly JobSiteOption[]),
-    listRegions: (_organizationId: OrganizationId) =>
-      Effect.succeed([] satisfies readonly JobRegionOption[]),
     update: (
       _organizationId: OrganizationId,
       _siteId: SiteId,
       _input: unknown
     ) => unexpected("sites.update"),
+  });
+
+  const configurationRepository = ConfigurationRepository.make({
+    createServiceArea: (_input: unknown) =>
+      unexpected("configuration.createServiceArea"),
+    listServiceAreas: (_organizationId: OrganizationId) =>
+      Effect.succeed([] satisfies readonly ServiceArea[]),
+    updateServiceArea: (
+      _organizationId: OrganizationId,
+      _serviceAreaId: typeof serviceAreaId,
+      _input: unknown
+    ) => unexpected("configuration.updateServiceArea"),
   });
 
   const contactsRepository = ContactsRepository.make({
@@ -257,6 +268,7 @@ function makeHarness(
       ),
       Layer.succeed(JobsRepository, jobsRepository),
       Layer.succeed(SitesRepository, sitesRepository),
+      Layer.succeed(ConfigurationRepository, configurationRepository),
       Layer.succeed(ContactsRepository, contactsRepository),
       Layer.succeed(SiteGeocoder, siteGeocoder),
       JobsAuthorization.Default
@@ -319,12 +331,12 @@ describe("sites service", () => {
     ).resolves.toMatchObject({
       id: siteId,
       name: "Docklands Campus",
-      regionId,
+      serviceAreaId,
     });
 
     expect(harness.calls.geocode).toBe(1);
     expect(harness.calls.createSite).toBe(1);
-    expect(harness.calls.ensureRegion).toBe(1);
+    expect(harness.calls.ensureServiceArea).toBe(1);
     expect(harness.calls.getOptionById).toBe(1);
   }, 10_000);
 
@@ -346,17 +358,17 @@ describe("sites service", () => {
     });
     expect(harness.calls.geocode).toBe(0);
     expect(harness.calls.createSite).toBe(0);
-    expect(harness.calls.ensureRegion).toBe(0);
+    expect(harness.calls.ensureServiceArea).toBe(0);
     expect(harness.calls.getOptionById).toBe(0);
   }, 10_000);
 
-  it("validates stale regions before geocoding standalone sites", async () => {
-    const failure = new RegionNotFoundError({
-      message: "Region does not exist in the organization",
+  it("validates stale service areas before geocoding standalone sites", async () => {
+    const failure = new ServiceAreaNotFoundError({
+      message: "Service area does not exist in the organization",
       organizationId: makeActor("owner").organizationId,
-      regionId,
+      serviceAreaId,
     });
-    const harness = makeHarness({ regionFailure: failure });
+    const harness = makeHarness({ serviceAreaFailure: failure });
 
     const exit = await runSitesServiceExit(
       Effect.gen(function* () {
@@ -368,7 +380,7 @@ describe("sites service", () => {
     );
 
     expect(getFailure(exit)).toStrictEqual(failure);
-    expect(harness.calls.ensureRegion).toBe(1);
+    expect(harness.calls.ensureServiceArea).toBe(1);
     expect(harness.calls.geocode).toBe(0);
     expect(harness.calls.createSite).toBe(0);
     expect(harness.calls.getOptionById).toBe(0);
@@ -392,7 +404,7 @@ describe("sites service", () => {
     );
 
     expect(getFailure(exit)).toStrictEqual(failure);
-    expect(harness.calls.ensureRegion).toBe(1);
+    expect(harness.calls.ensureServiceArea).toBe(1);
     expect(harness.calls.geocode).toBe(1);
     expect(harness.calls.createSite).toBe(0);
     expect(harness.calls.getOptionById).toBe(0);

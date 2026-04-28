@@ -32,6 +32,7 @@ import { JobsAuthorization } from "./authorization.js";
 import { CurrentJobsActor } from "./current-jobs-actor.js";
 import {
   ContactsRepository,
+  ConfigurationRepository,
   JobsRepositoriesLive,
   JobsRepository,
   SitesRepository,
@@ -56,6 +57,7 @@ export class JobsService extends Effect.Service<JobsService>()(
     effect: Effect.gen(function* JobsServiceLive() {
       const activityRecorder = yield* JobsActivityRecorder;
       const authorization = yield* JobsAuthorization;
+      const configurationRepository = yield* ConfigurationRepository;
       const contactsRepository = yield* ContactsRepository;
       const currentJobsActor = yield* CurrentJobsActor;
       const jobsRepository = yield* JobsRepository;
@@ -85,9 +87,9 @@ export class JobsService extends Effect.Service<JobsService>()(
         const actor = yield* loadActor();
         yield* authorization.ensureCanView(actor);
 
-        const [members, regions, sites, contacts] = yield* Effect.all([
+        const [members, serviceAreas, sites, contacts] = yield* Effect.all([
           jobsRepository.listMemberOptions(actor.organizationId),
-          sitesRepository.listRegions(actor.organizationId),
+          configurationRepository.listServiceAreas(actor.organizationId),
           sitesRepository.listOptions(actor.organizationId),
           contactsRepository.listOptions(actor.organizationId),
         ]).pipe(Effect.catchTag("SqlError", failJobsStorageError));
@@ -95,7 +97,7 @@ export class JobsService extends Effect.Service<JobsService>()(
         return {
           contacts,
           members,
-          regions,
+          serviceAreas,
           sites,
         } as const;
       });
@@ -108,12 +110,12 @@ export class JobsService extends Effect.Service<JobsService>()(
 
         if (
           input.site?.kind === "create" &&
-          input.site.input.regionId !== undefined
+          input.site.input.serviceAreaId !== undefined
         ) {
           yield* sitesRepository
-            .ensureRegionInOrganization(
+            .ensureServiceAreaInOrganization(
               actor.organizationId,
-              input.site.input.regionId
+              input.site.input.serviceAreaId
             )
             .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
         }
@@ -721,7 +723,7 @@ function resolveCreateSiteId(
     name: input.input.name,
     organizationId,
     longitude: geocodedLocation.longitude,
-    regionId: input.input.regionId,
+    serviceAreaId: input.input.serviceAreaId,
     town: input.input.town,
   });
 }

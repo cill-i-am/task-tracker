@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   OrganizationId,
-  RegionId,
+  ServiceAreaId,
   SiteId,
   UserId,
   WorkItemId,
@@ -14,7 +14,7 @@ import { AppEffectSqlRuntimeLive } from "../../platform/database/database.js";
 import {
   member,
   organization,
-  serviceRegion,
+  serviceArea,
   site,
   user,
   workItem,
@@ -26,9 +26,11 @@ import {
   withPool,
 } from "../../platform/database/test-database.js";
 import {
+  ConfigurationRepository,
   ContactsRepository,
   JobsRepositoriesLive,
   JobsRepository,
+  RateCardsRepository,
   SitesRepository,
   withJobsTransaction,
 } from "./repositories.js";
@@ -61,7 +63,7 @@ describe("jobs repositories integration", () => {
     await applyAllMigrations(databaseUrl);
 
     const identity = await seedIdentityRecords(databaseUrl);
-    const regionId = await insertRegion(
+    const serviceAreaId = await insertServiceArea(
       databaseUrl,
       identity.organizationId,
       "Dublin"
@@ -79,7 +81,7 @@ describe("jobs repositories integration", () => {
         geocodingProvider: "google",
         name: "Docklands Campus",
         organizationId: identity.organizationId,
-        regionId,
+        serviceAreaId,
         latitude: 53.3498,
         longitude: -6.2603,
         town: "Dublin",
@@ -98,7 +100,7 @@ describe("jobs repositories integration", () => {
         longitude: -6.2603,
         name: "Overflow Yard",
         organizationId: identity.organizationId,
-        regionId,
+        serviceAreaId,
         town: "Dublin",
       })
     );
@@ -216,7 +218,8 @@ describe("jobs repositories integration", () => {
       latitude: 53.3498,
       longitude: -6.2603,
       name: "Docklands Campus",
-      regionId,
+      serviceAreaId,
+      serviceAreaName: "Dublin",
       town: "Dublin",
     });
     expect(createdSiteOption?.addressLine2).toBeUndefined();
@@ -271,12 +274,12 @@ describe("jobs repositories integration", () => {
     await applyAllMigrations(databaseUrl);
 
     const identity = await seedIdentityRecords(databaseUrl);
-    const northRegionId = await insertRegion(
+    const northServiceAreaId = await insertServiceArea(
       databaseUrl,
       identity.organizationId,
       "North"
     );
-    const southRegionId = await insertRegion(
+    const southServiceAreaId = await insertServiceArea(
       databaseUrl,
       identity.organizationId,
       "South"
@@ -284,13 +287,13 @@ describe("jobs repositories integration", () => {
     const northSiteId = await insertSite(
       databaseUrl,
       identity.organizationId,
-      northRegionId,
+      northServiceAreaId,
       "North Site"
     );
     const southSiteId = await insertSite(
       databaseUrl,
       identity.organizationId,
-      southRegionId,
+      southServiceAreaId,
       "South Site"
     );
 
@@ -389,9 +392,11 @@ describe("jobs repositories integration", () => {
     ]);
     expect(secondPage.nextCursor).toBeUndefined();
 
-    const byRegion = await runJobsEffect(
+    const byServiceArea = await runJobsEffect(
       databaseUrl,
-      JobsRepository.list(identity.organizationId, { regionId: northRegionId })
+      JobsRepository.list(identity.organizationId, {
+        serviceAreaId: northServiceAreaId,
+      })
     );
     const byAssignee = await runJobsEffect(
       databaseUrl,
@@ -418,7 +423,7 @@ describe("jobs repositories integration", () => {
       JobsRepository.list(identity.organizationId, { status: "blocked" })
     );
 
-    expect(byRegion.items.map((item) => item.id)).toStrictEqual([
+    expect(byServiceArea.items.map((item) => item.id)).toStrictEqual([
       newestJobId,
       oldestJobId,
     ]);
@@ -459,12 +464,12 @@ describe("jobs repositories integration", () => {
 
     const primaryIdentity = await seedIdentityRecords(databaseUrl);
     const foreignIdentity = await seedIdentityRecords(databaseUrl);
-    const primaryRegionId = await insertRegion(
+    const primaryServiceAreaId = await insertServiceArea(
       databaseUrl,
       primaryIdentity.organizationId,
       "Primary"
     );
-    const foreignRegionId = await insertRegion(
+    const foreignServiceAreaId = await insertServiceArea(
       databaseUrl,
       foreignIdentity.organizationId,
       "Foreign"
@@ -480,7 +485,7 @@ describe("jobs repositories integration", () => {
         geocodingProvider: "stub",
         name: "Primary Site",
         organizationId: primaryIdentity.organizationId,
-        regionId: primaryRegionId,
+        serviceAreaId: primaryServiceAreaId,
         latitude: 51.899,
         longitude: -8.475,
       })
@@ -496,7 +501,7 @@ describe("jobs repositories integration", () => {
         geocodingProvider: "stub",
         name: "Foreign Site",
         organizationId: foreignIdentity.organizationId,
-        regionId: foreignRegionId,
+        serviceAreaId: foreignServiceAreaId,
         latitude: 53.2734,
         longitude: -9.0511,
       })
@@ -818,6 +823,128 @@ describe("jobs repositories integration", () => {
 
     expect(jobs.items).toHaveLength(0);
   }, 30_000);
+
+  it("manages service areas and rate cards through configuration repositories", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({ prefix: "jobs_repo" });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping configuration repository coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    const identity = await seedIdentityRecords(databaseUrl);
+
+    const createdServiceArea = await runJobsEffect(
+      databaseUrl,
+      ConfigurationRepository.createServiceArea({
+        description: "City centre jobs",
+        name: "Dublin",
+        organizationId: identity.organizationId,
+      })
+    );
+    const updatedServiceArea = await runJobsEffect(
+      databaseUrl,
+      ConfigurationRepository.updateServiceArea(
+        identity.organizationId,
+        createdServiceArea.id,
+        {
+          description: "Updated city centre jobs",
+          name: "Dublin Central",
+        }
+      )
+    );
+    const serviceAreas = await runJobsEffect(
+      databaseUrl,
+      ConfigurationRepository.listServiceAreas(identity.organizationId)
+    );
+
+    expect(updatedServiceArea).toMatchObject({
+      description: "Updated city centre jobs",
+      id: createdServiceArea.id,
+      name: "Dublin Central",
+    });
+    expect(serviceAreas).toContainEqual(updatedServiceArea);
+
+    const createdRateCard = await runJobsEffect(
+      databaseUrl,
+      RateCardsRepository.create({
+        lines: [
+          {
+            kind: "labour",
+            name: "Engineer",
+            position: 2,
+            unit: "hour",
+            value: 95.5,
+          },
+          {
+            kind: "callout",
+            name: "Standard callout",
+            position: 1,
+            unit: "visit",
+            value: 125,
+          },
+        ],
+        name: "Standard",
+        organizationId: identity.organizationId,
+      })
+    );
+
+    expect(createdRateCard.name).toBe("Standard");
+    expect(createdRateCard.lines.map((line) => line.name)).toStrictEqual([
+      "Standard callout",
+      "Engineer",
+    ]);
+    expect(createdRateCard.lines.map((line) => line.value)).toStrictEqual([
+      125, 95.5,
+    ]);
+
+    const updatedRateCard = await runJobsEffect(
+      databaseUrl,
+      RateCardsRepository.update(identity.organizationId, createdRateCard.id, {
+        lines: [
+          {
+            kind: "material_markup",
+            name: "Filter kit",
+            position: 1,
+            unit: "each",
+            value: 42.25,
+          },
+        ],
+        name: "Standard 2026",
+      })
+    );
+    const rateCards = await runJobsEffect(
+      databaseUrl,
+      RateCardsRepository.list(identity.organizationId)
+    );
+
+    expect(updatedRateCard).toMatchObject({
+      id: createdRateCard.id,
+      name: "Standard 2026",
+    });
+    expect(updatedRateCard.lines).toHaveLength(1);
+    expect(updatedRateCard.lines[0]).toMatchObject({
+      kind: "material_markup",
+      name: "Filter kit",
+      position: 1,
+      rateCardId: createdRateCard.id,
+      unit: "each",
+      value: 42.25,
+    });
+    expect(rateCards).toContainEqual(updatedRateCard);
+  }, 30_000);
 });
 
 async function runJobsEffect<Value, Error, Requirements>(
@@ -925,18 +1052,18 @@ async function seedIdentityRecords(databaseUrl: string) {
   };
 }
 
-async function insertRegion(
+async function insertServiceArea(
   databaseUrl: string,
   organizationId: Schema.Schema.Type<typeof OrganizationId>,
   name: string
 ) {
-  const regionId = decodeRegionId(randomUUID());
+  const serviceAreaId = decodeServiceAreaId(randomUUID());
 
   await withPool(databaseUrl, async (pool) => {
     const db = drizzle(pool);
 
-    await db.insert(serviceRegion).values({
-      id: regionId,
+    await db.insert(serviceArea).values({
+      id: serviceAreaId,
       name,
       organizationId,
       slug: name.toLowerCase(),
@@ -945,13 +1072,13 @@ async function insertRegion(
     });
   });
 
-  return regionId;
+  return serviceAreaId;
 }
 
 async function insertSite(
   databaseUrl: string,
   organizationId: Schema.Schema.Type<typeof OrganizationId>,
-  regionId: Schema.Schema.Type<typeof RegionId>,
+  serviceAreaId: Schema.Schema.Type<typeof ServiceAreaId>,
   name: string
 ) {
   const siteId = decodeSiteId(randomUUID());
@@ -971,7 +1098,7 @@ async function insertSite(
       longitude: -6.2603,
       name,
       organizationId,
-      regionId,
+      serviceAreaId,
       updatedAt: new Date(),
       createdAt: new Date(),
     });
@@ -981,7 +1108,7 @@ async function insertSite(
 }
 
 const decodeOrganizationId = Schema.decodeUnknownSync(OrganizationId);
-const decodeRegionId = Schema.decodeUnknownSync(RegionId);
+const decodeServiceAreaId = Schema.decodeUnknownSync(ServiceAreaId);
 const decodeSiteId = Schema.decodeUnknownSync(SiteId);
 const decodeUserId = Schema.decodeUnknownSync(UserId);
 const decodeWorkItemId = Schema.decodeUnknownSync(WorkItemId);

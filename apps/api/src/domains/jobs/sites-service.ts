@@ -10,6 +10,7 @@ import { mapActorResolutionErrorsToAccessDenied } from "./actor-access.js";
 import { JobsAuthorization } from "./authorization.js";
 import { CurrentJobsActor } from "./current-jobs-actor.js";
 import {
+  ConfigurationRepository,
   JobsRepositoriesLive,
   JobsRepository,
   SitesRepository,
@@ -28,6 +29,7 @@ export class SitesService extends Effect.Service<SitesService>()(
     ],
     effect: Effect.gen(function* SitesServiceLive() {
       const authorization = yield* JobsAuthorization;
+      const configurationRepository = yield* ConfigurationRepository;
       const currentJobsActor = yield* CurrentJobsActor;
       const jobsRepository = yield* JobsRepository;
       const siteGeocoder = yield* SiteGeocoder;
@@ -52,10 +54,16 @@ export class SitesService extends Effect.Service<SitesService>()(
         yield* Effect.annotateCurrentSpan("actorUserId", actor.userId);
         yield* Effect.annotateCurrentSpan("actorRole", actor.role);
 
-        if (input.regionId !== undefined) {
-          yield* Effect.annotateCurrentSpan("regionId", input.regionId);
+        if (input.serviceAreaId !== undefined) {
+          yield* Effect.annotateCurrentSpan(
+            "serviceAreaId",
+            input.serviceAreaId
+          );
           yield* sitesRepository
-            .ensureRegionInOrganization(actor.organizationId, input.regionId)
+            .ensureServiceAreaInOrganization(
+              actor.organizationId,
+              input.serviceAreaId
+            )
             .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
         }
 
@@ -77,7 +85,7 @@ export class SitesService extends Effect.Service<SitesService>()(
                 longitude: geocodedLocation.longitude,
                 name: input.name,
                 organizationId: actor.organizationId,
-                regionId: input.regionId,
+                serviceAreaId: input.serviceAreaId,
                 town: input.town,
               });
               yield* Effect.annotateCurrentSpan("siteId", siteId);
@@ -119,8 +127,17 @@ export class SitesService extends Effect.Service<SitesService>()(
         yield* Effect.annotateCurrentSpan("actorUserId", actor.userId);
         yield* Effect.annotateCurrentSpan("actorRole", actor.role);
 
-        if (input.regionId !== undefined) {
-          yield* Effect.annotateCurrentSpan("regionId", input.regionId);
+        if (input.serviceAreaId !== undefined) {
+          yield* Effect.annotateCurrentSpan(
+            "serviceAreaId",
+            input.serviceAreaId
+          );
+          yield* sitesRepository
+            .ensureServiceAreaInOrganization(
+              actor.organizationId,
+              input.serviceAreaId
+            )
+            .pipe(Effect.catchTag("SqlError", (error) => Effect.die(error)));
         }
 
         const geocodedLocation = yield* siteGeocoder.geocode(input);
@@ -140,7 +157,7 @@ export class SitesService extends Effect.Service<SitesService>()(
                 latitude: geocodedLocation.latitude,
                 longitude: geocodedLocation.longitude,
                 name: input.name,
-                regionId: input.regionId,
+                serviceAreaId: input.serviceAreaId,
                 town: input.town,
               })
               .pipe(Effect.map(Option.getOrUndefined))
@@ -170,13 +187,13 @@ export class SitesService extends Effect.Service<SitesService>()(
         yield* Effect.annotateCurrentSpan("actorUserId", actor.userId);
         yield* Effect.annotateCurrentSpan("actorRole", actor.role);
 
-        const [regions, sites] = yield* Effect.all([
-          sitesRepository.listRegions(actor.organizationId),
+        const [serviceAreas, sites] = yield* Effect.all([
+          configurationRepository.listServiceAreas(actor.organizationId),
           sitesRepository.listOptions(actor.organizationId),
         ]).pipe(Effect.catchTag("SqlError", failSitesStorageError));
 
         return {
-          regions,
+          serviceAreas,
           sites,
         } as const;
       });
