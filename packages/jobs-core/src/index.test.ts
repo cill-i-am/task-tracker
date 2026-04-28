@@ -11,6 +11,7 @@ import {
   JobActivityJobCreatedPayloadSchema,
   JobDetailResponseSchema,
   JobListQuerySchema,
+  JobMemberOptionsResponseSchema,
   JobPrioritySchema,
   JobSiteOptionSchema,
   JobStatusSchema,
@@ -19,6 +20,7 @@ import {
   JobsContextSchema,
   JobTitleSchema,
   OrganizationActivityCursor,
+  OrganizationActivityCursorInvalidError,
   OrganizationActivityListResponseSchema,
   OrganizationActivityQuerySchema,
   PatchJobInputSchema,
@@ -428,6 +430,23 @@ describe("jobs-core", () => {
     });
 
     expect(OrganizationActivityCursor).toBeDefined();
+    expect(
+      ParseResult.decodeUnknownSync(JobMemberOptionsResponseSchema)({
+        members: [
+          {
+            id: "user_123",
+            name: "Ada Lovelace",
+          },
+        ],
+      })
+    ).toStrictEqual({
+      members: [
+        {
+          id: "user_123",
+          name: "Ada Lovelace",
+        },
+      ],
+    });
     expect(() =>
       ParseResult.decodeUnknownSync(OrganizationActivityQuerySchema)({
         limit: "101",
@@ -514,6 +533,7 @@ describe("jobs-core", () => {
     expect(Object.keys(spec.paths)).toStrictEqual([
       "/jobs",
       "/jobs/options",
+      "/jobs/member-options",
       "/activity",
       "/jobs/{workItemId}",
       "/jobs/{workItemId}/transitions",
@@ -528,6 +548,7 @@ describe("jobs-core", () => {
     const listJobs = getOperation("/jobs", "get");
     const createJob = getOperation("/jobs", "post");
     const getJobOptions = getOperation("/jobs/options", "get");
+    const getJobMemberOptions = getOperation("/jobs/member-options", "get");
     const listOrganizationActivity = getOperation("/activity", "get");
     const getJobDetail = getOperation("/jobs/{workItemId}", "get");
     const addJobVisit = getOperation("/jobs/{workItemId}/visits", "post");
@@ -537,6 +558,7 @@ describe("jobs-core", () => {
     expect(listJobs.operationId).toBe("jobs.listJobs");
     expect(createJob.operationId).toBe("jobs.createJob");
     expect(getJobOptions.operationId).toBe("jobs.getJobOptions");
+    expect(getJobMemberOptions.operationId).toBe("jobs.getJobMemberOptions");
     expect(listOrganizationActivity.operationId).toBe(
       "jobs.listOrganizationActivity"
     );
@@ -664,6 +686,15 @@ describe("jobs-core", () => {
       "@task-tracker/jobs-core/SiteGeocodingFailedError"
     );
     expect(geocodingError.country).toBe("IE");
+
+    const activityCursorError = new OrganizationActivityCursorInvalidError({
+      cursor: "bad-cursor",
+      message: "Organization activity cursor is invalid",
+    });
+
+    expect(activityCursorError._tag).toBe(
+      "@task-tracker/jobs-core/OrganizationActivityCursorInvalidError"
+    );
   }, 5000);
 
   it("keeps title schema trimming strict", () => {

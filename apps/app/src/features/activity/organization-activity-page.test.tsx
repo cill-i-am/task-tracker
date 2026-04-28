@@ -69,15 +69,12 @@ describe("organization activity page", () => {
           }}
           onSearchChange={vi.fn<(search: ActivitySearch) => void>()}
           options={{
-            contacts: [],
             members: [
               {
                 id: "user_taylor" as UserIdType,
                 name: "Taylor Owner",
               },
             ],
-            regions: [],
-            sites: [],
           }}
           search={{}}
         />
@@ -114,10 +111,7 @@ describe("organization activity page", () => {
           }}
           onSearchChange={vi.fn<(search: ActivitySearch) => void>()}
           options={{
-            contacts: [],
             members: [],
-            regions: [],
-            sites: [],
           }}
           search={{ eventType: "job_created" }}
         />
@@ -146,10 +140,7 @@ describe("organization activity page", () => {
           }}
           onSearchChange={onSearchChange}
           options={{
-            contacts: [],
             members: [],
-            regions: [],
-            sites: [],
           }}
           search={{}}
         />

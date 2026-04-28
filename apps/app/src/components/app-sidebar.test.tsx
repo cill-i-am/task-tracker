@@ -32,6 +32,21 @@ vi.mock(import("@tanstack/react-router"), async (importActual) => {
       </a>
     )) as typeof actual.Link,
     useNavigate: () => mockedNavigate,
+    useMatch: ((options?: {
+      select?: (match: (typeof mockedMatches.value)[number]) => unknown;
+      shouldThrow?: boolean;
+    }) => {
+      const match = mockedMatches.value.find(
+        (candidate) =>
+          candidate.routeId === "/_app/_org" || candidate.id === "/_app/_org"
+      );
+
+      if (!match && options?.shouldThrow !== false) {
+        throw new Error("Expected route match.");
+      }
+
+      return match && options?.select ? options.select(match) : match;
+    }) as typeof actual.useMatch,
     useMatches: ((options?: {
       select?: (matches: typeof mockedMatches.value) => unknown;
     }) =>

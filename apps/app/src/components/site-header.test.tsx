@@ -9,6 +9,7 @@ const {
   mockedActiveScopes,
   mockedNavigate,
   mockedPathname,
+  mockedRole,
   mockedSearch,
   mockedUseMatches,
 } = vi.hoisted(() => ({
@@ -16,6 +17,9 @@ const {
   mockedNavigate: vi.fn<() => Promise<void>>(),
   mockedPathname: {
     value: "/jobs",
+  },
+  mockedRole: {
+    value: undefined as "owner" | "admin" | "member" | undefined,
   },
   mockedSearch: {
     value: {} as Record<string, unknown>,
@@ -25,6 +29,7 @@ const {
 }));
 
 function setOrgMatches(currentOrganizationRole?: "owner" | "admin" | "member") {
+  mockedRole.value = currentOrganizationRole;
   mockedUseMatches.mockImplementation(({ select }) =>
     select([
       { id: "__root__", staticData: {} },
@@ -64,6 +69,24 @@ vi.mock(import("@tanstack/react-router"), async (importActual) => {
         {children}
       </a>
     )) as typeof actual.Link,
+    useMatch: ((options?: {
+      select?: (match: {
+        context: { currentOrganizationRole?: "owner" | "admin" | "member" };
+        id?: string;
+        routeId?: string;
+      }) => unknown;
+      shouldThrow?: boolean;
+    }) => {
+      const match = {
+        context: {
+          currentOrganizationRole: mockedRole.value,
+        },
+        id: "/_app/_org",
+        routeId: "/_app/_org",
+      };
+
+      return options?.select ? options.select(match) : match;
+    }) as typeof actual.useMatch,
     useNavigate: () => mockedNavigate,
     useMatches: mockedUseMatches as typeof actual.useMatches,
     useRouterState: ((options?: {

@@ -336,6 +336,18 @@ export const workItemActivity = pgTable(
       table.createdAt.desc(),
       table.id.desc()
     ),
+    index("work_item_activity_organization_actor_created_at_idx").on(
+      table.organizationId,
+      table.actorUserId,
+      table.createdAt.desc(),
+      table.id.desc()
+    ),
+    index("work_item_activity_organization_event_created_at_idx").on(
+      table.organizationId,
+      table.eventType,
+      table.createdAt.desc(),
+      table.id.desc()
+    ),
   ]
 );
 

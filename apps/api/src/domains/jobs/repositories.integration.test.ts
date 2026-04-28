@@ -684,11 +684,11 @@ describe("jobs repositories integration", () => {
     ]);
     expectFailureTag(
       malformedCursorExit,
-      "@task-tracker/jobs-core/JobListCursorInvalidError"
+      "@task-tracker/jobs-core/OrganizationActivityCursorInvalidError"
     );
     expectFailureTag(
       nonUuidCursorExit,
-      "@task-tracker/jobs-core/JobListCursorInvalidError"
+      "@task-tracker/jobs-core/OrganizationActivityCursorInvalidError"
     );
   }, 30_000);
 

@@ -478,6 +478,13 @@ export type JobOptionsResponse = Schema.Schema.Type<
   typeof JobOptionsResponseSchema
 >;
 
+export const JobMemberOptionsResponseSchema = Schema.Struct({
+  members: Schema.Array(JobMemberOptionSchema),
+});
+export type JobMemberOptionsResponse = Schema.Schema.Type<
+  typeof JobMemberOptionsResponseSchema
+>;
+
 export const SitesOptionsResponseSchema = Schema.Struct({
   regions: Schema.Array(JobRegionOptionSchema),
   sites: Schema.Array(JobSiteOptionSchema),

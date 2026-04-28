@@ -17,6 +17,7 @@ import type {
   CreateJobInput,
   CreateJobSiteInput,
   Job,
+  JobMemberOptionsResponse,
   JobListQuery,
   OrganizationActivityQuery,
   OrganizationIdType as OrganizationId,
@@ -100,6 +101,21 @@ export class JobsService extends Effect.Service<JobsService>()(
           sites,
         } as const;
       });
+
+      const getMemberOptions = Effect.fn("JobsService.getMemberOptions")(
+        function* () {
+          const actor = yield* loadActor();
+          yield* authorization.ensureCanView(actor);
+
+          const members = yield* jobsRepository
+            .listMemberOptions(actor.organizationId)
+            .pipe(Effect.catchTag("SqlError", failJobsStorageError));
+
+          return {
+            members,
+          } satisfies JobMemberOptionsResponse;
+        }
+      );
 
       const listOrganizationActivity = Effect.fn(
         "JobsService.listOrganizationActivity"
@@ -625,6 +641,7 @@ export class JobsService extends Effect.Service<JobsService>()(
         addVisit,
         create,
         getDetail,
+        getMemberOptions,
         getOptions,
         list,
         listOrganizationActivity,

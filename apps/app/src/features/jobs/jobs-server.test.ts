@@ -3,6 +3,7 @@
 
 import type {
   ActivityIdType,
+  JobMemberOptionsResponse,
   JobListResponse,
   JobOptionsResponse,
   OrganizationActivityListResponse,
@@ -14,6 +15,7 @@ import { JOBS_REQUEST_ERROR_TAG } from "./jobs-errors";
 import {
   listAllCurrentServerJobsDirect as listAllCurrentServerJobs,
   getCurrentServerJobDetailDirect as getCurrentServerJobDetail,
+  getCurrentServerJobMemberOptionsDirect as getCurrentServerJobMemberOptions,
   getCurrentServerJobOptionsDirect as getCurrentServerJobOptions,
   listCurrentServerOrganizationActivityDirect as listCurrentServerOrganizationActivity,
   listCurrentServerJobsDirect as listCurrentServerJobs,
@@ -51,6 +53,10 @@ const optionsResponse: JobOptionsResponse = {
   ],
   regions: [],
   sites: [],
+};
+
+const memberOptionsResponse: JobMemberOptionsResponse = {
+  members: optionsResponse.members,
 };
 
 const organizationActivityResponse: OrganizationActivityListResponse = {
@@ -219,6 +225,29 @@ describe("server jobs helpers", () => {
     const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
 
     expect(String(url)).toBe("http://tt-sbx-api:4301/jobs/options");
+    expect(requestInit?.method).toBe("GET");
+    expect(requestInit?.headers).toMatchObject({
+      cookie: "better-auth.session_token=session-token",
+    });
+  }, 1000);
+
+  it("forwards the current auth cookie when reading job member options", async () => {
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cookie" ? "better-auth.session_token=session-token" : undefined
+    );
+    process.env.API_ORIGIN = "http://tt-sbx-api:4301";
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json(memberOptionsResponse));
+
+    await expect(getCurrentServerJobMemberOptions()).resolves.toStrictEqual(
+      memberOptionsResponse
+    );
+
+    const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
+
+    expect(String(url)).toBe("http://tt-sbx-api:4301/jobs/member-options");
     expect(requestInit?.method).toBe("GET");
     expect(requestInit?.headers).toMatchObject({
       cookie: "better-auth.session_token=session-token",

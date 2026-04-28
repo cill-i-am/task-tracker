@@ -7,20 +7,20 @@ import type { OrganizationActivityQuery } from "@task-tracker/jobs-core";
 type ActivityLookupMock = (
   query?: OrganizationActivityQuery
 ) => Promise<unknown>;
-type JobOptionsLookupMock = () => Promise<unknown>;
+type JobMemberOptionsLookupMock = () => Promise<unknown>;
 
 const organizationId = decodeOrganizationId("org_123");
 
 const {
-  mockedGetCurrentServerJobOptions,
+  mockedGetCurrentServerJobMemberOptions,
   mockedListCurrentServerOrganizationActivity,
 } = vi.hoisted(() => ({
-  mockedGetCurrentServerJobOptions: vi.fn<JobOptionsLookupMock>(),
+  mockedGetCurrentServerJobMemberOptions: vi.fn<JobMemberOptionsLookupMock>(),
   mockedListCurrentServerOrganizationActivity: vi.fn<ActivityLookupMock>(),
 }));
 
 vi.mock("#/features/jobs/jobs-server", () => ({
-  getCurrentServerJobOptions: mockedGetCurrentServerJobOptions,
+  getCurrentServerJobMemberOptions: mockedGetCurrentServerJobMemberOptions,
   listCurrentServerOrganizationActivity:
     mockedListCurrentServerOrganizationActivity,
 }));
@@ -41,13 +41,10 @@ describe("activity route loader", () => {
         nextCursor: undefined,
       };
       const options = {
-        contacts: [],
         members: [],
-        regions: [],
-        sites: [],
       };
       mockedListCurrentServerOrganizationActivity.mockResolvedValue(activity);
-      mockedGetCurrentServerJobOptions.mockResolvedValue(options);
+      mockedGetCurrentServerJobMemberOptions.mockResolvedValue(options);
 
       const { decodeActivitySearch, loadActivityRouteData } =
         await import("./_app._org.activity");
@@ -78,7 +75,7 @@ describe("activity route loader", () => {
       expect(mockedListCurrentServerOrganizationActivity).toHaveBeenCalledWith(
         search
       );
-      expect(mockedGetCurrentServerJobOptions).toHaveBeenCalledOnce();
+      expect(mockedGetCurrentServerJobMemberOptions).toHaveBeenCalledOnce();
     }
   );
 
@@ -108,7 +105,7 @@ describe("activity route loader", () => {
       expect(
         mockedListCurrentServerOrganizationActivity
       ).not.toHaveBeenCalled();
-      expect(mockedGetCurrentServerJobOptions).not.toHaveBeenCalled();
+      expect(mockedGetCurrentServerJobMemberOptions).not.toHaveBeenCalled();
     }
   );
 
@@ -137,16 +134,13 @@ describe("activity route loader", () => {
           nextCursor: undefined,
         },
         options: {
-          contacts: [],
           members: [],
-          regions: [],
-          sites: [],
         },
       });
       expect(
         mockedListCurrentServerOrganizationActivity
       ).not.toHaveBeenCalled();
-      expect(mockedGetCurrentServerJobOptions).not.toHaveBeenCalled();
+      expect(mockedGetCurrentServerJobMemberOptions).not.toHaveBeenCalled();
     }
   );
 

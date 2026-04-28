@@ -2,7 +2,7 @@
 
 import { Link } from "@tanstack/react-router";
 import type {
-  JobOptionsResponse,
+  JobMemberOptionsResponse,
   OrganizationActivityListResponse,
   JobActivityEventType,
 } from "@task-tracker/jobs-core";
@@ -50,7 +50,7 @@ export function OrganizationActivityPage({
   search,
 }: {
   readonly activity: OrganizationActivityListResponse;
-  readonly options: JobOptionsResponse;
+  readonly options: JobMemberOptionsResponse;
   readonly search: ActivitySearch;
   readonly onSearchChange: (search: ActivitySearch) => void;
 }) {
@@ -128,7 +128,7 @@ function ActivityFilters({
   options,
   search,
 }: {
-  readonly options: JobOptionsResponse;
+  readonly options: JobMemberOptionsResponse;
   readonly search: ActivitySearch;
   readonly onSearchChange: (search: ActivitySearch) => void;
 }) {

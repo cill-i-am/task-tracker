@@ -4,7 +4,7 @@ import type {
   OrganizationRole,
 } from "@task-tracker/identity-core";
 import type {
-  JobOptionsResponse,
+  JobMemberOptionsResponse,
   OrganizationActivityListResponse,
 } from "@task-tracker/jobs-core";
 
@@ -15,7 +15,7 @@ import {
 import type { ActivitySearch } from "#/features/activity/activity-search";
 import { OrganizationActivityPage } from "#/features/activity/organization-activity-page";
 import {
-  getCurrentServerJobOptions,
+  getCurrentServerJobMemberOptions,
   listCurrentServerOrganizationActivity,
 } from "#/features/jobs/jobs-server";
 import type { ActiveOrganizationSync } from "#/features/organizations/organization-access";
@@ -28,11 +28,8 @@ const EMPTY_ACTIVITY: OrganizationActivityListResponse = {
   nextCursor: undefined,
 };
 
-const EMPTY_OPTIONS: JobOptionsResponse = {
-  contacts: [],
+const EMPTY_OPTIONS: JobMemberOptionsResponse = {
   members: [],
-  regions: [],
-  sites: [],
 };
 
 interface ActivityRouteOrganizationAccess {
@@ -62,7 +59,7 @@ export async function loadActivityRouteData(
 
   const [activity, options] = await Promise.all([
     listCurrentServerOrganizationActivity(toOrganizationActivityQuery(search)),
-    getCurrentServerJobOptions(),
+    getCurrentServerJobMemberOptions(),
   ]);
 
   return {

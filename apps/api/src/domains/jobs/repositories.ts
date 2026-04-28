@@ -15,6 +15,7 @@ import {
   JobListCursorInvalidError,
   JobListItemSchema,
   JobMemberOptionSchema,
+  OrganizationActivityCursorInvalidError,
   JobRegionOptionSchema,
   JobListResponseSchema,
   JobNotFoundError,
@@ -629,7 +630,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           const cursor = yield* Effect.try({
             try: () => decodeOrganizationActivityCursorValue(encodedCursor),
             catch: () =>
-              new JobListCursorInvalidError({
+              new OrganizationActivityCursorInvalidError({
                 cursor: encodedCursor,
                 message: "Organization activity cursor is invalid",
               }),
