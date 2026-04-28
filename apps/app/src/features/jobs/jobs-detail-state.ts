@@ -7,8 +7,12 @@ import type {
   AddJobCommentResponse,
   AddJobVisitInput,
   AddJobVisitResponse,
+  AssignJobLabelInput,
+  CreateJobLabelInput,
   Job,
   JobDetailResponse,
+  JobLabel,
+  JobLabelIdType,
   PatchJobInput,
   PatchJobResponse,
   TransitionJobInput,
@@ -19,7 +23,11 @@ import { Effect, Option } from "effect";
 
 import { runBrowserJobsRequest } from "./jobs-client";
 import type { AppJobsError } from "./jobs-errors";
-import { jobsListStateAtom, upsertJobListItem } from "./jobs-state";
+import {
+  jobsListStateAtom,
+  jobsOptionsStateAtom,
+  upsertJobListItem,
+} from "./jobs-state";
 
 export const jobDetailStateAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) => {
@@ -105,6 +113,47 @@ export const addJobVisitMutationAtomFamily = Atom.family(
     )
 );
 
+export const assignJobLabelMutationAtomFamily = Atom.family(
+  (workItemId: WorkItemIdType) =>
+    Atom.fn<AppJobsError, JobDetailResponse, AssignJobLabelInput>(
+      (input, get) =>
+        assignBrowserJobLabel(workItemId, input).pipe(
+          Effect.tap((detail) =>
+            Effect.sync(() => syncChangedJobDetail(get, workItemId, detail))
+          )
+        )
+    )
+);
+
+export const createAndAssignJobLabelMutationAtomFamily = Atom.family(
+  (workItemId: WorkItemIdType) =>
+    Atom.fn<AppJobsError, JobDetailResponse, CreateJobLabelInput>(
+      (input, get) =>
+        createBrowserJobLabel(input).pipe(
+          Effect.tap((label) =>
+            Effect.sync(() => upsertJobOptionLabel(get, label))
+          ),
+          Effect.flatMap((label) =>
+            assignBrowserJobLabel(workItemId, { labelId: label.id })
+          ),
+          Effect.tap((detail) =>
+            Effect.sync(() => syncChangedJobDetail(get, workItemId, detail))
+          )
+        )
+    )
+);
+
+export const removeJobLabelMutationAtomFamily = Atom.family(
+  (workItemId: WorkItemIdType) =>
+    Atom.fn<AppJobsError, JobDetailResponse, JobLabelIdType>((labelId, get) =>
+      removeBrowserJobLabel(workItemId, labelId).pipe(
+        Effect.tap((detail) =>
+          Effect.sync(() => syncChangedJobDetail(get, workItemId, detail))
+        )
+      )
+    )
+);
+
 function getBrowserJobDetail(workItemId: WorkItemIdType) {
   return runBrowserJobsRequest("JobsBrowser.getJobDetail", (client) =>
     client.jobs.getJobDetail({
@@ -166,6 +215,37 @@ function addBrowserJobVisit(
   );
 }
 
+function assignBrowserJobLabel(
+  workItemId: WorkItemIdType,
+  input: AssignJobLabelInput
+) {
+  return runBrowserJobsRequest("JobsBrowser.assignJobLabel", (client) =>
+    client.jobs.assignJobLabel({
+      path: { workItemId },
+      payload: input,
+    })
+  );
+}
+
+function createBrowserJobLabel(input: CreateJobLabelInput) {
+  return runBrowserJobsRequest("JobsBrowser.createJobLabel", (client) =>
+    client.jobs.createJobLabel({
+      payload: input,
+    })
+  );
+}
+
+function removeBrowserJobLabel(
+  workItemId: WorkItemIdType,
+  labelId: JobLabelIdType
+) {
+  return runBrowserJobsRequest("JobsBrowser.removeJobLabel", (client) =>
+    client.jobs.removeJobLabel({
+      path: { labelId, workItemId },
+    })
+  );
+}
+
 function syncChangedJob(
   get: Atom.FnContext,
   workItemId: WorkItemIdType,
@@ -206,6 +286,39 @@ function updateJobsListJob(get: Atom.FnContext, job: Job) {
     nextCursor: currentListState.nextCursor,
     organizationId: currentListState.organizationId,
   });
+}
+
+function syncChangedJobDetail(
+  get: Atom.FnContext,
+  workItemId: WorkItemIdType,
+  detail: JobDetailResponse
+) {
+  get.set(jobDetailStateAtomFamily(workItemId), detail);
+  updateJobsListJob(get, detail.job);
+}
+
+function upsertJobOptionLabel(get: Atom.FnContext, label: JobLabel) {
+  const currentOptionsState = get(jobsOptionsStateAtom);
+  const labels = [
+    label,
+    ...currentOptionsState.data.labels.filter(
+      (current) => current.id !== label.id
+    ),
+  ].sort(compareJobLabels);
+
+  get.set(jobsOptionsStateAtom, {
+    data: {
+      ...currentOptionsState.data,
+      labels,
+    },
+    organizationId: currentOptionsState.organizationId,
+  });
+}
+
+function compareJobLabels(left: JobLabel, right: JobLabel) {
+  const nameOrder = left.name.localeCompare(right.name);
+
+  return nameOrder === 0 ? left.id.localeCompare(right.id) : nameOrder;
 }
 
 function refreshJobDetailIfPossible(
