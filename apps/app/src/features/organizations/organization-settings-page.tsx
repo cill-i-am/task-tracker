@@ -672,7 +672,7 @@ function compareJobLabels(left: JobLabel, right: JobLabel) {
 }
 
 function normalizeJobLabelName(name: string) {
-  return name.trim().toLocaleLowerCase();
+  return name.trim().replaceAll(/\s+/g, " ").toLocaleLowerCase("en");
 }
 
 function getJobLabelsKey(labels: readonly JobLabel[]) {

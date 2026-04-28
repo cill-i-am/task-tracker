@@ -285,6 +285,29 @@ describe("organization settings page", () => {
     expect(mockedRunBrowserJobsRequest).not.toHaveBeenCalled();
   }, 10_000);
 
+  it("matches server whitespace normalization when checking duplicate label names", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <OrganizationSettingsPage
+        organization={{
+          id: organizationId,
+          name: "Acme Field Ops",
+          slug: "acme-field-ops",
+        }}
+        jobLabels={[buildLabel({ id: urgentLabelId, name: "Waiting on PO" })]}
+      />
+    );
+
+    await user.type(screen.getByLabelText("New label name"), "Waiting  on PO");
+    await user.click(screen.getByRole("button", { name: "Create label" }));
+
+    expect(
+      screen.getByText("A label with that name already exists.")
+    ).toBeVisible();
+    expect(mockedRunBrowserJobsRequest).not.toHaveBeenCalled();
+  }, 10_000);
+
   it("shows a safe error when a job label mutation fails", async () => {
     mockedRunBrowserJobsRequest.mockReturnValueOnce(
       Effect.fail(new Error("conflict"))
