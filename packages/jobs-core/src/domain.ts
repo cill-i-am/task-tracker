@@ -139,10 +139,15 @@ export type JobCostLineDescription = Schema.Schema.Type<
 >;
 
 export const JobCostLineQuantitySchema = Schema.Number.pipe(
-  Schema.positive(),
-  Schema.filter((value) => Number.isFinite(value)),
+  Schema.filter(
+    (value) =>
+      value > 0 &&
+      Number.isFinite(value) &&
+      /^\d+(?:\.\d{1,2})?$/.test(String(value))
+  ),
   Schema.annotations({
-    message: () => "Expected a positive finite quantity",
+    message: () =>
+      "Expected a positive finite quantity with at most two decimal places",
   })
 );
 export type JobCostLineQuantity = Schema.Schema.Type<

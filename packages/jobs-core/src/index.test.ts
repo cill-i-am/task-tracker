@@ -373,14 +373,14 @@ describe("jobs-core", () => {
     expect(
       decode({
         description: "Install replacement valve",
-        quantity: 1.5,
+        quantity: 1.23,
         taxRateBasisPoints: 2300,
         type: "labour",
         unitPriceMinor: 6500,
       })
     ).toStrictEqual({
       description: "Install replacement valve",
-      quantity: 1.5,
+      quantity: 1.23,
       taxRateBasisPoints: 2300,
       type: "labour",
       unitPriceMinor: 6500,
@@ -413,6 +413,15 @@ describe("jobs-core", () => {
         unitPriceMinor: 6500,
       })
     ).toThrow(/positive finite quantity/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1.234,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/at most two decimal places/);
 
     expect(() =>
       decode({

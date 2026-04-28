@@ -9,6 +9,7 @@ import {
   JobActivitySchema,
   JobCommentSchema,
   JobCostLineSchema,
+  JobCostLineQuantitySchema,
   JobContactOptionSchema,
   JobDetailSchema,
   JobListCursor as JobListCursorSchema,
@@ -299,6 +300,9 @@ const decodeContactId = Schema.decodeUnknownSync(ContactIdSchema);
 const decodeOrganizationId = Schema.decodeUnknownSync(OrganizationIdSchema);
 const decodeJobComment = Schema.decodeUnknownSync(JobCommentSchema);
 const decodeJobCostLine = Schema.decodeUnknownSync(JobCostLineSchema);
+const decodeJobCostLineQuantity = Schema.decodeUnknownSync(
+  JobCostLineQuantitySchema
+);
 const decodeJobDetail = Schema.decodeUnknownSync(JobDetailSchema);
 const decodeJobListCursor = Schema.decodeUnknownSync(JobListCursorSchema);
 const decodeJobListItem = Schema.decodeUnknownSync(JobListItemSchema);
@@ -984,7 +988,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
               description: input.description,
               id: generateCostLineId(),
               organization_id: input.organizationId,
-              quantity: input.quantity.toFixed(2),
+              quantity: String(decodeJobCostLineQuantity(input.quantity)),
               tax_rate_basis_points: input.taxRateBasisPoints ?? null,
               type: input.type,
               unit_price_minor: input.unitPriceMinor,
