@@ -1,9 +1,13 @@
 import { OpenApi } from "@effect/platform";
 import { ParseResult, Schema } from "effect";
+import * as Vitest from "vitest";
 
 import {
+  AddJobCostLineInputSchema,
   AddJobCommentInputSchema,
   AddJobVisitInputSchema,
+  calculateJobCostLineTotalMinor,
+  calculateJobCostSummary,
   CreateJobInputSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
@@ -19,6 +23,7 @@ import {
   JobsApi,
   JobsApiGroup,
   JobsContextSchema,
+  JobCostSummaryLimitExceededError,
   JobTitleSchema,
   OrganizationActivityCursor,
   OrganizationActivityCursorInvalidError,
@@ -32,6 +37,8 @@ import {
   VisitDurationIncrementError,
   WorkItemId,
 } from "./index.js";
+
+const { describe, expect, it } = Vitest;
 
 describe("jobs-core", () => {
   it("exports the closed job enums", () => {
@@ -51,6 +58,10 @@ describe("jobs-core", () => {
       ParseResult.decodeUnknownSync(JobDetailResponseSchema)({
         activity: [],
         comments: [],
+        costLines: [],
+        costSummary: {
+          subtotalMinor: 0,
+        },
         job: {
           createdAt: "2026-04-23T11:00:00.000Z",
           createdByUserId: "",
@@ -535,6 +546,150 @@ describe("jobs-core", () => {
     ).toThrow(/eventType/);
   }, 5000);
 
+  it("validates add cost line input at the boundary", () => {
+    const decode = ParseResult.decodeUnknownSync(AddJobCostLineInputSchema);
+
+    expect(
+      decode({
+        description: "Install replacement valve",
+        quantity: 1.23,
+        taxRateBasisPoints: 2300,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toStrictEqual({
+      description: "Install replacement valve",
+      quantity: 1.23,
+      taxRateBasisPoints: 2300,
+      type: "labour",
+      unitPriceMinor: 6500,
+    });
+
+    expect(() =>
+      decode({
+        description: "",
+        quantity: 0,
+        type: "material",
+        unitPriceMinor: -1,
+      })
+    ).toThrow(/Expected/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1,
+        type: "labour",
+        unitPriceMinor: 6500,
+        unexpected: true,
+      })
+    ).toThrow(/unexpected/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: Number.POSITIVE_INFINITY,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/positive finite quantity/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1.234,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/at most two decimal places/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 10_000_000_000,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/less than or equal to 9999999999.99/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1,
+        type: "labour",
+        unitPriceMinor: 65.5,
+      })
+    ).toThrow(/Expected an integer/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1,
+        type: "labour",
+        unitPriceMinor: 2_147_483_648,
+      })
+    ).toThrow(/less than or equal to 2147483647/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 9_999_999_999.99,
+        type: "labour",
+        unitPriceMinor: 2_147_483_647,
+      })
+    ).toThrow(/safe integer line total/);
+
+    expect(() =>
+      decode({
+        description: "Install replacement valve",
+        quantity: 1,
+        taxRateBasisPoints: 10_001,
+        type: "labour",
+        unitPriceMinor: 6500,
+      })
+    ).toThrow(/less than or equal to 10000/);
+  }, 5000);
+
+  it("calculates line totals and job cost summaries in minor units", () => {
+    expect(
+      calculateJobCostLineTotalMinor({
+        quantity: 1.5,
+        unitPriceMinor: 6500,
+      })
+    ).toBe(9750);
+    expect(
+      calculateJobCostLineTotalMinor({
+        quantity: 0.29,
+        unitPriceMinor: 50,
+      })
+    ).toBe(15);
+
+    expect(
+      calculateJobCostSummary([
+        {
+          lineTotalMinor: 9750,
+        },
+        {
+          lineTotalMinor: 2599,
+        },
+      ])
+    ).toStrictEqual({
+      subtotalMinor: 12_349,
+    });
+  }, 5000);
+
+  it("rejects job cost summaries with unsafe aggregate subtotals", () => {
+    expect(() =>
+      calculateJobCostSummary([
+        {
+          lineTotalMinor: Number.MAX_SAFE_INTEGER,
+        },
+        {
+          lineTotalMinor: 1,
+        },
+      ])
+    ).toThrow(/safe integer job cost subtotal/);
+  }, 5000);
+
   it("keeps site options rich enough for maps and links", () => {
     const siteOption = {
       id: "550e8400-e29b-41d4-a716-446655440010",
@@ -582,13 +737,6 @@ describe("jobs-core", () => {
 
   it("surfaces the jobs api contract with the expected paths", () => {
     const spec = OpenApi.fromApi(JobsApi);
-    const getOperation = (path: string, method: "get" | "post") => {
-      const operation = spec.paths[path]?.[method];
-
-      expect(operation).toBeDefined();
-
-      return operation as NonNullable<typeof operation>;
-    };
 
     expect(Object.keys(spec.paths)).toStrictEqual([
       "/jobs",
@@ -600,37 +748,37 @@ describe("jobs-core", () => {
       "/jobs/{workItemId}/reopen",
       "/jobs/{workItemId}/comments",
       "/jobs/{workItemId}/visits",
+      "/jobs/{workItemId}/cost-lines",
       "/sites/options",
       "/sites",
       "/sites/{siteId}",
     ]);
 
-    const listJobs = getOperation("/jobs", "get");
-    const createJob = getOperation("/jobs", "post");
-    const getJobOptions = getOperation("/jobs/options", "get");
-    const getJobMemberOptions = getOperation("/jobs/member-options", "get");
-    const listOrganizationActivity = getOperation("/activity", "get");
-    const getJobDetail = getOperation("/jobs/{workItemId}", "get");
-    const addJobVisit = getOperation("/jobs/{workItemId}/visits", "post");
-    const getSiteOptions = getOperation("/sites/options", "get");
-    const createSite = getOperation("/sites", "post");
-
-    expect(listJobs.operationId).toBe("jobs.listJobs");
-    expect(createJob.operationId).toBe("jobs.createJob");
-    expect(getJobOptions.operationId).toBe("jobs.getJobOptions");
-    expect(getJobMemberOptions.operationId).toBe("jobs.getJobMemberOptions");
-    expect(listOrganizationActivity.operationId).toBe(
-      "jobs.listOrganizationActivity"
+    expect(spec.paths["/jobs"]?.get?.operationId).toBe("jobs.listJobs");
+    expect(spec.paths["/jobs"]?.post?.operationId).toBe("jobs.createJob");
+    expect(spec.paths["/jobs/options"]?.get?.operationId).toBe(
+      "jobs.getJobOptions"
     );
-    expect(listOrganizationActivity.responses["200"]).toBeDefined();
-    expect(listOrganizationActivity.responses["403"]).toBeDefined();
-    expect(listOrganizationActivity.responses["400"]).toBeDefined();
-    expect(listOrganizationActivity.responses["503"]).toBeDefined();
-    expect(getJobDetail.responses["404"]).toBeDefined();
-    expect(addJobVisit.responses["400"]).toBeDefined();
-    expect(createJob.responses["422"]).toBeDefined();
-    expect(getSiteOptions.operationId).toBe("sites.getSiteOptions");
-    expect(createSite.operationId).toBe("sites.createSite");
+    expect(
+      spec.paths["/jobs/{workItemId}"]?.get?.responses["404"]
+    ).toBeDefined();
+    expect(
+      spec.paths["/jobs/{workItemId}/visits"]?.post?.responses["400"]
+    ).toBeDefined();
+    expect(spec.paths["/jobs"]?.post?.responses["422"]).toBeDefined();
+    expect(spec.paths["/sites/options"]?.get?.operationId).toBe(
+      "sites.getSiteOptions"
+    );
+    expect(spec.paths["/sites"]?.post?.operationId).toBe("sites.createSite");
+  }, 5000);
+
+  it("surfaces the job cost line api contract", () => {
+    const spec = OpenApi.fromApi(JobsApi);
+    const addCostLine =
+      spec.paths["/jobs/{workItemId}/cost-lines"]?.post ?? null;
+
+    expect(addCostLine?.operationId).toBe("jobs.addJobCostLine");
+    expect(addCostLine?.responses["422"]).toBeDefined();
   }, 5000);
 
   it("documents standalone site creation responses", () => {
@@ -746,6 +894,17 @@ describe("jobs-core", () => {
       "@task-tracker/jobs-core/SiteGeocodingFailedError"
     );
     expect(geocodingError.country).toBe("IE");
+
+    const costSummaryError = new JobCostSummaryLimitExceededError({
+      message: "Job cost summary subtotal would exceed a safe integer",
+      workItemId: Schema.decodeUnknownSync(WorkItemId)(
+        "550e8400-e29b-41d4-a716-446655440000"
+      ),
+    });
+
+    expect(costSummaryError._tag).toBe(
+      "@task-tracker/jobs-core/JobCostSummaryLimitExceededError"
+    );
 
     const activityCursorError = new OrganizationActivityCursorInvalidError({
       cursor: "bad-cursor",

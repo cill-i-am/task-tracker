@@ -1,6 +1,6 @@
 {
-  "id": "5200b093-019a-4239-ae79-01d046c51c8d",
-  "prevId": "12b163f0-a9df-4c34-ae90-5c2d284353ac",
+  "id": "7e3abb3b-f45f-4949-833c-2574afbd9346",
+  "prevId": "5200b093-019a-4239-ae79-01d046c51c8d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1648,6 +1648,22 @@
           "method": "btree",
           "with": {}
         },
+        "work_items_title_trgm_idx": {
+          "name": "work_items_title_trgm_idx",
+          "columns": [
+            {
+              "expression": "title",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "gin_trgm_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
         "work_items_id_organization_id_idx": {
           "name": "work_items_id_organization_id_idx",
           "columns": [
@@ -1851,6 +1867,72 @@
           "columns": [
             {
               "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "work_item_activity_organization_actor_created_at_idx": {
+          "name": "work_item_activity_organization_actor_created_at_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "actor_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "work_item_activity_organization_event_created_at_idx": {
+          "name": "work_item_activity_organization_event_created_at_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "event_type",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

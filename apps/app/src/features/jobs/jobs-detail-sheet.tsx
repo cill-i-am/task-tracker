@@ -41,12 +41,6 @@ import {
   DrawerTitle,
 } from "#/components/ui/drawer";
 import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "#/components/ui/empty";
-import {
   Field,
   FieldContent,
   FieldDescription,
@@ -67,8 +61,11 @@ import {
   JOB_PRIORITY_LABELS as PRIORITY_LABELS,
   JOB_STATUS_LABELS as STATUS_LABELS,
 } from "./job-display";
+import { JobCostsSection } from "./jobs-detail-costs-section";
 import { JobsDetailLocation } from "./jobs-detail-location";
+import { DetailEmpty, DetailSection } from "./jobs-detail-section";
 import {
+  addJobCostLineMutationAtomFamily,
   addJobCommentMutationAtomFamily,
   addJobVisitMutationAtomFamily,
   jobDetailStateAtomFamily,
@@ -129,6 +126,9 @@ export function JobsDetailSheet({
     addJobCommentMutationAtomFamily(workItemId)
   );
   const visitResult = useAtomValue(addJobVisitMutationAtomFamily(workItemId));
+  const costLineResult = useAtomValue(
+    addJobCostLineMutationAtomFamily(workItemId)
+  );
   const transitionJob = useAtomSet(
     transitionJobMutationAtomFamily(workItemId),
     {
@@ -150,12 +150,19 @@ export function JobsDetailSheet({
   const addJobVisit = useAtomSet(addJobVisitMutationAtomFamily(workItemId), {
     mode: "promiseExit",
   });
+  const addJobCostLine = useAtomSet(
+    addJobCostLineMutationAtomFamily(workItemId),
+    {
+      mode: "promiseExit",
+    }
+  );
   const hasAssignmentAccess = hasAssignedJobAccess(
     viewer,
     detail.job.assigneeId
   );
   const canEditJob = hasAssignmentAccess || hasJobsElevatedAccess(viewer.role);
   const canAddVisit = hasAssignmentAccess;
+  const canAddCostLine = hasAssignmentAccess;
   const canReopen = hasAssignmentAccess;
   const transitionOptions = getAvailableJobTransitions(viewer, detail.job);
   const transitionSelectionGroups =
@@ -794,6 +801,15 @@ export function JobsDetailSheet({
               </div>
             </DetailSection>
 
+            <JobCostsSection
+              addJobCostLine={addJobCostLine}
+              canAddCostLine={canAddCostLine}
+              detail={detail}
+              mutationError={renderMutationError(costLineResult)}
+              waiting={costLineResult.waiting}
+              workItemId={workItemId}
+            />
+
             <DetailSection
               title="Visits"
               description="Log the site visits that explain the real effort behind the work."
@@ -1002,47 +1018,6 @@ export function JobsDetailSheet({
         </div>
       </DrawerContent>
     </ResponsiveDrawer>
-  );
-}
-
-function DetailSection({
-  children,
-  description,
-  title,
-}: {
-  readonly children: React.ReactNode;
-  readonly description: string;
-  readonly title: string;
-}) {
-  return (
-    <section className="border-b py-5 last:border-b-0">
-      <div className="grid gap-4 md:grid-cols-[9.5rem_minmax(0,1fr)]">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-foreground">{title}</h3>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            {description}
-          </p>
-        </div>
-        <div className="min-w-0">{children}</div>
-      </div>
-    </section>
-  );
-}
-
-function DetailEmpty({
-  description,
-  title,
-}: {
-  readonly description: string;
-  readonly title: string;
-}) {
-  return (
-    <Empty className="min-h-0 items-start border-0 bg-transparent p-0 text-left">
-      <EmptyHeader className="items-start text-left">
-        <EmptyTitle className="text-base">{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
   );
 }
 

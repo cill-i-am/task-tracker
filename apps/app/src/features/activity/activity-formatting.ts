@@ -1,9 +1,17 @@
-import type { JobActivityPayload } from "@task-tracker/jobs-core";
+import type {
+  JobActivityPayload,
+  JobCostLineType,
+} from "@task-tracker/jobs-core";
 
 import {
   JOB_PRIORITY_LABELS,
   JOB_STATUS_LABELS,
 } from "#/features/jobs/job-display";
+
+const JOB_COST_LINE_TYPE_LABELS = {
+  labour: "Labour",
+  material: "Material",
+} satisfies Record<JobCostLineType, string>;
 
 export function describeJobActivity(
   actorName: string | undefined,
@@ -20,6 +28,9 @@ export function describeJobActivity(
     }
     case "contact_changed": {
       return `${actorPrefix}updated the contact.`;
+    }
+    case "cost_line_added": {
+      return `${actorPrefix}added a ${JOB_COST_LINE_TYPE_LABELS[payload.costLineType].toLowerCase()} cost line.`;
     }
     case "coordinator_changed": {
       return `${actorPrefix}updated the coordinator.`;
