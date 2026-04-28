@@ -3,6 +3,7 @@ import { decodeOrganizationId } from "@task-tracker/identity-core";
 import type {
   JobListResponse,
   JobOptionsResponse,
+  ContactIdType,
   RegionIdType,
   SiteIdType,
   UserIdType,
@@ -31,6 +32,7 @@ import type { JobsViewer } from "./jobs-viewer";
 
 const memberOneId = "11111111-1111-4111-8111-111111111111" as UserIdType;
 const memberTwoId = "22222222-2222-4222-8222-222222222222" as UserIdType;
+const contactOneId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc" as ContactIdType;
 const regionNorthId = "33333333-3333-4333-8333-333333333333" as RegionIdType;
 const regionWestId = "44444444-4444-4444-8444-444444444444" as RegionIdType;
 const siteDepotId = "55555555-5555-4555-8555-555555555555" as SiteIdType;
@@ -46,8 +48,10 @@ const initialList: JobListResponse = {
   items: [
     {
       assigneeId: memberOneId,
+      contactId: contactOneId,
       coordinatorId: memberTwoId,
       createdAt: "2026-01-01T00:15:00.000Z",
+      externalReference: "PO-4471",
       id: "77777777-7777-4777-8777-777777777777" as WorkItemIdType,
       kind: "job",
       priority: "high",
@@ -117,7 +121,15 @@ const initialList: JobListResponse = {
 };
 
 const initialOptions: JobOptionsResponse = {
-  contacts: [],
+  contacts: [
+    {
+      email: "contact.search@example.com",
+      id: contactOneId,
+      name: "Primary Contact",
+      phone: "+353 1 555 0199",
+      siteIds: [siteDepotId],
+    },
+  ],
   members: [
     {
       id: memberOneId,
@@ -500,6 +512,58 @@ describe("jobs page", () => {
       screen.queryByRole("link", { name: /new job/i })
     ).not.toBeInTheDocument();
   }, 10_000);
+
+  it(
+    "searches jobs by external reference",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+
+      renderJobsPage();
+      const queuePanel = getPrimaryQueuePanel();
+
+      await user.type(screen.getByLabelText("Search jobs"), "PO-4471");
+
+      expect(
+        within(queuePanel).getAllByText("Inspect boiler").length
+      ).toBeGreaterThan(0);
+      expect(
+        within(queuePanel).queryByText("Await materials")
+      ).not.toBeInTheDocument();
+    }
+  );
+
+  it(
+    "searches jobs by linked contact name, email, and phone",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const user = userEvent.setup();
+
+      renderJobsPage();
+      const queuePanel = getPrimaryQueuePanel();
+      const searchInput = screen.getByLabelText("Search jobs");
+
+      for (const query of [
+        "Primary Contact",
+        "contact.search@example.com",
+        "+353 1 555 0199",
+      ]) {
+        await user.clear(searchInput);
+        await user.type(searchInput, query);
+
+        expect(
+          within(queuePanel).getAllByText("Inspect boiler").length
+        ).toBeGreaterThan(0);
+        expect(
+          within(queuePanel).queryByText("Await materials")
+        ).not.toBeInTheDocument();
+      }
+    }
+  );
 
   it(
     "filters by assignee and priority with real atom state",
