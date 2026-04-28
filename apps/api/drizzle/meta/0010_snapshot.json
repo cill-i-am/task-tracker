@@ -1521,27 +1521,6 @@
           "method": "btree",
           "with": {}
         },
-        "work_items_organization_external_reference_idx": {
-          "name": "work_items_organization_external_reference_idx",
-          "columns": [
-            {
-              "expression": "organization_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "external_reference",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "work_items_organization_assignee_updated_at_idx": {
           "name": "work_items_organization_assignee_updated_at_idx",
           "columns": [

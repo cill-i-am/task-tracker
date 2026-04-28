@@ -35,6 +35,7 @@ import type {
   JobComment,
   JobContactOption,
   JobDetail,
+  JobExternalReference,
   JobKind,
   JobListCursorType as JobListCursor,
   JobListQuery,
@@ -170,7 +171,7 @@ export interface CreateJobRecordInput {
   readonly contactId?: ContactId;
   readonly coordinatorId?: UserId;
   readonly createdByUserId: UserId;
-  readonly externalReference?: string;
+  readonly externalReference?: JobExternalReference;
   readonly kind?: JobKind;
   readonly organizationId: OrganizationId;
   readonly priority?: JobPriority;
@@ -183,7 +184,7 @@ export interface PatchJobRecordInput {
   readonly assigneeId?: UserId | null;
   readonly contactId?: ContactId | null;
   readonly coordinatorId?: UserId | null;
-  readonly externalReference?: string | null;
+  readonly externalReference?: JobExternalReference | null;
   readonly priority?: JobPriority;
   readonly siteId?: SiteId | null;
   readonly title?: JobTitle;

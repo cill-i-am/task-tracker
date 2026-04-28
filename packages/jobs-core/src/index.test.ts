@@ -157,6 +157,21 @@ describe("jobs-core", () => {
     });
   }, 5000);
 
+  it("rejects invalid contact emails at DTO boundaries", () => {
+    expect(() =>
+      ParseResult.decodeUnknownSync(CreateJobInputSchema)({
+        title: "Replace boiler",
+        contact: {
+          kind: "create",
+          input: {
+            name: "Alex Contact",
+            email: "not-an-email",
+          },
+        },
+      })
+    ).toThrow(/a valid email/);
+  }, 5000);
+
   it("rejects coordinates when creating a site", () => {
     const rejectedCoordinate = /is unexpected/;
 

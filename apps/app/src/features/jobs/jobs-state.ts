@@ -104,12 +104,18 @@ export const visibleJobsAtom = Atom.make((get) => {
   const { items } = get(jobsListStateAtom);
   const filters = get(jobsListFiltersAtom);
   const { contactById, siteById } = get(jobsLookupAtom);
+  const normalizedQuery = filters.query.trim().toLowerCase();
 
   return items.filter((item) =>
-    matchesVisibleJob(item, filters, {
-      contactById,
-      siteById,
-    })
+    matchesVisibleJob(
+      item,
+      filters,
+      {
+        contactById,
+        siteById,
+      },
+      normalizedQuery
+    )
   );
 }).pipe(Atom.keepAlive);
 
@@ -358,7 +364,8 @@ interface VisibleJobsLookup {
 function matchesVisibleJob(
   item: JobListItem,
   filters: JobsListFilters,
-  lookup: VisibleJobsLookup
+  lookup: VisibleJobsLookup,
+  normalizedQuery: string
 ) {
   return (
     matchesStatusFilter(item.status, filters.status) &&
@@ -366,7 +373,7 @@ function matchesVisibleJob(
     matchesOptionalFilter(item.coordinatorId, filters.coordinatorId) &&
     matchesOptionalFilter(item.priority, filters.priority) &&
     matchesOptionalFilter(item.siteId, filters.siteId) &&
-    matchesQueryFilter(item, filters.query, lookup) &&
+    matchesQueryFilter(item, normalizedQuery, lookup) &&
     matchesRegionFilter(item, filters.regionId, lookup.siteById)
   );
 }
@@ -380,11 +387,9 @@ function matchesOptionalFilter<Value extends string>(
 
 function matchesQueryFilter(
   item: JobListItem,
-  query: string,
+  normalizedQuery: string,
   lookup: VisibleJobsLookup
 ) {
-  const normalizedQuery = query.trim().toLowerCase();
-
   return (
     normalizedQuery.length === 0 ||
     buildJobSearchText(item, lookup).includes(normalizedQuery)

@@ -259,10 +259,6 @@ export const workItem = pgTable(
       table.updatedAt.desc(),
       table.id.desc()
     ),
-    index("work_items_organization_external_reference_idx").on(
-      table.organizationId,
-      table.externalReference
-    ),
     index("work_items_organization_assignee_updated_at_idx").on(
       table.organizationId,
       table.assigneeId,

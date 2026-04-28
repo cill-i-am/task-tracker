@@ -3,6 +3,7 @@ import { Schema } from "effect";
 const ISO_DATE_TIME_UTC_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const CONTACT_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function isIsoDateString(value: string): boolean {
   if (!ISO_DATE_PATTERN.test(value)) {
@@ -131,7 +132,13 @@ export type JobExternalReference = Schema.Schema.Type<
 export const ContactNameSchema = Schema.Trim.pipe(Schema.minLength(1));
 export type ContactName = Schema.Schema.Type<typeof ContactNameSchema>;
 
-export const ContactEmailSchema = Schema.Trim.pipe(Schema.minLength(1));
+export const ContactEmailSchema = Schema.Trim.pipe(
+  Schema.minLength(1),
+  Schema.filter((value) => CONTACT_EMAIL_PATTERN.test(value)),
+  Schema.annotations({
+    message: () => "Expected a valid email address",
+  })
+);
 export type ContactEmail = Schema.Schema.Type<typeof ContactEmailSchema>;
 
 export const ContactPhoneSchema = Schema.Trim.pipe(Schema.minLength(1));

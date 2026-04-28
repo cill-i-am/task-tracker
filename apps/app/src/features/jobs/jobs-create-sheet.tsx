@@ -73,6 +73,7 @@ import {
   buildSiteRegionSelectionGroups,
   defaultSiteCreateDraft,
   hasSiteCreateFieldErrors,
+  toOptionalTrimmedString,
   validateSiteCreateDraft,
 } from "#/features/sites/site-create-form";
 import type {
@@ -1022,10 +1023,7 @@ function buildCreateJobInput(
 ): CreateJobInput {
   return {
     contact: resolveCreateJobContactInput(values, selectionIds),
-    externalReference:
-      values.externalReference.trim().length === 0
-        ? undefined
-        : values.externalReference.trim(),
+    externalReference: toOptionalTrimmedString(values.externalReference),
     priority: values.priority === "none" ? undefined : values.priority,
     site: resolveCreateJobSiteInput(values, selectionIds, regions),
     title: values.title.trim(),
@@ -1041,19 +1039,17 @@ function resolveCreateJobContactInput(
   }
 
   if (values.contactSelection === INLINE_CREATE_VALUE) {
+    const email = toOptionalTrimmedString(values.contactEmail);
+    const phone = toOptionalTrimmedString(values.contactPhone);
+    const notes = toOptionalTrimmedString(values.contactNotes);
+
     return {
       kind: "create",
       input: {
         name: values.contactName.trim(),
-        ...(values.contactEmail.trim().length > 0
-          ? { email: values.contactEmail.trim() }
-          : {}),
-        ...(values.contactPhone.trim().length > 0
-          ? { phone: values.contactPhone.trim() }
-          : {}),
-        ...(values.contactNotes.trim().length > 0
-          ? { notes: values.contactNotes.trim() }
-          : {}),
+        ...(email === undefined ? {} : { email }),
+        ...(phone === undefined ? {} : { phone }),
+        ...(notes === undefined ? {} : { notes }),
       },
     };
   }

@@ -1,2 +1,1 @@
-ALTER TABLE "work_items" ADD COLUMN "external_reference" text;--> statement-breakpoint
-CREATE INDEX "work_items_organization_external_reference_idx" ON "work_items" USING btree ("organization_id","external_reference");
+ALTER TABLE "work_items" ADD COLUMN "external_reference" text;

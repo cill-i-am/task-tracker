@@ -18,6 +18,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { SiteId } from "@task-tracker/jobs-core";
 import type {
+  JobContactOption,
   JobDetailResponse,
   JobSiteOption,
   JobStatus,
@@ -1056,14 +1057,7 @@ function DetailEmpty({
 function JobsDetailContact({
   contact,
 }: {
-  readonly contact:
-    | {
-        readonly email?: string;
-        readonly name: string;
-        readonly notes?: string;
-        readonly phone?: string;
-      }
-    | undefined;
+  readonly contact: JobContactOption | undefined;
 }) {
   if (!contact) {
     return (
