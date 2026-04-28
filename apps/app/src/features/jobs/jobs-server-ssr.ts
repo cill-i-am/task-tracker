@@ -4,6 +4,8 @@ import type {
   JobListQuery,
   JobListResponse,
   JobOptionsResponse,
+  OrganizationActivityListResponse,
+  OrganizationActivityQuery,
   SitesOptionsResponse,
   WorkItemIdType,
 } from "@task-tracker/jobs-core";
@@ -92,6 +94,21 @@ export async function listAllCurrentServerJobsDirect(
 
     cursor = page.nextCursor;
   }
+}
+
+export async function listCurrentServerOrganizationActivityDirect(
+  query: OrganizationActivityQuery = {}
+): Promise<OrganizationActivityListResponse> {
+  const request = await readServerJobsRequestStrict();
+
+  return await runJobsClient(
+    request,
+    "JobsServer.listOrganizationActivity",
+    (client) =>
+      client.jobs.listOrganizationActivity({
+        urlParams: query,
+      })
+  );
 }
 
 export async function getCurrentServerJobDetailDirect(

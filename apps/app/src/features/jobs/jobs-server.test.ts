@@ -2,8 +2,10 @@
 // @vitest-environment node
 
 import type {
+  ActivityIdType,
   JobListResponse,
   JobOptionsResponse,
+  OrganizationActivityListResponse,
   UserIdType,
   WorkItemIdType,
 } from "@task-tracker/jobs-core";
@@ -13,6 +15,7 @@ import {
   listAllCurrentServerJobsDirect as listAllCurrentServerJobs,
   getCurrentServerJobDetailDirect as getCurrentServerJobDetail,
   getCurrentServerJobOptionsDirect as getCurrentServerJobOptions,
+  listCurrentServerOrganizationActivityDirect as listCurrentServerOrganizationActivity,
   listCurrentServerJobsDirect as listCurrentServerJobs,
 } from "./jobs-server-ssr";
 
@@ -48,6 +51,24 @@ const optionsResponse: JobOptionsResponse = {
   ],
   regions: [],
   sites: [],
+};
+
+const organizationActivityResponse: OrganizationActivityListResponse = {
+  items: [
+    {
+      id: "33333333-3333-4333-8333-333333333333" as ActivityIdType,
+      workItemId: "11111111-1111-4111-8111-111111111111" as WorkItemIdType,
+      jobTitle: "Inspect boiler",
+      eventType: "job_created",
+      payload: {
+        eventType: "job_created",
+        title: "Inspect boiler",
+        kind: "job",
+        priority: "none",
+      },
+      createdAt: "2026-04-23T12:00:00.000Z",
+    },
+  ],
 };
 
 describe("server jobs helpers", () => {
@@ -198,6 +219,31 @@ describe("server jobs helpers", () => {
     const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
 
     expect(String(url)).toBe("http://tt-sbx-api:4301/jobs/options");
+    expect(requestInit?.method).toBe("GET");
+    expect(requestInit?.headers).toMatchObject({
+      cookie: "better-auth.session_token=session-token",
+    });
+  }, 1000);
+
+  it("forwards the current auth cookie when listing organization activity", async () => {
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cookie" ? "better-auth.session_token=session-token" : undefined
+    );
+    process.env.API_ORIGIN = "http://tt-sbx-api:4301";
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json(organizationActivityResponse));
+
+    await expect(
+      listCurrentServerOrganizationActivity({
+        limit: 10,
+      })
+    ).resolves.toStrictEqual(organizationActivityResponse);
+
+    const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
+
+    expect(String(url)).toBe("http://tt-sbx-api:4301/activity?limit=10");
     expect(requestInit?.method).toBe("GET");
     expect(requestInit?.headers).toMatchObject({
       cookie: "better-auth.session_token=session-token",

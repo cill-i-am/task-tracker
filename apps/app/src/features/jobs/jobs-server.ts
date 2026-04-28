@@ -5,6 +5,8 @@ import type {
   JobListQuery,
   JobListResponse,
   JobOptionsResponse,
+  OrganizationActivityListResponse,
+  OrganizationActivityQuery,
   SitesOptionsResponse,
   WorkItemIdType,
 } from "@task-tracker/jobs-core";
@@ -29,6 +31,16 @@ const listCurrentServerJobsIsomorphic = createIsomorphicFn()
     return await listCurrentServerJobsDirect(query);
   })
   .client((query: JobListQuery = {}) => listCurrentBrowserJobs(query));
+
+const listCurrentServerOrganizationActivityIsomorphic = createIsomorphicFn()
+  .server(async (query: OrganizationActivityQuery = {}) => {
+    const { listCurrentServerOrganizationActivityDirect } =
+      await importJobsServerSsr();
+    return await listCurrentServerOrganizationActivityDirect(query);
+  })
+  .client((query: OrganizationActivityQuery = {}) =>
+    listCurrentBrowserOrganizationActivity(query)
+  );
 
 const getCurrentServerJobDetailIsomorphic = createIsomorphicFn()
   .server(async (workItemId: WorkItemIdType) => {
@@ -102,6 +114,16 @@ async function listAllCurrentBrowserJobs(
   }
 }
 
+async function listCurrentBrowserOrganizationActivity(
+  query: OrganizationActivityQuery = {}
+): Promise<OrganizationActivityListResponse> {
+  return await runBrowserJobsClient((client) =>
+    client.jobs.listOrganizationActivity({
+      urlParams: query,
+    })
+  );
+}
+
 async function getCurrentBrowserJobDetail(
   workItemId: WorkItemIdType
 ): Promise<JobDetailResponse> {
@@ -128,6 +150,12 @@ export function listAllCurrentServerJobs(
   query: JobListQuery = {}
 ): Promise<JobListResponse> {
   return listAllCurrentServerJobsIsomorphic(query);
+}
+
+export function listCurrentServerOrganizationActivity(
+  query: OrganizationActivityQuery = {}
+): Promise<OrganizationActivityListResponse> {
+  return listCurrentServerOrganizationActivityIsomorphic(query);
 }
 
 export function getCurrentServerJobDetail(
