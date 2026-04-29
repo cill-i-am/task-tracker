@@ -1,6 +1,6 @@
 {
-  "id": "5e70b812-17f5-442f-a8ea-02f0b3e70e71",
-  "prevId": "506df217-da7a-44d1-858c-55f235ac4e96",
+  "id": "9e454784-0011-40e1-94ca-84534358cef8",
+  "prevId": "5e70b812-17f5-442f-a8ea-02f0b3e70e71",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2385,6 +2385,193 @@
         "work_item_activity_event_type_chk": {
           "name": "work_item_activity_event_type_chk",
           "value": "\"work_item_activity\".\"event_type\" in ('job_created', 'status_changed', 'blocked_reason_changed', 'priority_changed', 'assignee_changed', 'coordinator_changed', 'site_changed', 'contact_changed', 'job_reopened', 'visit_logged', 'label_added', 'label_removed', 'cost_line_added')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.work_item_collaborators": {
+      "name": "work_item_collaborators",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_item_id": {
+          "name": "work_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_type": {
+          "name": "subject_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role_label": {
+          "name": "role_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "access_level": {
+          "name": "access_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'comment'"
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "work_item_collaborators_user_unique_idx": {
+          "name": "work_item_collaborators_user_unique_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "work_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"work_item_collaborators\".\"subject_type\" = 'user'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "work_item_collaborators_user_lookup_idx": {
+          "name": "work_item_collaborators_user_lookup_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "work_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "work_item_collaborators_organization_id_organization_id_fk": {
+          "name": "work_item_collaborators_organization_id_organization_id_fk",
+          "tableFrom": "work_item_collaborators",
+          "tableTo": "organization",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "work_item_collaborators_user_id_user_id_fk": {
+          "name": "work_item_collaborators_user_id_user_id_fk",
+          "tableFrom": "work_item_collaborators",
+          "tableTo": "user",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "work_item_collaborators_created_by_user_id_user_id_fk": {
+          "name": "work_item_collaborators_created_by_user_id_user_id_fk",
+          "tableFrom": "work_item_collaborators",
+          "tableTo": "user",
+          "columnsFrom": ["created_by_user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "work_item_collaborators_work_item_org_fk": {
+          "name": "work_item_collaborators_work_item_org_fk",
+          "tableFrom": "work_item_collaborators",
+          "tableTo": "work_items",
+          "columnsFrom": ["work_item_id", "organization_id"],
+          "columnsTo": ["id", "organization_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "work_item_collaborators_subject_type_chk": {
+          "name": "work_item_collaborators_subject_type_chk",
+          "value": "\"work_item_collaborators\".\"subject_type\" in ('user')"
+        },
+        "work_item_collaborators_user_subject_chk": {
+          "name": "work_item_collaborators_user_subject_chk",
+          "value": "\"work_item_collaborators\".\"subject_type\" <> 'user' or \"work_item_collaborators\".\"user_id\" is not null"
+        },
+        "work_item_collaborators_access_level_chk": {
+          "name": "work_item_collaborators_access_level_chk",
+          "value": "\"work_item_collaborators\".\"access_level\" in ('read', 'comment')"
+        },
+        "work_item_collaborators_role_label_not_empty_chk": {
+          "name": "work_item_collaborators_role_label_not_empty_chk",
+          "value": "length(trim(\"work_item_collaborators\".\"role_label\")) > 0"
         }
       },
       "isRLSEnabled": false
