@@ -547,7 +547,7 @@ describe("jobs detail sheet integration", () => {
   );
 
   it(
-    "clears stale rich contact detail when site reassignment clears the contact and refresh fails",
+    "clears stale rich contact and site detail when site reassignment clears them and refresh fails",
     {
       timeout: 10_000,
     },
@@ -573,10 +573,14 @@ describe("jobs detail sheet integration", () => {
       await waitFor(() => {
         expect(screen.getAllByText("No contact yet").length).toBeGreaterThan(0);
       });
+      expect(screen.getAllByText("No site yet").length).toBeGreaterThan(0);
       expect(
         screen.queryByText("Use email for routine updates.")
       ).not.toBeInTheDocument();
       expect(screen.queryByText("pat@example.com")).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Use reception and the south gate.")
+      ).not.toBeInTheDocument();
     }
   );
 });
@@ -754,6 +758,23 @@ function buildDetail(
       name: "Pat Contact",
       notes: "Use email for routine updates.",
       phone: "+353 87 765 4321",
+    },
+    site: {
+      accessNotes: "Use reception and the south gate.",
+      addressLine1: "1 Custom House Quay",
+      addressLine2: "North Dock",
+      county: "Dublin",
+      country: "IE",
+      eircode: "D01 X2X2",
+      geocodedAt: "2026-04-27T10:00:00.000Z",
+      geocodingProvider: "stub",
+      latitude: 53.3498,
+      id: siteId,
+      name: "Depot",
+      longitude: -6.2603,
+      serviceAreaId,
+      serviceAreaName: "North",
+      town: "Dublin",
     },
     job: {
       assigneeId: actorUserId,

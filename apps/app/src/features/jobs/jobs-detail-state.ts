@@ -304,12 +304,14 @@ function updateJobDetailJob(
     return;
   }
 
-  const { contact, ...detailWithoutContact } = currentDetail;
+  const { contact, site, ...detailWithoutContactAndSite } = currentDetail;
   const matchingContact = contact?.id === job.contactId ? { contact } : {};
+  const matchingSite = site?.id === job.siteId ? { site } : {};
 
   get.set(jobDetailStateAtomFamily(workItemId), {
-    ...detailWithoutContact,
+    ...detailWithoutContactAndSite,
     ...matchingContact,
+    ...matchingSite,
     job,
   });
 }
