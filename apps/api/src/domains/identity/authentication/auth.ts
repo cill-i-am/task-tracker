@@ -7,11 +7,20 @@ import {
   decodePublicInvitationPreview,
   decodeUpdateOrganizationInput,
 } from "@task-tracker/identity-core";
-import type { PublicInvitationPreview } from "@task-tracker/identity-core";
+import type {
+  OrganizationRole,
+  PublicInvitationPreview,
+} from "@task-tracker/identity-core";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
+import type { Role } from "better-auth/plugins/access";
 import { organization } from "better-auth/plugins/organization";
+import {
+  adminAc,
+  memberAc,
+  ownerAc,
+} from "better-auth/plugins/organization/access";
 import { and, eq, gt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Effect, Layer, Runtime } from "effect";
@@ -36,7 +45,13 @@ export { matchesTrustedOrigin } from "./config.js";
 
 const ORGANIZATION_INVITATION_EXPIRATION_SECONDS = 60 * 60 * 24 * 7;
 const INVALID_ORGANIZATION_ROLE_MESSAGE =
-  "Organization role must be one of owner, admin, or member.";
+  "Organization role must be one of owner, admin, member, or external.";
+const BETTER_AUTH_ORGANIZATION_ROLES: Record<OrganizationRole, Role> = {
+  admin: adminAc,
+  external: memberAc,
+  member: memberAc,
+  owner: ownerAc,
+};
 const PUBLIC_INVITATION_PREVIEW_PATH_PATTERN =
   /^\/api\/public\/invitations\/([^/]+)\/preview$/;
 const ORGANIZATION_UPDATE_INPUT_FIELDS = new Set(["name"]);
@@ -235,6 +250,7 @@ export function createAuthentication(options: {
       organization({
         cancelPendingInvitationsOnReInvite: true,
         invitationExpiresIn: ORGANIZATION_INVITATION_EXPIRATION_SECONDS,
+        roles: BETTER_AUTH_ORGANIZATION_ROLES,
         organizationHooks: {
           beforeCreateOrganization: ({ organization: nextOrganization }) => {
             let input;
