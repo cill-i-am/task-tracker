@@ -17,8 +17,13 @@ import {
   JobActivityBlockedReasonChangedPayloadSchema,
   JobActivityJobCreatedPayloadSchema,
   JobActivityLabelAddedPayloadSchema,
+  JobCollaboratorAccessLevelSchema,
+  JobCollaboratorRoleLabelSchema,
+  JobCollaboratorSubjectTypeSchema,
   JobDetailResponseSchema,
   JobContactOptionSchema,
+  JOB_COLLABORATOR_ACCESS_LEVELS,
+  JOB_COLLABORATOR_SUBJECT_TYPES,
   JobLabelNameSchema,
   JobLabelSchema,
   JobListItemSchema,
@@ -57,6 +62,26 @@ import {
 const { describe, expect, it } = Vitest;
 
 describe("jobs-core", () => {
+  it("decodes job collaborator domain contracts", () => {
+    expect(JOB_COLLABORATOR_SUBJECT_TYPES).toStrictEqual(["user"]);
+    expect(JOB_COLLABORATOR_ACCESS_LEVELS).toStrictEqual(["read", "comment"]);
+    expect(
+      Schema.decodeUnknownSync(JobCollaboratorSubjectTypeSchema)("user")
+    ).toBe("user");
+    expect(
+      Schema.decodeUnknownSync(JobCollaboratorAccessLevelSchema)("comment")
+    ).toBe("comment");
+    expect(
+      Schema.decodeUnknownSync(JobCollaboratorRoleLabelSchema)(
+        "  Site contact  "
+      )
+    ).toBe("Site contact");
+
+    expect(() =>
+      Schema.decodeUnknownSync(JobCollaboratorRoleLabelSchema)("   ")
+    ).toThrow(/Expected/);
+  });
+
   it("decodes service area contracts", () => {
     const serviceArea = {
       description: "North city and hospitals",

@@ -30,6 +30,8 @@ export type {
 } from "./ids.js";
 export {
   JOB_ACTIVITY_EVENT_TYPES,
+  JOB_COLLABORATOR_ACCESS_LEVELS,
+  JOB_COLLABORATOR_SUBJECT_TYPES,
   JOB_COST_LINE_TYPES,
   JOB_KINDS,
   JOB_PRIORITIES,
@@ -49,6 +51,9 @@ export {
   JobActivityEventTypeSchema,
   JobBlockedReasonSchema,
   JobCommentBodySchema,
+  JobCollaboratorAccessLevelSchema,
+  JobCollaboratorRoleLabelSchema,
+  JobCollaboratorSubjectTypeSchema,
   JobCostLineDescriptionSchema,
   JobCostLineQuantitySchema,
   JobCostLineTaxRateBasisPointsSchema,
@@ -77,6 +82,9 @@ export type {
   JobActivityEventType,
   JobBlockedReason,
   JobCommentBody,
+  JobCollaboratorAccessLevel,
+  JobCollaboratorRoleLabel,
+  JobCollaboratorSubjectType,
   JobCostLineDescription,
   JobCostLineQuantity,
   JobCostLineTaxRateBasisPoints,
