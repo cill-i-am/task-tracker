@@ -1,6 +1,5 @@
 import { HttpApiBuilder } from "@effect/platform";
-import { JobAccessDeniedError, JobsApi } from "@task-tracker/jobs-core";
-import type { WorkItemIdType as WorkItemId } from "@task-tracker/jobs-core";
+import { JobsApi } from "@task-tracker/jobs-core";
 import { Effect, Layer } from "effect";
 
 import {
@@ -60,28 +59,23 @@ const JobsHandlersLive = HttpApiBuilder.group(JobsApi, "jobs", (handlers) =>
         jobsService.addCostLine(path.workItemId, payload)
       )
       .handle("listJobCollaborators", ({ path }) =>
-        denyCollaboratorEndpoint(path.workItemId)
+        jobsService.listCollaborators(path.workItemId)
       )
-      .handle("attachJobCollaborator", ({ path }) =>
-        denyCollaboratorEndpoint(path.workItemId)
+      .handle("attachJobCollaborator", ({ path, payload }) =>
+        jobsService.attachCollaborator(path.workItemId, payload)
       )
-      .handle("updateJobCollaborator", ({ path }) =>
-        denyCollaboratorEndpoint(path.workItemId)
+      .handle("updateJobCollaborator", ({ path, payload }) =>
+        jobsService.updateCollaborator(
+          path.workItemId,
+          path.collaboratorId,
+          payload
+        )
       )
       .handle("detachJobCollaborator", ({ path }) =>
-        denyCollaboratorEndpoint(path.workItemId)
+        jobsService.removeCollaborator(path.workItemId, path.collaboratorId)
       );
   })
 );
-
-function denyCollaboratorEndpoint(workItemId: WorkItemId) {
-  return Effect.fail(
-    new JobAccessDeniedError({
-      message: "Job collaborator access is not available yet",
-      workItemId,
-    })
-  );
-}
 
 const SitesHandlersLive = HttpApiBuilder.group(JobsApi, "sites", (handlers) =>
   Effect.gen(function* () {

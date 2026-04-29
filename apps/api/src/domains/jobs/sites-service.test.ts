@@ -124,6 +124,7 @@ function makeHarness(
     addComment: (_input: unknown) => unexpected("addComment"),
     addCostLine: (_input: unknown) => unexpected("addCostLine"),
     addVisit: (_input: unknown) => unexpected("addVisit"),
+    attachCollaborator: (_input: unknown) => unexpected("attachCollaborator"),
     create: (_input: unknown) => unexpected("create"),
     findById: (_organizationId: OrganizationId, _workItemId: WorkItemId) =>
       unexpected("findById"),
@@ -131,6 +132,11 @@ function makeHarness(
       _organizationId: OrganizationId,
       _workItemId: WorkItemId
     ) => unexpected("findByIdForUpdate"),
+    findUserCollaboratorGrant: (
+      _organizationId: OrganizationId,
+      _workItemId: WorkItemId,
+      _userId: UserId
+    ) => unexpected("findUserCollaboratorGrant"),
     getDetail: (_organizationId: OrganizationId, _workItemId: WorkItemId) =>
       unexpected("getDetail"),
     list: (_organizationId: OrganizationId, _query: unknown) =>
@@ -138,6 +144,14 @@ function makeHarness(
         items: [],
         nextCursor: undefined,
       } satisfies JobListResponse),
+    listAccessibleWorkItemIdsForUser: (
+      _organizationId: OrganizationId,
+      _userId: UserId
+    ) => unexpected("listAccessibleWorkItemIdsForUser"),
+    listCollaborators: (
+      _organizationId: OrganizationId,
+      _workItemId: WorkItemId
+    ) => unexpected("listCollaborators"),
     listMemberOptions: (_organizationId: OrganizationId) =>
       Effect.succeed([] satisfies readonly JobMemberOption[]),
     listOrganizationActivity: (
@@ -153,6 +167,10 @@ function makeHarness(
       _workItemId: WorkItemId,
       _input: unknown
     ) => unexpected("patch"),
+    removeCollaborator: (
+      _organizationId: OrganizationId,
+      _collaboratorId: unknown
+    ) => unexpected("removeCollaborator"),
     reopen: (_organizationId: OrganizationId, _workItemId: WorkItemId) =>
       unexpected("reopen"),
     transition: (
@@ -160,6 +178,11 @@ function makeHarness(
       _workItemId: WorkItemId,
       _input: unknown
     ) => unexpected("transition"),
+    updateCollaborator: (
+      _organizationId: OrganizationId,
+      _collaboratorId: unknown,
+      _input: unknown
+    ) => unexpected("updateCollaborator"),
     withTransaction: <Value, Error, Requirements>(
       effect: Effect.Effect<Value, Error, Requirements>
     ) => effect,

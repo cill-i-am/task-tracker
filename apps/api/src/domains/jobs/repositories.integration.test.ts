@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import {
   calculateJobCostLineTotalMinor,
+  JOB_COLLABORATOR_CONFLICT_ERROR_TAG,
+  JOB_COLLABORATOR_NOT_FOUND_ERROR_TAG,
   JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG,
   OrganizationId,
   ServiceAreaId,
@@ -508,6 +510,186 @@ describe("jobs repositories integration", () => {
     ]);
     expect(bySite.items.map((item) => item.id)).toStrictEqual([middleJobId]);
     expect(byStatus.items.map((item) => item.id)).toStrictEqual([middleJobId]);
+  }, 30_000);
+
+  it("manages collaborators and scopes external repository access to grants", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({ prefix: "jobs_collab" });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping repository collaborator coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    const identity = await seedIdentityRecords(databaseUrl);
+    const externalUserId = await insertMember(
+      databaseUrl,
+      identity.organizationId,
+      "external"
+    );
+
+    const grantedJob = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.create({
+        createdByUserId: identity.ownerUserId,
+        organizationId: identity.organizationId,
+        title: "Repair front door closer",
+      })
+    );
+    const hiddenJob = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.create({
+        createdByUserId: identity.ownerUserId,
+        organizationId: identity.organizationId,
+        title: "Replace roof hatch seal",
+      })
+    );
+    await runJobsEffect(
+      databaseUrl,
+      JobsRepository.addCostLine({
+        authorUserId: identity.ownerUserId,
+        description: "Closer kit",
+        organizationId: identity.organizationId,
+        quantity: 1,
+        type: "material",
+        unitPriceMinor: 4200,
+        workItemId: grantedJob.id,
+      })
+    );
+
+    const collaborator = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.attachCollaborator({
+        accessLevel: "comment",
+        createdByUserId: identity.ownerUserId,
+        organizationId: identity.organizationId,
+        roleLabel: "Tenant contact",
+        userId: externalUserId,
+        workItemId: grantedJob.id,
+      })
+    );
+
+    expect(collaborator).toMatchObject({
+      accessLevel: "comment",
+      roleLabel: "Tenant contact",
+      userId: externalUserId,
+      workItemId: grantedJob.id,
+    });
+
+    const duplicateExit = await runJobsEffectExit(
+      databaseUrl,
+      JobsRepository.attachCollaborator({
+        accessLevel: "read",
+        createdByUserId: identity.ownerUserId,
+        organizationId: identity.organizationId,
+        roleLabel: "Duplicate",
+        userId: externalUserId,
+        workItemId: grantedJob.id,
+      })
+    );
+    expectFailureTag(duplicateExit, JOB_COLLABORATOR_CONFLICT_ERROR_TAG);
+
+    const grant = expectSome(
+      await runJobsEffect(
+        databaseUrl,
+        JobsRepository.findUserCollaboratorGrant(
+          identity.organizationId,
+          grantedJob.id,
+          externalUserId
+        )
+      )
+    );
+    expect(grant.accessLevel).toBe("comment");
+
+    const externalList = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.list(
+        identity.organizationId,
+        {},
+        {
+          userId: externalUserId,
+          visibility: "external",
+        }
+      )
+    );
+    expect(externalList.items.map((item) => item.id)).toStrictEqual([
+      grantedJob.id,
+    ]);
+
+    const accessibleIds = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.listAccessibleWorkItemIdsForUser(
+        identity.organizationId,
+        externalUserId
+      )
+    );
+    expect(accessibleIds).toStrictEqual([grantedJob.id]);
+
+    const grantedDetail = expectSome(
+      await runJobsEffect(
+        databaseUrl,
+        JobsRepository.getDetail(identity.organizationId, grantedJob.id, {
+          userId: externalUserId,
+          visibility: "external",
+        })
+      )
+    );
+    expect(grantedDetail.costs).toBeUndefined();
+    expect(grantedDetail.viewerAccess).toStrictEqual({
+      canComment: true,
+      visibility: "external",
+    });
+
+    const hiddenDetail = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.getDetail(identity.organizationId, hiddenJob.id, {
+        userId: externalUserId,
+        visibility: "external",
+      })
+    );
+    expect(Option.isNone(hiddenDetail) ? "none" : "some").toBe("none");
+
+    const updated = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.updateCollaborator(
+        identity.organizationId,
+        collaborator.id,
+        {
+          accessLevel: "read",
+          roleLabel: "Read-only contact",
+        }
+      )
+    );
+    expect(updated.accessLevel).toBe("read");
+
+    const removed = await runJobsEffect(
+      databaseUrl,
+      JobsRepository.removeCollaborator(
+        identity.organizationId,
+        collaborator.id
+      )
+    );
+    expect(removed.roleLabel).toBe("Read-only contact");
+
+    const missingRemoveExit = await runJobsEffectExit(
+      databaseUrl,
+      JobsRepository.removeCollaborator(
+        identity.organizationId,
+        collaborator.id
+      )
+    );
+    expectFailureTag(missingRemoveExit, JOB_COLLABORATOR_NOT_FOUND_ERROR_TAG);
   }, 30_000);
 
   it("creates, assigns, removes, archives, and filters organization job labels", async (context: {
@@ -2027,6 +2209,34 @@ async function insertServiceArea(
   });
 
   return serviceAreaId;
+}
+
+async function insertMember(
+  databaseUrl: string,
+  organizationId: Schema.Schema.Type<typeof OrganizationId>,
+  role: "admin" | "external" | "member" | "owner"
+) {
+  const userId = decodeUserId(randomUUID());
+
+  await withPool(databaseUrl, async (pool) => {
+    const db = drizzle(pool);
+
+    await db.insert(user).values({
+      email: `${role}-${Date.now()}-${randomUUID()}@example.com`,
+      emailVerified: true,
+      id: userId,
+      name: `${role} user`,
+    });
+    await db.insert(member).values({
+      createdAt: new Date(),
+      id: randomUUID(),
+      organizationId,
+      role,
+      userId,
+    });
+  });
+
+  return userId;
 }
 
 async function insertSite(

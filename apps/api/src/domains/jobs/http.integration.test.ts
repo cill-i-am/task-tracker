@@ -7,6 +7,8 @@ import {
   JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG,
   JOB_LABEL_NAME_CONFLICT_ERROR_TAG,
   JOB_LABEL_NOT_FOUND_ERROR_TAG,
+  JobCollaboratorSchema,
+  JobCollaboratorsResponseSchema,
   JobDetailResponseSchema,
   JobLabelResponseSchema,
   JobLabelsResponseSchema,
@@ -1273,6 +1275,240 @@ describe("jobs http integration", () => {
       expect(finalDetail.costs?.summary.subtotalMinor).toBe(18_500);
       expect(finalDetail.visits).toHaveLength(1);
       expect(finalDetail.activity.length).toBeGreaterThanOrEqual(8);
+    });
+  }, 30_000);
+
+  it("wires collaborator management and external grant access through the API", async (context: {
+    skip: (note?: string) => never;
+  }) => {
+    const testDatabase = await createTestDatabase({
+      prefix: "jobs_http_collab",
+    });
+    cleanup.push(testDatabase.cleanup);
+
+    const databaseUrl = testDatabase.url;
+    const canReachDatabase = await withPool(
+      databaseUrl,
+      async (pool) => await canConnect(pool)
+    );
+
+    if (!canReachDatabase) {
+      context.skip(
+        "Jobs integration database unavailable; skipping collaborator API coverage"
+      );
+    }
+
+    await applyAllMigrations(databaseUrl);
+
+    await withJobsEnvironment(databaseUrl, async () => {
+      const api = makeApiWebHandler();
+      cleanup.push(api.dispose);
+
+      const ownerCookieJar = new Map<string, string>();
+      await signUpUser(api, ownerCookieJar, {
+        email: `owner-${randomUUID()}@example.com`,
+        name: "Owner User",
+      });
+      const ownerOrgId = await createOrganization(api, ownerCookieJar, {
+        organizationName: "Owner Organization",
+        organizationSlug: `owner-org-${randomUUID().slice(0, 8)}`,
+      });
+
+      const externalCookieJar = new Map<string, string>();
+      const externalEmail = `external-${randomUUID()}@example.com`;
+      await signUpUser(api, externalCookieJar, {
+        email: externalEmail,
+        name: "External User",
+      });
+
+      let externalUserId = "";
+      await withPool(databaseUrl, async (pool) => {
+        externalUserId = await queryUserIdByEmail(pool, externalEmail);
+
+        await pool.query(
+          `insert into member (id, organization_id, user_id, role)
+           values ($1, $2, $3, $4)`,
+          [randomUUID(), ownerOrgId, externalUserId, "external"]
+        );
+      });
+
+      const setActiveResponse = await api.handler(
+        makeJsonRequest(
+          "/api/auth/organization/set-active",
+          {
+            organizationId: ownerOrgId,
+          },
+          {
+            cookieJar: externalCookieJar,
+          }
+        )
+      );
+      updateCookieJar(externalCookieJar, setActiveResponse);
+      expect(setActiveResponse.status).toBe(200);
+
+      const grantedJobResponse = await api.handler(
+        makeJsonRequest(
+          "/jobs",
+          {
+            priority: "medium",
+            title: "Repair tenant intercom",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      const hiddenJobResponse = await api.handler(
+        makeJsonRequest(
+          "/jobs",
+          {
+            title: "Repair plant room lock",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(grantedJobResponse.status).toBe(201);
+      expect(hiddenJobResponse.status).toBe(201);
+      const grantedJob = (await grantedJobResponse.json()) as {
+        readonly id: string;
+      };
+      const hiddenJob = (await hiddenJobResponse.json()) as {
+        readonly id: string;
+      };
+
+      const costLineResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${grantedJob.id}/cost-lines`,
+          {
+            description: "Intercom handset",
+            quantity: 1,
+            type: "material",
+            unitPriceMinor: 12_000,
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(costLineResponse.status).toBe(201);
+
+      const attachResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${grantedJob.id}/collaborators`,
+          {
+            accessLevel: "comment",
+            roleLabel: "Tenant contact",
+            userId: externalUserId,
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(attachResponse.status).toBe(201);
+      const collaborator = ParseResult.decodeUnknownSync(JobCollaboratorSchema)(
+        await attachResponse.json()
+      );
+
+      const listCollaboratorsResponse = await api.handler(
+        makeRequest(`/jobs/${grantedJob.id}/collaborators`, {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(listCollaboratorsResponse.status).toBe(200);
+      const collaborators = ParseResult.decodeUnknownSync(
+        JobCollaboratorsResponseSchema
+      )(await listCollaboratorsResponse.json());
+      expect(collaborators.collaborators).toHaveLength(1);
+
+      const externalListResponse = await api.handler(
+        makeRequest("/jobs", {
+          cookieJar: externalCookieJar,
+        })
+      );
+      expect(externalListResponse.status).toBe(200);
+      const externalList = ParseResult.decodeUnknownSync(JobListResponseSchema)(
+        await externalListResponse.json()
+      );
+      expect(externalList.items.map((item) => item.id)).toStrictEqual([
+        grantedJob.id,
+      ]);
+
+      const externalDetailResponse = await api.handler(
+        makeRequest(`/jobs/${grantedJob.id}`, {
+          cookieJar: externalCookieJar,
+        })
+      );
+      expect(externalDetailResponse.status).toBe(200);
+      const externalDetail = ParseResult.decodeUnknownSync(
+        JobDetailResponseSchema
+      )(await externalDetailResponse.json());
+      expect(externalDetail.costs).toBeUndefined();
+      expect(externalDetail.viewerAccess).toStrictEqual({
+        canComment: true,
+        visibility: "external",
+      });
+
+      const hiddenDetailResponse = await api.handler(
+        makeRequest(`/jobs/${hiddenJob.id}`, {
+          cookieJar: externalCookieJar,
+        })
+      );
+      expect(hiddenDetailResponse.status).toBe(403);
+
+      const externalCommentResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${grantedJob.id}/comments`,
+          {
+            body: "Please call before arriving.",
+          },
+          {
+            cookieJar: externalCookieJar,
+          }
+        )
+      );
+      expect(externalCommentResponse.status).toBe(201);
+
+      const updateResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${grantedJob.id}/collaborators/${collaborator.id}`,
+          {
+            accessLevel: "read",
+          },
+          {
+            cookieJar: ownerCookieJar,
+            method: "PATCH",
+          }
+        )
+      );
+      expect(updateResponse.status).toBe(200);
+      const updated = ParseResult.decodeUnknownSync(JobCollaboratorSchema)(
+        await updateResponse.json()
+      );
+      expect(updated.accessLevel).toBe("read");
+
+      const deniedCommentResponse = await api.handler(
+        makeJsonRequest(
+          `/jobs/${grantedJob.id}/comments`,
+          {
+            body: "This should now be read-only.",
+          },
+          {
+            cookieJar: externalCookieJar,
+          }
+        )
+      );
+      expect(deniedCommentResponse.status).toBe(403);
+
+      const deleteResponse = await api.handler(
+        makeRequest(`/jobs/${grantedJob.id}/collaborators/${collaborator.id}`, {
+          cookieJar: ownerCookieJar,
+          method: "DELETE",
+        })
+      );
+      expect(deleteResponse.status).toBe(200);
     });
   }, 30_000);
 });

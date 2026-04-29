@@ -6,6 +6,7 @@ import {
   InvalidJobTransitionError,
   JOB_NOT_FOUND_ERROR_TAG,
   JobAccessDeniedError,
+  JobCollaboratorNotFoundError,
   JobNotFoundError,
   JobStorageError,
   ORGANIZATION_MEMBER_NOT_FOUND_ERROR_TAG,
@@ -21,7 +22,11 @@ import type {
   CreateJobContactInput,
   CreateJobInput,
   CreateJobSiteInput,
+  AttachJobCollaboratorInput,
   Job,
+  JobCollaborator,
+  JobCollaboratorIdType as JobCollaboratorId,
+  JobCollaboratorsResponse,
   JobDetail,
   JobLabelIdType as JobLabelId,
   JobMemberOptionsResponse,
@@ -32,6 +37,7 @@ import type {
   ServiceAreaOption,
   SiteIdType as SiteId,
   TransitionJobInput,
+  UpdateJobCollaboratorInput,
   UpdateJobLabelInput,
   WorkItemIdType as WorkItemId,
 } from "@task-tracker/jobs-core";
@@ -50,6 +56,7 @@ import {
   JobsRepository,
   SitesRepository,
 } from "./repositories.js";
+import type { JobsRepositoryAccess } from "./repositories.js";
 import type { GeocodedSiteLocation } from "./site-geocoder.js";
 import { SiteGeocoder } from "./site-geocoder.js";
 
@@ -90,10 +97,10 @@ export class JobsService extends Effect.Service<JobsService>()(
         query: JobListQuery
       ) {
         const actor = yield* loadActor();
-        yield* ensureCanViewOrganizationJobsData(actor, authorization);
+        yield* authorization.ensureCanView(actor);
 
         return yield* jobsRepository
-          .list(actor.organizationId, query)
+          .list(actor.organizationId, query, getRepositoryAccess(actor))
           .pipe(Effect.catchTag("SqlError", failJobsStorageError));
       });
 
@@ -358,12 +365,18 @@ export class JobsService extends Effect.Service<JobsService>()(
         workItemId: WorkItemId
       ) {
         const actor = yield* loadActor(workItemId);
-        yield* authorization.ensureCanViewJobDetail(actor, workItemId);
+        const grant = yield* loadExternalGrantIfNeeded(
+          actor,
+          workItemId,
+          jobsRepository
+        );
+        yield* authorization.ensureCanViewJobDetail(actor, workItemId, grant);
 
         return yield* loadJobDetailOrFail(
           actor.organizationId,
           workItemId,
-          jobsRepository
+          jobsRepository,
+          getRepositoryAccess(actor)
         );
       });
 
@@ -662,7 +675,12 @@ export class JobsService extends Effect.Service<JobsService>()(
         input: AddJobCommentInput
       ) {
         const actor = yield* loadActor(workItemId);
-        yield* authorization.ensureCanComment(actor, workItemId);
+        const grant = yield* loadExternalGrantIfNeeded(
+          actor,
+          workItemId,
+          jobsRepository
+        );
+        yield* authorization.ensureCanComment(actor, workItemId, grant);
 
         const result = yield* jobsRepository
           .withTransaction(
@@ -1013,11 +1031,93 @@ export class JobsService extends Effect.Service<JobsService>()(
         }
       });
 
+      const listCollaborators = Effect.fn("JobsService.listCollaborators")(
+        function* (workItemId: WorkItemId) {
+          const actor = yield* loadActor(workItemId);
+          yield* authorization.ensureCanManageCollaborators(actor, workItemId);
+
+          const collaborators = yield* jobsRepository
+            .listCollaborators(actor.organizationId, workItemId)
+            .pipe(
+              Effect.catchTag(
+                WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG,
+                dieWorkItemOrganizationMismatch
+              ),
+              Effect.catchTag("SqlError", failJobsStorageError)
+            );
+
+          return { collaborators } satisfies JobCollaboratorsResponse;
+        }
+      );
+
+      const attachCollaborator = Effect.fn("JobsService.attachCollaborator")(
+        function* (workItemId: WorkItemId, input: AttachJobCollaboratorInput) {
+          const actor = yield* loadActor(workItemId);
+          yield* authorization.ensureCanManageCollaborators(actor, workItemId);
+
+          return yield* jobsRepository
+            .attachCollaborator({
+              accessLevel: input.accessLevel,
+              createdByUserId: actor.userId,
+              organizationId: actor.organizationId,
+              roleLabel: input.roleLabel,
+              userId: input.userId,
+              workItemId,
+            })
+            .pipe(
+              Effect.catchTag(
+                WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG,
+                dieWorkItemOrganizationMismatch
+              ),
+              Effect.catchTag("SqlError", failJobsStorageError)
+            );
+        }
+      );
+
+      const updateCollaborator = Effect.fn("JobsService.updateCollaborator")(
+        function* (
+          workItemId: WorkItemId,
+          collaboratorId: JobCollaboratorId,
+          input: UpdateJobCollaboratorInput
+        ) {
+          const actor = yield* loadActor(workItemId);
+          yield* authorization.ensureCanManageCollaborators(actor, workItemId);
+          yield* ensureCollaboratorBelongsToWorkItem(
+            actor.organizationId,
+            workItemId,
+            collaboratorId,
+            jobsRepository
+          );
+
+          return yield* jobsRepository
+            .updateCollaborator(actor.organizationId, collaboratorId, input)
+            .pipe(Effect.catchTag("SqlError", failJobsStorageError));
+        }
+      );
+
+      const removeCollaborator = Effect.fn("JobsService.removeCollaborator")(
+        function* (workItemId: WorkItemId, collaboratorId: JobCollaboratorId) {
+          const actor = yield* loadActor(workItemId);
+          yield* authorization.ensureCanManageCollaborators(actor, workItemId);
+          yield* ensureCollaboratorBelongsToWorkItem(
+            actor.organizationId,
+            workItemId,
+            collaboratorId,
+            jobsRepository
+          );
+
+          return yield* jobsRepository
+            .removeCollaborator(actor.organizationId, collaboratorId)
+            .pipe(Effect.catchTag("SqlError", failJobsStorageError));
+        }
+      );
+
       return {
         addComment,
         addCostLine,
         addVisit,
         archiveJobLabel,
+        attachCollaborator,
         assignJobLabel,
         create,
         createJobLabel,
@@ -1025,12 +1125,15 @@ export class JobsService extends Effect.Service<JobsService>()(
         getMemberOptions,
         getOptions,
         list,
+        listCollaborators,
         listJobLabels,
         listOrganizationActivity,
         patch,
+        removeCollaborator,
         removeJobLabel,
         reopen,
         transition,
+        updateCollaborator,
         updateJobLabel,
       };
     }),
@@ -1040,11 +1143,12 @@ export class JobsService extends Effect.Service<JobsService>()(
 function loadJobDetailOrFail(
   organizationId: OrganizationId,
   workItemId: WorkItemId,
-  jobsRepository: JobsRepository
+  jobsRepository: JobsRepository,
+  access?: JobsRepositoryAccess
 ): Effect.Effect<JobDetail, JobNotFoundError | JobStorageError> {
   return Effect.gen(function* () {
     const detail = yield* jobsRepository
-      .getDetail(organizationId, workItemId)
+      .getDetail(organizationId, workItemId, access)
       .pipe(
         Effect.catchTag("SqlError", failJobsStorageError),
         Effect.map(Option.getOrUndefined)
@@ -1073,10 +1177,71 @@ function loadJobOrFail(
   );
 }
 
+function loadExternalGrantIfNeeded(
+  actor: JobsActor,
+  workItemId: WorkItemId,
+  jobsRepository: JobsRepository
+): Effect.Effect<JobCollaborator | undefined, JobStorageError> {
+  if (!isExternalOrganizationRole(actor.role)) {
+    const noGrant = Option.getOrUndefined(Option.none<JobCollaborator>());
+    return Effect.succeed(noGrant);
+  }
+
+  return jobsRepository
+    .findUserCollaboratorGrant(actor.organizationId, workItemId, actor.userId)
+    .pipe(
+      Effect.catchTag("SqlError", failJobsStorageError),
+      Effect.map(Option.getOrUndefined)
+    );
+}
+
+function getRepositoryAccess(actor: JobsActor): JobsRepositoryAccess {
+  return isExternalOrganizationRole(actor.role)
+    ? { userId: actor.userId, visibility: "external" }
+    : { visibility: "internal" };
+}
+
+function ensureCollaboratorBelongsToWorkItem(
+  organizationId: OrganizationId,
+  workItemId: WorkItemId,
+  collaboratorId: JobCollaboratorId,
+  jobsRepository: JobsRepository
+) {
+  return Effect.gen(function* () {
+    const collaborators = yield* jobsRepository
+      .listCollaborators(organizationId, workItemId)
+      .pipe(
+        Effect.catchTag(
+          WORK_ITEM_ORGANIZATION_MISMATCH_ERROR_TAG,
+          dieWorkItemOrganizationMismatch
+        ),
+        Effect.catchTag("SqlError", failJobsStorageError)
+      );
+
+    if (
+      collaborators.some((collaborator) => collaborator.id === collaboratorId)
+    ) {
+      return;
+    }
+
+    return yield* Effect.fail(
+      new JobCollaboratorNotFoundError({
+        collaboratorId,
+        message: "Job collaborator does not exist on the job",
+        workItemId,
+      })
+    );
+  });
+}
+
 function failJobsStorageError(
   error: unknown
 ): Effect.Effect<never, JobStorageError> {
   return Effect.fail(makeJobsStorageError(error));
+}
+
+function dieWorkItemOrganizationMismatch(error: unknown) {
+  return Effect.die(error);
 }
 
 function ensureCanViewOrganizationJobsData(
