@@ -1013,6 +1013,78 @@ describe("jobs detail sheet", () => {
   }, 1000);
 
   it(
+    "renders comment composer and attribution for an assigned external collaborator",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedAddComment.mockResolvedValue(
+        Exit.succeed({
+          authorName: "External Partner",
+          authorUserId: externalUserId,
+          body: "I can be there at 9.",
+          createdAt: "2026-04-23T12:00:00.000Z",
+          id: "44444444-4444-4444-8444-444444444444" as CommentIdType,
+          workItemId,
+        })
+      );
+
+      const user = userEvent.setup();
+      renderDetailSheet(
+        buildDetail({
+          comments: [
+            {
+              authorName: "External Partner",
+              authorUserId: externalUserId,
+              body: "I can meet the technician at reception.",
+              createdAt: "2026-04-23T11:00:00.000Z",
+              id: "77777777-7777-4777-8777-777777777777" as CommentIdType,
+              workItemId,
+            },
+          ],
+          costs: undefined,
+          viewerAccess: {
+            canComment: true,
+            visibility: "external",
+          },
+        }),
+        {
+          role: "external",
+          userId: externalUserId,
+        }
+      );
+
+      expect(screen.getByLabelText("Add a comment")).toBeInTheDocument();
+      expect(screen.getByText("External Partner")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /apply status change/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /log visit/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /add cost line/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /add label/i })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /save site/i })
+      ).not.toBeInTheDocument();
+
+      await user.type(
+        screen.getByLabelText("Add a comment"),
+        "  I can be there at 9.  "
+      );
+      await user.click(screen.getByRole("button", { name: /add comment/i }));
+
+      expect(mockedAddComment).toHaveBeenCalledWith({
+        body: "I can be there at 9.",
+      });
+    }
+  );
+
+  it(
     "lets admins attach, update, and remove job collaborators",
     {
       timeout: 10_000,
@@ -1293,6 +1365,7 @@ describe("jobs detail sheet", () => {
 });
 
 function buildDetail(overrides?: {
+  readonly comments?: JobDetailResponse["comments"];
   readonly costs?: JobDetailResponse["costs"];
   readonly labels?: ReturnType<typeof buildJobLabel>[];
   readonly site?: JobDetailResponse["site"];
@@ -1316,8 +1389,9 @@ function buildDetail(overrides?: {
         workItemId,
       },
     ],
-    comments: [
+    comments: overrides?.comments ?? [
       {
+        authorName: "Taylor Owner",
         authorUserId: actorUserId,
         body: "Checked the burner and reset the controls.",
         createdAt: "2026-04-23T11:00:00.000Z",

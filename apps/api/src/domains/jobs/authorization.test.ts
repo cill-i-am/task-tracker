@@ -246,25 +246,25 @@ describe("jobs authorization", () => {
     );
   }, 10_000);
 
-  it("allows external comments only with a comment grant", async () => {
+  it("allows external comments with any explicit job grant", async () => {
     const external = makeActor("external");
     const workItemId = decodeWorkItemId(randomUUID());
 
-    await expect(
-      runAuthorization(
-        Effect.gen(function* () {
-          const authorization = yield* JobsAuthorization;
-          yield* authorization.ensureCanComment(external, workItemId, {
-            accessLevel: "comment",
-          });
-        })
-      )
-    ).resolves.toBeUndefined();
+    for (const accessLevel of ["read", "comment"] as const) {
+      await expect(
+        runAuthorization(
+          Effect.gen(function* () {
+            const authorization = yield* JobsAuthorization;
+            yield* authorization.ensureCanComment(external, workItemId, {
+              accessLevel,
+            });
+          })
+        )
+      ).resolves.toBeUndefined();
+    }
 
     await expectAccessDeniedForWorkItem(
-      JobsAuthorization.ensureCanComment(external, workItemId, {
-        accessLevel: "read",
-      }),
+      JobsAuthorization.ensureCanComment(external, workItemId),
       workItemId
     );
   }, 10_000);
@@ -274,6 +274,17 @@ describe("jobs authorization", () => {
     const job = makeJob({
       assigneeId: external.userId,
     });
+
+    await expect(
+      runAuthorization(
+        Effect.gen(function* () {
+          const authorization = yield* JobsAuthorization;
+          yield* authorization.ensureCanComment(external, job.id, {
+            accessLevel: "comment",
+          });
+        })
+      )
+    ).resolves.toBeUndefined();
 
     const authorizationChecks = await Promise.all([
       runAuthorizationExit(JobsAuthorization.ensureCanCreate(external)),

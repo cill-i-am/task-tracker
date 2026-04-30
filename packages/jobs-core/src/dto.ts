@@ -258,6 +258,7 @@ export const JobCommentSchema = Schema.Struct({
   id: CommentId,
   workItemId: WorkItemId,
   authorUserId: UserId,
+  authorName: Schema.optional(Schema.String),
   body: JobCommentBodySchema,
   createdAt: IsoDateTimeString,
 });

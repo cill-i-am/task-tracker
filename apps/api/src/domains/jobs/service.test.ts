@@ -411,7 +411,7 @@ function makeHarness(
           viewerAccess: {
             canComment:
               access?.visibility === "external"
-                ? options.grantAccessLevel === "comment"
+                ? options.grantAccessLevel !== undefined
                 : true,
             visibility: access?.visibility ?? "internal",
           },
@@ -1072,7 +1072,7 @@ describe("jobs service", () => {
     expect(list.items).toHaveLength(0);
     expect(detail.costs).toBeUndefined();
     expect(detail.viewerAccess).toStrictEqual({
-      canComment: false,
+      canComment: true,
       visibility: "external",
     });
     expect(harness.calls.list).toBe(1);
@@ -1095,8 +1095,7 @@ describe("jobs service", () => {
 
     expect(getFailure(exit)).toStrictEqual(
       new JobAccessDeniedError({
-        message:
-          "External collaborators need comment access to comment on jobs",
+        message: "External collaborators need job access to comment on jobs",
         workItemId,
       })
     );
@@ -1122,6 +1121,28 @@ describe("jobs service", () => {
     );
 
     expect(comment.body).toBe("Can you share the access code?");
+    expect(harness.calls.findByIdForUpdate).toBe(1);
+    expect(harness.calls.findUserCollaboratorGrant).toBe(1);
+  }, 10_000);
+
+  it("allows external actors with read grants to add comments", async () => {
+    const harness = makeHarness({
+      actor: makeActor("external"),
+      grantAccessLevel: "read",
+    });
+
+    const comment = await runJobsService(
+      Effect.gen(function* () {
+        const jobs = yield* JobsService;
+
+        return yield* jobs.addComment(workItemId, {
+          body: "Thanks, I can be on site at 9.",
+        });
+      }),
+      harness
+    );
+
+    expect(comment.body).toBe("Thanks, I can be on site at 9.");
     expect(harness.calls.findByIdForUpdate).toBe(1);
     expect(harness.calls.findUserCollaboratorGrant).toBe(1);
   }, 10_000);

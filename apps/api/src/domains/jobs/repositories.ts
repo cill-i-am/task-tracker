@@ -150,6 +150,7 @@ interface WorkItemRow {
 }
 
 interface WorkItemCommentRow {
+  readonly author_name?: string | null;
   readonly author_user_id: string;
   readonly body: string;
   readonly created_at: Date;
@@ -718,7 +719,6 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             and work_item_id = ${workItemId}
             and subject_type = 'user'
             and user_id = ${userId}
-            and access_level = 'comment'
           limit 1
           for update
         `;
@@ -730,7 +730,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
         return yield* Effect.fail(
           new OrganizationMemberNotFoundError({
             message:
-              "User is not an internal organization member or comment-enabled job collaborator",
+              "User is not an internal organization member or job collaborator",
             organizationId,
             userId,
           })
@@ -1375,10 +1375,14 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
 
         const [comments, labelsByWorkItemId] = yield* Effect.all([
           sql<WorkItemCommentRow>`
-            select *
+            select
+              work_item_comments.*,
+              "user".name as author_name
             from work_item_comments
-            where work_item_id = ${workItemId}
-            order by created_at asc, id asc
+            inner join "user"
+              on "user".id = work_item_comments.author_user_id
+            where work_item_comments.work_item_id = ${workItemId}
+            order by work_item_comments.created_at asc, work_item_comments.id asc
           `,
           listLabelsForWorkItems(organizationId, [workItemId]),
         ]);
@@ -1448,7 +1452,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             viewerAccess: {
               canComment:
                 resolvedAccess.visibility === "external"
-                  ? Option.getOrUndefined(grant)?.accessLevel === "comment"
+                  ? Option.isSome(grant)
                   : true,
               visibility: resolvedAccess.visibility,
             },
@@ -1728,14 +1732,22 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
         );
 
         const rows = yield* sql<WorkItemCommentRow>`
-          insert into work_item_comments ${sql
-            .insert({
-              author_user_id: input.authorUserId,
-              body: input.body,
-              id: generateCommentId(),
-              work_item_id: input.workItemId,
-            })
-            .returning("*")}
+          with inserted as (
+            insert into work_item_comments ${sql
+              .insert({
+                author_user_id: input.authorUserId,
+                body: input.body,
+                id: generateCommentId(),
+                work_item_id: input.workItemId,
+              })
+              .returning("*")}
+          )
+          select
+            inserted.*,
+            "user".name as author_name
+          from inserted
+          inner join "user"
+            on "user".id = inserted.author_user_id
         `;
 
         const row = yield* getRequiredRow(rows, "inserted work item comment");
@@ -3095,6 +3107,7 @@ function mapJobContactDetailRow(row: JobContactDetailRow): JobContactDetail {
 
 function mapJobCommentRow(row: WorkItemCommentRow): JobComment {
   return decodeJobComment({
+    authorName: nullableToUndefined(row.author_name ?? null),
     authorUserId: row.author_user_id,
     body: row.body,
     createdAt: row.created_at.toISOString(),

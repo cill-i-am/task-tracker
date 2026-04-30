@@ -1114,7 +1114,9 @@ export function JobsDetailSheet({
                           <div className="flex flex-col gap-2">
                             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                               <span className="font-medium text-foreground">
-                                {author?.name ?? "Team member"}
+                                {comment.authorName ??
+                                  author?.name ??
+                                  "Team member"}
                               </span>
                               <span>{formatDateTime(comment.createdAt)}</span>
                             </div>
