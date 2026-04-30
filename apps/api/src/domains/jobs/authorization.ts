@@ -160,14 +160,14 @@ export class JobsAuthorization extends Effect.Service<JobsAuthorization>()(
           return Effect.void;
         }
 
-        return grant?.accessLevel === "comment"
-          ? Effect.void
-          : Effect.fail(
+        return grant === undefined
+          ? Effect.fail(
               makeAccessDenied(
-                "External collaborators need comment access to comment on jobs",
+                "External collaborators need job access to comment on jobs",
                 workItemId
               )
-            );
+            )
+          : Effect.void;
       });
 
       const ensureCanAddVisit = Effect.fn(

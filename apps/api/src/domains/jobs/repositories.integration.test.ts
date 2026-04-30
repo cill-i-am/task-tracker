@@ -626,7 +626,6 @@ describe("jobs repositories integration", () => {
         workItemId: grantedJob.id,
       })
     );
-
     const collaborator = await runJobsEffect(
       databaseUrl,
       JobsRepository.attachCollaborator({
@@ -645,6 +644,15 @@ describe("jobs repositories integration", () => {
       userId: externalUserId,
       workItemId: grantedJob.id,
     });
+    await runJobsEffect(
+      databaseUrl,
+      JobsRepository.addComment({
+        authorUserId: externalUserId,
+        body: "I can meet the technician at reception.",
+        organizationId: identity.organizationId,
+        workItemId: grantedJob.id,
+      })
+    );
 
     const duplicateExit = await runJobsEffectExit(
       databaseUrl,
@@ -731,6 +739,13 @@ describe("jobs repositories integration", () => {
       canComment: true,
       visibility: "external",
     });
+    expect(grantedDetail.comments).toMatchObject([
+      {
+        authorName: "external user",
+        authorUserId: externalUserId,
+        body: "I can meet the technician at reception.",
+      },
+    ]);
 
     const hiddenDetail = await runJobsEffect(
       databaseUrl,
@@ -754,6 +769,20 @@ describe("jobs repositories integration", () => {
       )
     );
     expect(updated.accessLevel).toBe("read");
+
+    const updatedGrantDetail = expectSome(
+      await runJobsEffect(
+        databaseUrl,
+        JobsRepository.getDetail(identity.organizationId, grantedJob.id, {
+          userId: externalUserId,
+          visibility: "external",
+        })
+      )
+    );
+    expect(updatedGrantDetail.viewerAccess).toStrictEqual({
+      canComment: true,
+      visibility: "external",
+    });
 
     const wrongJobUpdateExit = await runJobsEffectExit(
       databaseUrl,

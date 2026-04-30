@@ -1630,20 +1630,20 @@ describe("jobs http integration", () => {
       const readOnlyDetail = ParseResult.decodeUnknownSync(
         JobDetailResponseSchema
       )(await readOnlyDetailResponse.json());
-      expect([readOnlyDetail.viewerAccess.canComment]).toStrictEqual([false]);
+      expect([readOnlyDetail.viewerAccess.canComment]).toStrictEqual([true]);
 
-      const deniedCommentResponse = await api.handler(
+      const readGrantCommentResponse = await api.handler(
         makeJsonRequest(
           `/jobs/${grantedJob.id}/comments`,
           {
-            body: "This should now be read-only.",
+            body: "I can still add job context.",
           },
           {
             cookieJar: externalCookieJar,
           }
         )
       );
-      expect(deniedCommentResponse.status).toBe(403);
+      expect(readGrantCommentResponse.status).toBe(201);
 
       const deleteResponse = await api.handler(
         makeRequest(`/jobs/${grantedJob.id}/collaborators/${collaborator.id}`, {

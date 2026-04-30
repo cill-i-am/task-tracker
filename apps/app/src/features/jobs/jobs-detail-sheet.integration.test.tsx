@@ -486,6 +486,62 @@ describe("jobs detail sheet integration", () => {
   );
 
   it(
+    "lets an external collaborator add a visible attributed comment",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedAddJobComment.mockReturnValue(
+        Effect.succeed({
+          authorName: "External Partner",
+          authorUserId: actorUserId,
+          body: "I can meet the technician at reception.",
+          createdAt: "2026-04-24T11:00:00.000Z",
+          id: "abababab-abab-4aba-8bab-abababababab" as CommentIdType,
+          workItemId,
+        })
+      );
+      mockedGetJobDetail.mockReturnValue(
+        Effect.fail(new Error("refresh failed"))
+      );
+
+      const user = userEvent.setup();
+      renderDetailSheet(
+        buildDetail({
+          activity: [],
+          costs: undefined,
+          viewerAccess: {
+            canComment: true,
+            visibility: "external",
+          },
+        }),
+        {
+          viewer: {
+            role: "external",
+            userId: actorUserId,
+          },
+        }
+      );
+
+      await user.type(
+        screen.getByLabelText("Add a comment"),
+        "I can meet the technician at reception."
+      );
+      await user.click(screen.getByRole("button", { name: /add comment/i }));
+
+      await expect(
+        screen.findByText("I can meet the technician at reception.")
+      ).resolves.toBeInTheDocument();
+      expect(screen.getByText("External Partner")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /apply status change/i })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Visits")).not.toBeInTheDocument();
+      expect(screen.queryByText("Activity")).not.toBeInTheDocument();
+    }
+  );
+
+  it(
     "keeps a newly logged visit visible when the follow-up detail refresh fails",
     {
       timeout: 10_000,
@@ -756,8 +812,10 @@ function JobsOptionsProbe() {
 function buildDetail(
   overrides: {
     readonly activity?: JobDetailResponse["activity"];
+    readonly comments?: JobDetailResponse["comments"];
     readonly costs?: JobDetailResponse["costs"];
     readonly labels?: JobDetailResponse["job"]["labels"];
+    readonly viewerAccess?: JobDetailResponse["viewerAccess"];
   } = {}
 ): JobDetailResponse {
   const defaultCosts: JobDetailResponse["costs"] = {
@@ -794,8 +852,9 @@ function buildDetail(
         workItemId,
       },
     ],
-    comments: [
+    comments: overrides.comments ?? [
       {
+        authorName: "Taylor Owner",
         authorUserId: actorUserId,
         body: "Checked the burner and reset the controls.",
         createdAt: "2026-04-23T11:00:00.000Z",
@@ -804,7 +863,7 @@ function buildDetail(
       },
     ],
     costs: "costs" in overrides ? overrides.costs : defaultCosts,
-    viewerAccess: {
+    viewerAccess: overrides.viewerAccess ?? {
       canComment: true,
       visibility: "internal" as const,
     },
