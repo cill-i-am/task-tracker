@@ -1,9 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const playwrightBaseUrl =
-  process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:4173";
-const playwrightApiUrl =
-  process.env.PLAYWRIGHT_API_URL ?? "http://127.0.0.1:3001";
+import { DEFAULT_API_ORIGIN, DEFAULT_APP_ORIGIN } from "./e2e/test-urls";
+
+const playwrightBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? DEFAULT_APP_ORIGIN;
+const playwrightApiUrl = process.env.PLAYWRIGHT_API_URL ?? DEFAULT_API_ORIGIN;
 const useExternalServer = process.env.PLAYWRIGHT_USE_EXTERNAL_SERVER === "1";
 const playwrightAuthEmailFrom =
   process.env.AUTH_EMAIL_FROM ?? "auth@task-tracker.localhost";
@@ -43,7 +43,7 @@ export default defineConfig({
         env: {
           ...process.env,
           API_ORIGIN: playwrightApiUrl,
-          AUTH_APP_ORIGIN: "http://127.0.0.1:4173",
+          AUTH_APP_ORIGIN: playwrightBaseUrl,
           AUTH_EMAIL_FROM: playwrightAuthEmailFrom,
           AUTH_EMAIL_FROM_NAME: playwrightAuthEmailFromName,
           AUTH_EMAIL_TRANSPORT: "noop",
