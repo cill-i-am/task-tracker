@@ -19,10 +19,6 @@ const stackName =
   process.env.CEIRD_ALCHEMY_STACK_NAME ??
   process.env.TASK_TRACKER_ALCHEMY_STACK_NAME ??
   "ceird";
-const stateWorkerName =
-  process.env.CEIRD_ALCHEMY_STATE_WORKER_NAME ??
-  process.env.TASK_TRACKER_ALCHEMY_STATE_WORKER_NAME ??
-  `${stackName}-alchemy-state`;
 
 export default Alchemy.Stack(
   stackName,
@@ -36,9 +32,7 @@ export default Alchemy.Stack(
         DrizzleMigrationsProvider()
       ).pipe(Layer.orDie);
     })(),
-    state: Cloudflare.state({
-      workerName: stateWorkerName,
-    }),
+    state: Cloudflare.state(),
   },
   Effect.gen(function* () {
     const config = yield* loadInfraStageConfig.pipe(Effect.orDie);
