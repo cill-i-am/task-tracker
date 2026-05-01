@@ -17,7 +17,7 @@ some of the original task snippets below.
 
 Current infra decisions:
 
-- `packages/infra` pins `alchemy@2.0.0-beta.25` and Effect 4 beta dependencies
+- `packages/infra` pins `alchemy@2.0.0-beta.28` and Effect 4 beta dependencies
   in isolation from runtime packages.
 - The stack entrypoint is `export default Alchemy.Stack(...)`.
 - Cloudflare resources import from `alchemy/Cloudflare`.
@@ -33,12 +33,14 @@ Current infra decisions:
 - No Wrangler config is introduced.
 
 PlanetScale and Hyperdrive are not first-class Alchemy v2 resources in the beta
-package inspected on 2026-04-30. The POC uses small custom Alchemy resources
-backed by Distilled instead:
+package inspected on 2026-05-01. The POC uses small custom Alchemy resources
+backed by focused provider operations instead:
 
 - `@distilled.cloud/planetscale` creates the PlanetScale Postgres database and
   app/migration roles.
-- `@distilled.cloud/cloudflare` creates and updates the Hyperdrive config.
+- a custom Cloudflare Hyperdrive resource uses Alchemy's Cloudflare provider
+  credentials and the Cloudflare REST API to create and update the Hyperdrive
+  config.
 
 Required deploy inputs now include:
 

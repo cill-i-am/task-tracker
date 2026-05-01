@@ -87,7 +87,7 @@ The auth email path already has a temporary marker for durable background work:
 
 ### Alchemy
 
-As of the 2026-04-30 v2 beta review, the POC targets `alchemy@2.0.0-beta.25`
+As of the 2026-05-01 v2 beta review, the POC targets `alchemy@2.0.0-beta.28`
 and Effect 4 beta inside `packages/infra` only.
 
 The v2 shape is different enough from v1 that the stack should follow the new
@@ -103,11 +103,13 @@ docs directly:
 
 Alchemy v2 does not currently expose first-class PlanetScale or Hyperdrive
 resources in the package we inspected. The POC therefore uses small custom
-Alchemy resources backed by Distilled SDK operations:
+Alchemy resources backed by focused provider operations:
 
 - `@distilled.cloud/planetscale` for PlanetScale Postgres database and role
   creation
-- `@distilled.cloud/cloudflare` for Hyperdrive config creation and updates
+- a custom Cloudflare Hyperdrive resource that uses Alchemy's Cloudflare
+  provider credentials and the Cloudflare REST API for Hyperdrive config
+  creation and updates
 
 This matches Alchemy's direction because Distilled is the Effect-native cloud
 SDK layer powering Alchemy. Once Alchemy ships first-class `PlanetScale` and
@@ -231,7 +233,8 @@ Implementation choices:
 3. Create separate Alchemy-managed PlanetScale roles for application traffic and
    Drizzle migrations through the same Distilled-backed resource module.
 4. Provision a Cloudflare Hyperdrive config through an Alchemy custom resource
-   backed by `@distilled.cloud/cloudflare`.
+   backed by Alchemy's Cloudflare provider credentials and Cloudflare REST API
+   calls.
 5. Bind Hyperdrive to the API Worker as `DATABASE`.
 6. In the API Worker, derive the runtime Postgres connection string from
    `env.DATABASE.connectionString`.
