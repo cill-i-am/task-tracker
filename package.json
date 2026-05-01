@@ -24,7 +24,8 @@
     "sandbox:status": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts status",
     "sandbox:up": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts up",
     "sandbox:url": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts url",
-    "test": "turbo run test"
+    "test": "turbo run test && pnpm run test:scripts",
+    "test:scripts": "node --test scripts/*.test.mjs"
   },
   "devDependencies": {
     "lefthook": "^2.1.4",
