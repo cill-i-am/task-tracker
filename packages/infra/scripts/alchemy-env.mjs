@@ -11,13 +11,6 @@ const [command = "deploy", ...args] = process.argv.slice(2);
 const stageAwareCommands = new Set(["deploy", "destroy", "dev", "plan"]);
 const promptlessCommands = new Set(["deploy", "destroy"]);
 const env = (primary, legacy) => process.env[primary] ?? process.env[legacy];
-const stackName =
-  env("CEIRD_ALCHEMY_STACK_NAME", "TASK_TRACKER_ALCHEMY_STACK_NAME") ?? "ceird";
-const stateWorkerName =
-  env(
-    "CEIRD_ALCHEMY_STATE_WORKER_NAME",
-    "TASK_TRACKER_ALCHEMY_STATE_WORKER_NAME"
-  ) ?? `${stackName}-alchemy-state`;
 
 if (existsSync(envFile)) {
   for (const line of readFileSync(envFile, "utf8").split(/\r?\n/u)) {
@@ -75,12 +68,6 @@ const stageArgs =
     : [];
 const yesArgs =
   promptlessCommands.has(command) && !hasFlag("--yes") ? ["--yes"] : [];
-const stateWorkerArgs =
-  command === "bootstrap" &&
-  args[0] === "cloudflare" &&
-  !hasFlag("--worker-name")
-    ? ["--worker-name", stateWorkerName]
-    : [];
 const alchemyArgs =
   command === "bootstrap" && args[0] === "cloudflare"
     ? [
@@ -89,7 +76,6 @@ const alchemyArgs =
         ...yesArgs,
         ...profileArgs,
         ...stageArgs,
-        ...stateWorkerArgs,
         ...args.slice(1),
       ]
     : [command, ...yesArgs, ...profileArgs, ...stageArgs, ...args];
