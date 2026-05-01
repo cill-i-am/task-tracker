@@ -1,0 +1,97 @@
+diff --git a/lib/services/workers.d.ts b/lib/services/workers.d.ts
+index 33db539c6fae8137785abcbfef43544a40602556..373a6f8d511af4f789bc6fc8175b88b9de172ab6 100644
+--- a/lib/services/workers.d.ts
++++ b/lib/services/workers.d.ts
+@@ -2117,6 +2117,12 @@ export interface PutScriptRequest {
+                 headSamplingRate?: number | null;
+                 persist?: boolean;
+             } | null;
++            traces?: {
++                enabled: boolean;
++                destinations?: string[];
++                headSamplingRate?: number | null;
++                persist?: boolean;
++            } | null;
+         };
+         placement?: {
+             mode: "smart";
+diff --git a/lib/services/workers.js b/lib/services/workers.js
+index d7122ef8d0330719a2094857f94500158be4f7c8..95b0380847221b1712c991defd416fc49578de51 100644
+--- a/lib/services/workers.js
++++ b/lib/services/workers.js
+@@ -3589,10 +3589,25 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+                 })),
+                 Schema.Null,
+             ])),
++            traces: Schema.optional(Schema.Union([
++                Schema.Struct({
++                    enabled: Schema.Boolean,
++                    destinations: Schema.optional(Schema.Array(Schema.String)),
++                    headSamplingRate: Schema.optional(Schema.Union([Schema.Number, Schema.Null])),
++                    persist: Schema.optional(Schema.Boolean),
++                }).pipe(Schema.encodeKeys({
++                    enabled: "enabled",
++                    destinations: "destinations",
++                    headSamplingRate: "head_sampling_rate",
++                    persist: "persist",
++                })),
++                Schema.Null,
++            ])),
+         }).pipe(Schema.encodeKeys({
+             enabled: "enabled",
+             headSamplingRate: "head_sampling_rate",
+             logs: "logs",
++            traces: "traces",
+         }))),
+         placement: Schema.optional(Schema.Union([
+             Schema.Struct({
+diff --git a/src/services/workers.ts b/src/services/workers.ts
+index 67869f512fe0d2e7c1fca9b9a45a013ad83b4818..3e67c5c08120d45586e886e191878e03f34d11b8 100644
+--- a/src/services/workers.ts
++++ b/src/services/workers.ts
+@@ -6651,6 +6651,12 @@ export interface PutScriptRequest {
+         headSamplingRate?: number | null;
+         persist?: boolean;
+       } | null;
++      traces?: {
++        enabled: boolean;
++        destinations?: string[];
++        headSamplingRate?: number | null;
++        persist?: boolean;
++      } | null;
+     };
+     placement?:
+       | { mode: "smart" }
+@@ -7112,11 +7118,32 @@ export const PutScriptRequest = /*@__PURE__*/ /*#__PURE__*/ Schema.Struct({
+             Schema.Null,
+           ]),
+         ),
++        traces: Schema.optional(
++          Schema.Union([
++            Schema.Struct({
++              enabled: Schema.Boolean,
++              destinations: Schema.optional(Schema.Array(Schema.String)),
++              headSamplingRate: Schema.optional(
++                Schema.Union([Schema.Number, Schema.Null]),
++              ),
++              persist: Schema.optional(Schema.Boolean),
++            }).pipe(
++              Schema.encodeKeys({
++                enabled: "enabled",
++                destinations: "destinations",
++                headSamplingRate: "head_sampling_rate",
++                persist: "persist",
++              }),
++            ),
++            Schema.Null,
++          ]),
++        ),
+       }).pipe(
+         Schema.encodeKeys({
+           enabled: "enabled",
+           headSamplingRate: "head_sampling_rate",
+           logs: "logs",
++          traces: "traces",
+         }),
+       ),
+     ),

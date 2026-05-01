@@ -10,11 +10,10 @@
     "dev": "alchemy dev"
   },
   "dependencies": {
-    "@distilled.cloud/cloudflare": "0.13.1",
     "@distilled.cloud/planetscale": "0.13.1",
     "@effect/platform-bun": "4.0.0-beta.58",
     "@effect/platform-node": "4.0.0-beta.58",
-    "alchemy": "2.0.0-beta.25",
+    "alchemy": "2.0.0-beta.28",
     "drizzle-orm": "0.45.2",
     "effect": "4.0.0-beta.58",
     "pg": "8.20.0",

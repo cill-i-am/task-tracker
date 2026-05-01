@@ -82,8 +82,8 @@ Queues, Workers Scripts, Workers Routes, and DNS for `ceird.app`.
 
 The current POC uses Alchemy v2 plus custom resource wrappers backed by
 Distilled SDKs. `@distilled.cloud/planetscale` owns the PlanetScale database and
-role calls, while `@distilled.cloud/cloudflare` owns Hyperdrive calls until
-Alchemy v2 ships a first-class Hyperdrive resource.
+role calls, while a custom Cloudflare Hyperdrive resource owns Hyperdrive REST
+calls until Alchemy v2 ships a first-class Hyperdrive resource.
 
 The API Worker receives a `DATABASE` Hyperdrive binding and resolves the runtime
 Postgres URL from `env.DATABASE.connectionString`. Local Node and sandbox
