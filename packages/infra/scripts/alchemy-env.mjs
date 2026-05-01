@@ -11,6 +11,13 @@ const [command = "deploy", ...args] = process.argv.slice(2);
 const stageAwareCommands = new Set(["deploy", "destroy", "dev", "plan"]);
 const promptlessCommands = new Set(["deploy", "destroy"]);
 const env = (primary, legacy) => process.env[primary] ?? process.env[legacy];
+const stackName =
+  env("CEIRD_ALCHEMY_STACK_NAME", "TASK_TRACKER_ALCHEMY_STACK_NAME") ?? "ceird";
+const stateWorkerName =
+  env(
+    "CEIRD_ALCHEMY_STATE_WORKER_NAME",
+    "TASK_TRACKER_ALCHEMY_STATE_WORKER_NAME"
+  ) ?? `${stackName}-alchemy-state`;
 
 if (existsSync(envFile)) {
   for (const line of readFileSync(envFile, "utf8").split(/\r?\n/u)) {
@@ -68,6 +75,24 @@ const stageArgs =
     : [];
 const yesArgs =
   promptlessCommands.has(command) && !hasFlag("--yes") ? ["--yes"] : [];
+const stateWorkerArgs =
+  command === "bootstrap" &&
+  args[0] === "cloudflare" &&
+  !hasFlag("--worker-name")
+    ? ["--worker-name", stateWorkerName]
+    : [];
+const alchemyArgs =
+  command === "bootstrap" && args[0] === "cloudflare"
+    ? [
+        command,
+        args[0],
+        ...yesArgs,
+        ...profileArgs,
+        ...stageArgs,
+        ...stateWorkerArgs,
+        ...args.slice(1),
+      ]
+    : [command, ...yesArgs, ...profileArgs, ...stageArgs, ...args];
 
 if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
   const alchemyProfiles = resolve(homedir(), ".alchemy/profiles.json");
@@ -80,23 +105,19 @@ if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
   }
 }
 
-const child = spawn(
-  "alchemy",
-  [command, ...yesArgs, ...profileArgs, ...stageArgs, ...args],
-  {
-    cwd: resolve(repoRoot, "packages/infra"),
-    env: {
-      ...process.env,
-      ...(resolvedAlchemyProfile || process.env.CI !== "true"
-        ? {
-            ALCHEMY_PROFILE: resolvedAlchemyProfile ?? "task-tracker-bootstrap",
-          }
-        : {}),
-      CI: process.env.CI ?? "false",
-    },
-    stdio: "inherit",
-  }
-);
+const child = spawn("alchemy", alchemyArgs, {
+  cwd: resolve(repoRoot, "packages/infra"),
+  env: {
+    ...process.env,
+    ...(resolvedAlchemyProfile || process.env.CI !== "true"
+      ? {
+          ALCHEMY_PROFILE: resolvedAlchemyProfile ?? "task-tracker-bootstrap",
+        }
+      : {}),
+    CI: process.env.CI ?? "false",
+  },
+  stdio: "inherit",
+});
 
 child.on("exit", (code, signal) => {
   if (signal) {

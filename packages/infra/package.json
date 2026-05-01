@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "bootstrap:cloudflare": "node scripts/alchemy-env.mjs bootstrap cloudflare",
     "check-types": "tsc --noEmit -p tsconfig.json",
     "deploy": "node scripts/alchemy-env.mjs deploy",
     "destroy": "node scripts/alchemy-env.mjs destroy",
