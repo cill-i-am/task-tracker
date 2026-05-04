@@ -15,13 +15,14 @@ import {
   UserId,
 } from "@task-tracker/jobs-core";
 import type { OrganizationIdType, UserIdType } from "@task-tracker/jobs-core";
-import { Effect, Schema } from "effect";
+import { Effect, ParseResult, Schema } from "effect";
 
 import { Authentication } from "../identity/authentication/auth.js";
 import {
   JobsActiveOrganizationRequiredError,
   JobsActorMembershipNotFoundError,
   JobsOrganizationRoleNotSupportedError,
+  JobsSessionIdentityInvalidError,
   JobsSessionRequiredError,
 } from "./errors.js";
 
@@ -48,8 +49,6 @@ export interface JobsActor {
   readonly userId: UserIdType;
 }
 
-const decodeOrganizationId = Schema.decodeUnknownSync(OrganizationId);
-const decodeUserId = Schema.decodeUnknownSync(UserId);
 const isOrganizationRole = Schema.is(OrganizationRoleSchema);
 
 export const resolveCurrentJobsActor = Effect.fn("CurrentJobsActor.resolve")(
@@ -63,9 +62,14 @@ export const resolveCurrentJobsActor = Effect.fn("CurrentJobsActor.resolve")(
       userId: UserIdType
     ) => Effect.Effect<readonly MembershipRoleRow[], JobStorageError>;
   }) {
-    const session = yield* Effect.promise(() =>
-      options.getSession(options.headers)
-    );
+    const session = yield* Effect.tryPromise({
+      try: () => options.getSession(options.headers),
+      catch: (cause) =>
+        new JobStorageError({
+          cause: formatUnknownError(cause),
+          message: "Jobs session lookup failed",
+        }),
+    });
 
     if (session === null) {
       return yield* Effect.fail(
@@ -75,7 +79,7 @@ export const resolveCurrentJobsActor = Effect.fn("CurrentJobsActor.resolve")(
       );
     }
 
-    const userId = decodeUserId(session.user.id);
+    const userId = yield* decodeSessionUserId(session.user.id);
     const { activeOrganizationId } = session.session;
 
     if (activeOrganizationId === null || activeOrganizationId === undefined) {
@@ -87,7 +91,8 @@ export const resolveCurrentJobsActor = Effect.fn("CurrentJobsActor.resolve")(
       );
     }
 
-    const organizationId = decodeOrganizationId(activeOrganizationId);
+    const organizationId =
+      yield* decodeSessionOrganizationId(activeOrganizationId);
     const rows = yield* options.loadMembershipRoles(organizationId, userId);
     const membershipRole = rows[0]?.role;
 
@@ -155,6 +160,44 @@ export class CurrentJobsActor extends Effect.Service<CurrentJobsActor>()(
     }),
   }
 ) {}
+
+function decodeSessionOrganizationId(input: unknown) {
+  return Schema.decodeUnknown(OrganizationId)(input).pipe(
+    Effect.mapError(
+      (parseError) =>
+        new JobsSessionIdentityInvalidError({
+          cause: formatParseError(parseError),
+          field: "activeOrganizationId",
+          message: "Session active organization id is invalid",
+        })
+    )
+  );
+}
+
+function decodeSessionUserId(input: unknown) {
+  return Schema.decodeUnknown(UserId)(input).pipe(
+    Effect.mapError(
+      (parseError) =>
+        new JobsSessionIdentityInvalidError({
+          cause: formatParseError(parseError),
+          field: "userId",
+          message: "Session user id is invalid",
+        })
+    )
+  );
+}
+
+function formatParseError(parseError: ParseResult.ParseError) {
+  return ParseResult.TreeFormatter.formatErrorSync(parseError);
+}
+
+function formatUnknownError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
 
 function failCurrentJobsActorStorageError(
   error: unknown

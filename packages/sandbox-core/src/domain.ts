@@ -239,7 +239,7 @@ export function buildSandboxUrls(
     `https://${input.hostnameSlug}.api.task-tracker.localhost:${options.proxyPort}`
   );
   const postgres = Schema.decodeUnknownSync(SandboxPostgresUrl)(
-    `postgresql://127.0.0.1:${input.ports.postgres}/task_tracker`
+    `postgresql://postgres:postgres@127.0.0.1:${input.ports.postgres}/task_tracker`
   );
 
   return {

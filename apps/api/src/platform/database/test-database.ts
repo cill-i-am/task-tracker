@@ -13,6 +13,12 @@ export interface CreateTestDatabaseOptions {
   readonly prefix?: string;
 }
 
+export interface TestDatabaseEnvironment {
+  readonly API_TEST_DATABASE_URL?: string | undefined;
+  readonly DATABASE_URL?: string | undefined;
+  readonly TEST_DATABASE_URL?: string | undefined;
+}
+
 interface DrizzleJournal {
   readonly entries: readonly {
     readonly tag: string;
@@ -25,7 +31,7 @@ export async function createTestDatabase(
   readonly cleanup: () => Promise<void>;
   readonly url: string;
 }> {
-  const baseUrl = new URL(options.baseUrl ?? DEFAULT_APP_DATABASE_URL);
+  const baseUrl = new URL(resolveTestDatabaseBaseUrl(options));
   const adminUrl = new URL(baseUrl);
   adminUrl.pathname = "/postgres";
 
@@ -68,6 +74,19 @@ export async function createTestDatabase(
     },
     url: databaseUrl.toString(),
   };
+}
+
+export function resolveTestDatabaseBaseUrl(
+  options: CreateTestDatabaseOptions = {},
+  environment: TestDatabaseEnvironment = process.env
+): string {
+  return (
+    options.baseUrl ??
+    environment.API_TEST_DATABASE_URL ??
+    environment.TEST_DATABASE_URL ??
+    environment.DATABASE_URL ??
+    DEFAULT_APP_DATABASE_URL
+  );
 }
 
 export async function canConnect(pool: Pool): Promise<boolean> {

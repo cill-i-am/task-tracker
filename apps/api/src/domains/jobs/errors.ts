@@ -12,6 +12,17 @@ export class JobsSessionRequiredError extends Schema.TaggedError<JobsSessionRequ
   }
 ) {}
 
+export const JOBS_SESSION_IDENTITY_INVALID_ERROR_TAG =
+  "@task-tracker/domains/jobs/JobsSessionIdentityInvalidError" as const;
+export class JobsSessionIdentityInvalidError extends Schema.TaggedError<JobsSessionIdentityInvalidError>()(
+  JOBS_SESSION_IDENTITY_INVALID_ERROR_TAG,
+  {
+    cause: Schema.optional(Schema.String),
+    field: Schema.Literal("activeOrganizationId", "userId"),
+    message: Schema.String,
+  }
+) {}
+
 export const JOBS_ACTIVE_ORGANIZATION_REQUIRED_ERROR_TAG =
   "@task-tracker/domains/jobs/JobsActiveOrganizationRequiredError" as const;
 export class JobsActiveOrganizationRequiredError extends Schema.TaggedError<JobsActiveOrganizationRequiredError>()(

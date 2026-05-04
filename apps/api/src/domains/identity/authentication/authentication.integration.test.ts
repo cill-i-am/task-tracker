@@ -20,11 +20,7 @@ import {
 import { makeApiWebHandler } from "../../../server.js";
 import type { PasswordResetEmailInput } from "./auth-email.js";
 import { createAuthentication, findPublicInvitationPreview } from "./auth.js";
-import {
-  DEFAULT_AUTH_DATABASE_URL,
-  DEFAULT_AUTH_BASE_PATH,
-  makeAuthenticationConfig,
-} from "./config.js";
+import { DEFAULT_AUTH_BASE_PATH, makeAuthenticationConfig } from "./config.js";
 import { authSchema } from "./schema.js";
 
 describe("authentication integration", () => {
@@ -1685,7 +1681,7 @@ function createTestDatabase(): Promise<{
   readonly url: string;
 }> {
   return createPlatformTestDatabase({
-    baseUrl: process.env.AUTH_TEST_DATABASE_URL ?? DEFAULT_AUTH_DATABASE_URL,
+    baseUrl: process.env.AUTH_TEST_DATABASE_URL,
     prefix: "auth_test",
   });
 }
