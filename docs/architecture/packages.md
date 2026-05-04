@@ -54,7 +54,8 @@ Path: `packages/sandbox-core`
 Exports pure sandbox primitives:
 
 - sandbox name, ID, hostname slug, and compose project name validation
-- sandbox identity derivation from repo root and worktree path
+- sandbox identity derivation from repo root, worktree path, and preferred branch
+  name when available
 - port allocation and URL-building shapes
 - health payload schemas
 - sandbox record reconciliation

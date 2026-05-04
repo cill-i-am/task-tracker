@@ -40,7 +40,12 @@ command = "pnpm check-types"
 [[actions]]
 name = "Run tests"
 icon = "test"
-command = "pnpm test"
+command = "pnpm test:with-sandbox"
+
+[[actions]]
+name = "Run API tests with sandbox"
+icon = "test"
+command = "pnpm api:test:with-sandbox"
 
 [[actions]]
 name = "Check all"

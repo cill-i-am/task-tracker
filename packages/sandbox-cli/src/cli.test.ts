@@ -1,6 +1,10 @@
 import { Effect, Option } from "effect";
 
-import { getSandboxPreflightMessage, parseServiceOption } from "./cli.js";
+import {
+  getSandboxPreflightMessage,
+  parseServiceOption,
+  parseUrlOutputFormatOption,
+} from "./cli.js";
 import { SandboxPreflightError } from "./sandbox-preflight-error.js";
 
 describe("getSandboxPreflightMessage()", () => {
@@ -43,5 +47,29 @@ describe("parseServiceOption()", () => {
     await expect(
       Effect.runPromise(parseServiceOption(Option.some("invalid")))
     ).rejects.toThrow(/service/i);
+  }, 10_000);
+});
+
+describe("parseUrlOutputFormatOption()", () => {
+  it("defaults to text output", async () => {
+    await expect(
+      Effect.runPromise(parseUrlOutputFormatOption(Option.none()))
+    ).resolves.toBe("text");
+  }, 10_000);
+
+  it.each(["text", "json"] as const)(
+    "accepts %s output",
+    async (format) => {
+      await expect(
+        Effect.runPromise(parseUrlOutputFormatOption(Option.some(format)))
+      ).resolves.toBe(format);
+    },
+    10_000
+  );
+
+  it("fails fast when --format is invalid", async () => {
+    await expect(
+      Effect.runPromise(parseUrlOutputFormatOption(Option.some("yaml")))
+    ).rejects.toThrow(/format/i);
   }, 10_000);
 });

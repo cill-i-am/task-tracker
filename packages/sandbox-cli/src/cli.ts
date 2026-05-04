@@ -11,7 +11,7 @@ import type {
   SandboxUrls,
 } from "@task-tracker/sandbox-core";
 import { validateSandboxName } from "@task-tracker/sandbox-core";
-import { Cause, Console, Effect, Exit, Option } from "effect";
+import { Cause, Console, Effect, Either, Exit, Option, Schema } from "effect";
 
 import { SandboxProcessService } from "./process.js";
 import { SandboxLifecycleService } from "./runtime.js";
@@ -24,6 +24,7 @@ import {
   toSandboxPreflightError,
 } from "./sandbox-preflight-error.js";
 import {
+  formatSandboxJsonLines,
   formatSandboxStartupProgressLine,
   formatSandboxViewLines,
 } from "./sandbox-view.js";
@@ -36,6 +37,9 @@ const nameOption = Options.text("name").pipe(
   Options.optional
 );
 const serviceOption = Options.text("service").pipe(Options.optional);
+const urlFormatOption = Options.text("format").pipe(Options.optional);
+const SandboxUrlOutputFormat = Schema.Literal("text", "json");
+type SandboxUrlOutputFormat = Schema.Schema.Type<typeof SandboxUrlOutputFormat>;
 
 const upCommand = Command.make("up", { name: nameOption }, ({ name }) =>
   parseSandboxNameOption(name).pipe(
@@ -125,20 +129,31 @@ const logsCommand = Command.make(
     )
 );
 
-const urlCommand = Command.make("url", { name: nameOption }, ({ name }) =>
-  parseSandboxNameOption(name).pipe(
-    Effect.flatMap((explicitSandboxName) =>
-      SandboxLifecycleService.url({
-        explicitSandboxName,
-      })
-    ),
-    Effect.flatMap((result) =>
-      printSandboxView("Sandbox URLs", result.record, result.urls)
-    ),
-    Effect.catchTag(SANDBOX_NOT_FOUND_ERROR_TAG, () =>
-      Console.log("No sandbox is registered for this worktree or name.")
+const urlCommand = Command.make(
+  "url",
+  { name: nameOption, format: urlFormatOption },
+  ({ name, format }) =>
+    parseSandboxNameOption(name).pipe(
+      Effect.bindTo("explicitSandboxName"),
+      Effect.bind("outputFormat", () => parseUrlOutputFormatOption(format)),
+      Effect.flatMap(({ explicitSandboxName, outputFormat }) =>
+        SandboxLifecycleService.url({
+          explicitSandboxName,
+        }).pipe(
+          Effect.flatMap((result) =>
+            printSandboxUrlOutput(
+              "Sandbox URLs",
+              result.record,
+              result.urls,
+              outputFormat
+            )
+          )
+        )
+      ),
+      Effect.catchTag(SANDBOX_NOT_FOUND_ERROR_TAG, () =>
+        Console.log("No sandbox is registered for this worktree or name.")
+      )
     )
-  )
 );
 
 const sandboxCommand = Command.make("sandbox").pipe(
@@ -173,6 +188,24 @@ function printSandboxView(
   );
 }
 
+function printSandboxUrlOutput(
+  label: string,
+  record: {
+    readonly sandboxName: SandboxName;
+    readonly composeProjectName: ComposeProjectName;
+    readonly status: SandboxStatus;
+  },
+  urls: SandboxUrls,
+  format: SandboxUrlOutputFormat
+) {
+  const lines =
+    format === "json"
+      ? formatSandboxJsonLines(record, urls)
+      : formatSandboxViewLines(label, record, urls);
+
+  return Effect.forEach(lines, (line) => Console.log(line), { discard: true });
+}
+
 function printSandboxStartupProgress(
   event: SandboxStartupProgressEvent
 ): Effect.Effect<void, never, never> {
@@ -201,6 +234,27 @@ export function parseServiceOption(
           message: `Invalid service '${service.value}'. Expected one of: app, api, postgres.`,
         })
       );
+}
+
+export function parseUrlOutputFormatOption(
+  format: Option.Option<string>
+): Effect.Effect<SandboxUrlOutputFormat, SandboxPreflightError, never> {
+  if (Option.isNone(format)) {
+    return Effect.succeed("text");
+  }
+
+  return Either.match(
+    Schema.decodeUnknownEither(SandboxUrlOutputFormat)(format.value),
+    {
+      onLeft: () =>
+        Effect.fail(
+          new SandboxPreflightError({
+            message: `Invalid format '${format.value}'. Expected one of: text, json.`,
+          })
+        ),
+      onRight: (outputFormat) => Effect.succeed(outputFormat),
+    }
+  );
 }
 
 function parseSandboxNameOption(

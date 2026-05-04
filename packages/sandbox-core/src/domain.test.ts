@@ -44,6 +44,17 @@ describe("deriveSandboxIdentity()", () => {
     expect(identity.hostnameSlug).toMatch(/^agent-one-[a-f0-9]{6}$/);
   }, 10_000);
 
+  it("prefers the branch name over the worktree basename when one is available", () => {
+    const identity = deriveSandboxIdentity({
+      repoRoot: "/Users/me/task-tracker",
+      worktreePath: "/Users/me/.codex/worktrees/1188/ceird",
+      preferredName: "codex/add-sandbox-aware-tests",
+    });
+
+    expect(identity.worktreeName).toBe("ceird");
+    expect(identity.hostnameSlug).toBe("codex-add-sandbox-aware-tests");
+  }, 10_000);
+
   it("falls back to a sandbox-prefixed slug when the worktree name sanitizes to empty", () => {
     const identity = deriveSandboxIdentity({
       repoRoot: "/Users/me/task-tracker",

@@ -60,6 +60,8 @@ URLs when Portless aliases are healthy.
 | `pnpm sandbox:logs -- --service api` | Prints sandbox logs for one service; valid services are `app`, `api`, and `postgres`. |
 | `pnpm sandbox:down`                  | Stops the current sandbox.                                                            |
 | `pnpm test`                          | Runs package tests through Turbo and root script tests.                               |
+| `pnpm test:with-sandbox`             | Starts the current worktree sandbox, exports its Postgres URL, then runs all tests.   |
+| `pnpm api:test:with-sandbox`         | Starts the current worktree sandbox, exports its Postgres URL, then runs API tests.   |
 | `pnpm check-types`                   | Runs TypeScript checks for all workspaces with a `check-types` task.                  |
 | `pnpm lint`                          | Runs oxlint over the workspace.                                                       |
 | `pnpm check`                         | Runs the Ultracite quality check.                                                     |

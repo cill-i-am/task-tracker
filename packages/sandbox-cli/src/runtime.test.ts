@@ -16,6 +16,7 @@ import {
   cleanupFailedSandboxUp,
   ensureSandboxProxyHealthy,
   finalizeSandboxRename,
+  makeWorktreeResolver,
   removeAliasesBestEffort,
   loadSandboxEnvironmentOrThrow,
   refreshSandboxAliases,
@@ -64,6 +65,71 @@ describe("resolveRepoRootFromGitPaths()", () => {
     expect(resolveRepoRootFromGitPaths("/repo/feature-x", "/repo/.git")).toBe(
       "/repo"
     );
+  }, 10_000);
+});
+
+describe("makeWorktreeResolver()", () => {
+  it("uses the current Git branch as the preferred sandbox name source", async () => {
+    const sandboxProcess = makeCommandProcess({
+      cwd: "/repo/.worktrees/ceird",
+      commands: new Map([
+        [
+          "git rev-parse --show-toplevel",
+          { stdout: "/repo/.worktrees/ceird\n", stderr: "", exitCode: 0 },
+        ],
+        [
+          "git rev-parse --git-common-dir",
+          { stdout: "/repo/.git\n", stderr: "", exitCode: 0 },
+        ],
+        [
+          "git symbolic-ref --quiet --short HEAD",
+          {
+            stdout: "codex/add-sandbox-aware-tests\n",
+            stderr: "",
+            exitCode: 0,
+          },
+        ],
+      ]),
+    });
+
+    await expect(
+      Effect.runPromise(makeWorktreeResolver(sandboxProcess).resolveCurrent())
+    ).resolves.toStrictEqual({
+      repoRoot: "/repo",
+      worktreePath: "/repo/.worktrees/ceird",
+      branchName: "codex/add-sandbox-aware-tests",
+    });
+  }, 10_000);
+
+  it("falls back to worktree naming data when HEAD is detached", async () => {
+    const sandboxProcess = makeCommandProcess({
+      cwd: "/repo/.worktrees/ceird",
+      commands: new Map([
+        [
+          "git rev-parse --show-toplevel",
+          { stdout: "/repo/.worktrees/ceird\n", stderr: "", exitCode: 0 },
+        ],
+        [
+          "git rev-parse --git-common-dir",
+          { stdout: "/repo/.git\n", stderr: "", exitCode: 0 },
+        ],
+        [
+          "git symbolic-ref --quiet --short HEAD",
+          {
+            stdout: "",
+            stderr: "fatal: ref HEAD is not a symbolic ref\n",
+            exitCode: 1,
+          },
+        ],
+      ]),
+    });
+
+    await expect(
+      Effect.runPromise(makeWorktreeResolver(sandboxProcess).resolveCurrent())
+    ).resolves.toStrictEqual({
+      repoRoot: "/repo",
+      worktreePath: "/repo/.worktrees/ceird",
+    });
   }, 10_000);
 });
 
@@ -690,3 +756,30 @@ describe("authEmailSharedEnvironment", () => {
     10_000
   );
 });
+
+function makeCommandProcess(input: {
+  readonly cwd: string;
+  readonly commands: ReadonlyMap<
+    string,
+    {
+      readonly stdout: string;
+      readonly stderr: string;
+      readonly exitCode: number;
+    }
+  >;
+}): SandboxProcess {
+  return {
+    argv: () => Effect.succeed([]),
+    cwd: () => Effect.succeed(input.cwd),
+    env: () => Effect.succeed({}),
+    isPortAvailable: () => Effect.succeed(true),
+    isPortOpen: () => Effect.succeed(false),
+    runCommand: (command, args) => {
+      const result = input.commands.get([command, ...args].join(" "));
+      return result === undefined
+        ? Effect.die(`Unexpected command: ${[command, ...args].join(" ")}`)
+        : Effect.succeed(result);
+    },
+    setExitCode: () => Effect.void,
+  };
+}

@@ -13,17 +13,21 @@ pnpm sandbox:up
 pnpm sandbox:status
 pnpm sandbox:list
 pnpm sandbox:url
+pnpm sandbox:url -- --format json
 pnpm sandbox:logs -- --service api
 pnpm sandbox:down
 ```
 
-Valid log services are `app`, `api`, and `postgres`.
+Valid log services are `app`, `api`, and `postgres`. The JSON URL format is the
+stable script interface for wrappers that need the current worktree's app, API,
+or Postgres URL.
 
 ## Sandbox Startup Flow
 
 `packages/sandbox-cli/src/lifecycle.ts` coordinates startup:
 
-1. Derive or validate the sandbox name.
+1. Derive or validate the sandbox name. Inferred names prefer the current Git
+   branch, then fall back to the worktree path for detached checkouts.
 2. Load `.env`, `.env.local`, and process environment values.
 3. Resolve Docker runtime assets.
 4. Allocate app, API, and Postgres ports.
@@ -38,6 +42,19 @@ Valid log services are `app`, `api`, and `postgres`.
 When Portless aliases are healthy, URLs use the
 `*.task-tracker.localhost:1355` proxy. When aliases are unavailable, the CLI
 reports loopback fallback URLs.
+
+## Sandbox-Aware Tests
+
+Host-side API integration tests do not start Docker by themselves. The root
+`pnpm test:with-sandbox` and `pnpm api:test:with-sandbox` wrappers start the
+current worktree sandbox, read `pnpm sandbox:url -- --format json`, export the
+sandbox Postgres URL as `API_TEST_DATABASE_URL`, and then run the requested test
+command.
+
+Use those wrappers when an agent or developer needs database-backed API
+integration coverage from the host. Plain `pnpm test` remains available for
+quick package checks and will skip database-backed integration cases when no
+test Postgres URL is reachable.
 
 ## Sandbox Runtime
 

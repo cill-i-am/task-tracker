@@ -41,10 +41,11 @@ pnpm sandbox:up
 pnpm sandbox:url
 ```
 
-The sandbox command derives a name from the current worktree path unless
-`--name` is supplied, allocates app/API/Postgres ports, starts Docker Compose,
-applies API migrations, waits for health checks, persists a sandbox record, and
-prints URLs.
+The sandbox command derives a name from the current Git branch when one is
+available, falling back to the current worktree path for detached checkouts
+unless `--name` is supplied. It allocates app/API/Postgres ports, starts Docker
+Compose, applies API migrations, waits for health checks, persists a sandbox
+record, and prints URLs.
 
 Useful commands:
 
@@ -74,6 +75,18 @@ Run all workspace tests and root script tests:
 
 ```bash
 pnpm test
+```
+
+Run all tests with the current worktree sandbox and its Postgres database:
+
+```bash
+pnpm test:with-sandbox
+```
+
+Run API tests with the current worktree sandbox and optional Vitest arguments:
+
+```bash
+pnpm api:test:with-sandbox -- src/domains/jobs/http.integration.test.ts
 ```
 
 Run package tests directly when iterating:
@@ -163,7 +176,13 @@ Infrastructure deployment variables are documented in
 [Sandbox And Infrastructure](architecture/sandbox-and-infra.md).
 
 When running API database integration tests against a sandbox whose Postgres
-port is not `5439`, set `API_TEST_DATABASE_URL` to the sandbox Postgres URL:
+port is not `5439`, prefer the sandbox-aware test wrapper:
+
+```bash
+pnpm api:test:with-sandbox -- src/domains/jobs/http.integration.test.ts
+```
+
+For custom commands, set `API_TEST_DATABASE_URL` to the sandbox Postgres URL:
 
 ```bash
 API_TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5443/task_tracker pnpm --filter api test -- src/domains/jobs/http.integration.test.ts
