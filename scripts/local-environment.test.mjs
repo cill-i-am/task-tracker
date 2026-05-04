@@ -68,6 +68,36 @@ test("setup preserves an existing .env.local", async (t) => {
   );
 });
 
+test("setup copies .env.local from the primary git worktree", async (t) => {
+  const fixture = await createFixture();
+  t.after(fixture.cleanup);
+  const targetWorktree = path.join(fixture.tempDir, "target-worktree");
+
+  run("git", ["add", "."], { cwd: fixture.repoDir });
+  run("git", ["commit", "-m", "initial"], { cwd: fixture.repoDir });
+  await writeFile(
+    path.join(fixture.repoDir, ".env.local"),
+    "AUTH_EMAIL_FROM=primary@example.com\n",
+    "utf8"
+  );
+  run("git", ["worktree", "add", "--detach", targetWorktree], {
+    cwd: fixture.repoDir,
+  });
+
+  const result = runScript(setupScript, fixture, {}, targetWorktree);
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    await readFile(path.join(targetWorktree, ".env.local"), "utf8"),
+    "AUTH_EMAIL_FROM=primary@example.com\n"
+  );
+  assert.equal(await fileMode(path.join(targetWorktree, ".env.local")), 0o600);
+  assert.equal(
+    await pathExists(path.join(fixture.repoDir, ".env.local")),
+    true
+  );
+});
+
 test("setup fails when no existing .env.local or LOCAL_ENV_SOURCE is available", async (t) => {
   const fixture = await createFixture();
   t.after(fixture.cleanup);
@@ -200,9 +230,9 @@ async function createFixture() {
   };
 }
 
-function runScript(scriptPath, fixture, env = {}) {
+function runScript(scriptPath, fixture, env = {}, cwd = fixture.repoDir) {
   return run("bash", [scriptPath], {
-    cwd: fixture.repoDir,
+    cwd,
     env: {
       LOCAL_ENV_CALL_LOG: fixture.callLog,
       PATH: `${fixture.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
