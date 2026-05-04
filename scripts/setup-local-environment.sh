@@ -42,6 +42,22 @@ if [[ -n "${LOCAL_ENV_SOURCE:-}" ]]; then
   fi
 fi
 
+if [[ -z "$env_source" ]]; then
+  git_common_dir="$(git rev-parse --git-common-dir)"
+  if [[ "$git_common_dir" = /* ]]; then
+    absolute_git_common_dir="$git_common_dir"
+  else
+    absolute_git_common_dir="$repo_root/$git_common_dir"
+  fi
+
+  if [[ "$(basename "$absolute_git_common_dir")" == ".git" ]]; then
+    primary_worktree="$(dirname "$absolute_git_common_dir")"
+    if [[ "$primary_worktree" != "$repo_root" && -f "$primary_worktree/.env.local" ]]; then
+      env_source="$primary_worktree/.env.local"
+    fi
+  fi
+fi
+
 if [[ -n "$env_source" ]]; then
   cp "$env_source" "$env_temp"
   chmod 600 "$env_temp"

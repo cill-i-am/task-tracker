@@ -62,6 +62,12 @@ The API health endpoint is `GET /health`; the app health route is `/health`.
 environment, then decodes only the keys requested by the CLI. Missing required
 keys fail preflight before Docker starts.
 
+Fresh linked worktrees usually do not contain gitignored env files. The local
+environment setup script copies `.env.local` from an explicit
+`LOCAL_ENV_SOURCE` first, then from the primary Git worktree associated with the
+linked worktree. The script does not generate fallback secrets; if no source env
+file exists, setup stops with a clear error.
+
 Common sandbox variables include:
 
 | Variable                  | Purpose                                                  |

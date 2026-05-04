@@ -62,6 +62,12 @@ the process environment. Missing required keys are reported before Docker
 startup. Optional Cloudflare auth email credentials are only used when the
 configured transport needs them.
 
+Codex/local worktree setup runs `scripts/setup-local-environment.sh` before
+sandbox startup actions. The script preserves an existing `.env.local`, copies
+one from `LOCAL_ENV_SOURCE` when supplied, and otherwise copies the
+`.env.local` from the primary Git worktree for linked worktrees. If no source
+exists, setup fails before sandbox commands run so missing secrets are explicit.
+
 ## Testing
 
 Run all workspace tests and root script tests:
