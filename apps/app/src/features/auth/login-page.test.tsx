@@ -1,3 +1,4 @@
+import { LoginInputSchema } from "@task-tracker/identity-core";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Schema } from "effect";
@@ -5,7 +6,6 @@ import type { ComponentProps } from "react";
 
 import type { authClient as AuthClient } from "#/lib/auth-client";
 
-import { loginSchema } from "./auth-schemas";
 import { LoginPage } from "./login-page";
 
 const { mockedGetSession, mockedNavigate, mockedSignInEmail } = vi.hoisted(
@@ -169,7 +169,7 @@ describe("login page", () => {
 
   it("uses the shared login schema for submit validation", async () => {
     const user = userEvent.setup();
-    const standardSchema = Schema.standardSchemaV1(loginSchema);
+    const standardSchema = Schema.standardSchemaV1(LoginInputSchema);
     const result = standardSchema["~standard"].validate({
       email: "person@example.com",
       password: "short",

@@ -1,51 +1,21 @@
 import { createServerOnlyFn } from "@tanstack/react-start";
 import {
+  decodeOrganizationAccessSession as decodeSharedOrganizationAccessSession,
   decodeOrganizationMemberRoleResponse,
   decodeOrganizationSummaryList,
-  OrganizationId,
 } from "@task-tracker/identity-core";
 import type {
+  OrganizationAccessSession,
   OrganizationId as OrganizationIdType,
   OrganizationMemberRoleResponse,
   OrganizationSummary,
 } from "@task-tracker/identity-core";
-import { Schema } from "effect";
 
 import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client.server";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,
 } from "#/lib/server-api-forwarded-headers";
-
-const NullableString = Schema.NullOr(Schema.String);
-const NullableOrganizationId = Schema.NullOr(OrganizationId);
-
-const OrganizationAccessSessionSchema = Schema.Struct({
-  session: Schema.Struct({
-    id: Schema.String,
-    createdAt: Schema.String,
-    updatedAt: Schema.String,
-    userId: Schema.String,
-    expiresAt: Schema.String,
-    token: Schema.String,
-    ipAddress: Schema.optional(NullableString),
-    userAgent: Schema.optional(NullableString),
-    activeOrganizationId: Schema.optional(NullableOrganizationId),
-  }),
-  user: Schema.Struct({
-    id: Schema.String,
-    name: Schema.String,
-    email: Schema.String,
-    image: Schema.optional(NullableString),
-    emailVerified: Schema.Boolean,
-    createdAt: Schema.String,
-    updatedAt: Schema.String,
-  }),
-});
-
-export type OrganizationAccessSession = Schema.Schema.Type<
-  typeof OrganizationAccessSessionSchema
->;
 
 export type OrganizationMemberRole = OrganizationMemberRoleResponse;
 
@@ -257,7 +227,7 @@ export function decodeOrganizationAccessSession(
   session: unknown
 ): OrganizationAccessSession {
   try {
-    return Schema.decodeUnknownSync(OrganizationAccessSessionSchema)(session);
+    return decodeSharedOrganizationAccessSession(session);
   } catch {
     throw new Error("Session lookup returned an invalid payload.");
   }

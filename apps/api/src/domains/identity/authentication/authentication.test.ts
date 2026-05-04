@@ -9,16 +9,13 @@ import {
   HttpServerResponse,
 } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
+import { maskInvitationEmail } from "@task-tracker/identity-core";
 import { getTableName } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Effect } from "effect";
 import { Pool } from "pg";
 
-import {
-  createAuthentication,
-  maskInvitationEmail,
-  matchesTrustedOrigin,
-} from "./auth.js";
+import { createAuthentication, matchesTrustedOrigin } from "./auth.js";
 import {
   DEFAULT_AUTH_DATABASE_URL,
   loadAuthenticationConfig,

@@ -304,7 +304,7 @@ deployment URL.
 
 ### Server-Side Session Lookup Bridge
 
-`apps/app/src/features/auth/get-server-auth-session.ts` is the server-side
+`apps/app/src/features/auth/server-session.ts` is the server-side
 session bridge used by the TanStack Start app.
 
 Responsibilities:
@@ -312,8 +312,9 @@ Responsibilities:
 - run only on the server via `createServerFn`
 - read the incoming request `cookie` header
 - derive the correct auth base URL from the request protocol and host
-- create a request-scoped Better Auth client
-- call `getSession` against the API while forwarding the original cookies
+- call Better Auth's `get-session` endpoint against the API while forwarding
+  the original cookies
+- decode the response with `@task-tracker/identity-core`
 
 Important rule:
 
@@ -540,13 +541,12 @@ Current behavior:
 
 ### Shared Validation Rules
 
-The shared auth schemas live in
-`apps/app/src/features/auth/auth-schemas.ts`.
+The shared auth schemas live in `@task-tracker/identity-core`.
 
 Current input rules:
 
 - email is trimmed, non-empty, and must match a basic email pattern
-- password is trimmed and must be at least 8 characters
+- password must be at least 8 characters
 - signup name is trimmed and must be at least 2 characters
 - signup password and confirm password must match
 
@@ -664,7 +664,7 @@ These are the important current rules we are following.
 
 - `apps/app/src/lib/auth-client.ts`
   Shared Better Auth client and app-origin to API-origin mapping.
-- `apps/app/src/features/auth/get-server-auth-session.ts`
+- `apps/app/src/features/auth/server-session.ts`
   SSR bridge that forwards cookies to Better Auth session lookup.
 - `apps/app/src/features/auth/require-authenticated-session.ts`
   Protected-route guard.

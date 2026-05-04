@@ -3,11 +3,12 @@ import { createHash } from "node:crypto";
 
 import { HttpApiBuilder, HttpApp } from "@effect/platform";
 import {
-  isAdministrativeOrganizationRole,
   decodeCreateOrganizationInput,
   decodeOrganizationRole,
   decodePublicInvitationPreview,
   decodeUpdateOrganizationInput,
+  isAdministrativeOrganizationRole,
+  maskInvitationEmail,
 } from "@task-tracker/identity-core";
 import type {
   OrganizationRole,
@@ -76,19 +77,6 @@ const SESSION_COOKIE_NAMES = [
 
 type AuthEmailFailureReporter = (error: unknown) => void;
 type AuthEmailPromiseSender<Input> = (input: Input) => Promise<void>;
-
-export function maskInvitationEmail(email: string) {
-  const [localPart, domainPart] = email.split("@");
-
-  if (!localPart || !domainPart) {
-    return "***";
-  }
-
-  const [domainLabel, ...domainSuffix] = domainPart.split(".");
-  const maskedDomainLabel = domainLabel ? `${domainLabel[0]}***` : "***";
-
-  return `${localPart[0]}***@${maskedDomainLabel}${domainSuffix.length > 0 ? `.${domainSuffix.join(".")}` : ""}`;
-}
 
 export async function findPublicInvitationPreview(options: {
   readonly database: NodePgDatabase<typeof authSchema>;
