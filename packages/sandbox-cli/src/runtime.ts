@@ -149,6 +149,7 @@ const DEFAULT_PORTS: SandboxPorts = {
 export interface WorktreeContext {
   readonly repoRoot: string;
   readonly worktreePath: string;
+  readonly branchName?: string;
 }
 
 export interface SandboxStatusResult {
@@ -392,7 +393,7 @@ export const SandboxCliLive = Layer.mergeAll(
   SandboxLifecycleService.Default
 );
 
-function makeWorktreeResolver(
+export function makeWorktreeResolver(
   sandboxProcess: SandboxProcess
 ): WorktreeResolver {
   return {
@@ -408,8 +409,21 @@ function makeWorktreeResolver(
           cwd,
         })
       );
+      const branchResult = yield* exec(
+        sandboxProcess.runCommand(
+          "git",
+          ["symbolic-ref", "--quiet", "--short", "HEAD"],
+          {
+            allowNonZero: true,
+            cwd,
+          }
+        )
+      );
       const worktreePath = worktreeResult.stdout.trim();
       const gitCommonDir = commonDirResult.stdout.trim();
+      const branchName = branchResult.stdout.trim();
+      const branchResolved =
+        branchResult.exitCode === 0 && branchName.length > 0;
       const absoluteGitCommonDir = path.isAbsolute(gitCommonDir)
         ? gitCommonDir
         : path.resolve(cwd, gitCommonDir);
@@ -417,8 +431,13 @@ function makeWorktreeResolver(
         worktreePath,
         absoluteGitCommonDir
       );
+      yield* Effect.annotateCurrentSpan(
+        "branchResolved",
+        String(branchResolved)
+      );
 
       return {
+        ...(branchResolved ? { branchName } : {}),
         repoRoot,
         worktreePath,
       };
@@ -806,6 +825,7 @@ function makeSandboxLifecycle(input: {
       return yield* bringSandboxUp({
         repoRoot: context.repoRoot,
         worktreePath: context.worktreePath,
+        branchName: context.branchName,
         explicitSandboxName: options.explicitSandboxName,
         now: new Date().toISOString(),
         takenNames,

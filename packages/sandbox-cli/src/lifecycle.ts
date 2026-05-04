@@ -1,6 +1,7 @@
 import {
   buildSandboxRuntimeSpec,
   deriveSandboxIdentity,
+  validateHostnameSlug,
   validateSandboxName,
 } from "@task-tracker/sandbox-core";
 import type {
@@ -15,7 +16,7 @@ import type {
   SandboxRegistryError,
   SharedSandboxEnvironmentInput,
 } from "@task-tracker/sandbox-core/node";
-import { Effect } from "effect";
+import { Array as EffectArray, Effect } from "effect";
 
 import type { SandboxPreflightError } from "./sandbox-preflight-error.js";
 import { toSandboxPreflightError } from "./sandbox-preflight-error.js";
@@ -36,6 +37,7 @@ type SandboxLifecycleEffect<A> = Effect.Effect<A, SandboxLifecycleError, never>;
 export interface BringSandboxUpOptions {
   readonly repoRoot: string;
   readonly worktreePath: string;
+  readonly branchName?: string;
   readonly explicitSandboxName?: SandboxName;
   readonly now: string;
   readonly takenNames: ReadonlySet<SandboxName>;
@@ -77,17 +79,39 @@ export const bringSandboxUp = Effect.fn("SandboxLifecycle.bringSandboxUp")(
       status: SandboxStartupProgressEvent["status"],
       detail?: string
     ) => reportProgress({ step, status, detail });
+    const takenSlugs = new Set(
+      EffectArray.map(EffectArray.fromIterable(options.takenNames), (name) =>
+        validateHostnameSlug(name)
+      )
+    );
+    const inferredIdentity = deriveSandboxIdentity({
+      repoRoot: options.repoRoot,
+      worktreePath: options.worktreePath,
+      preferredName: options.branchName,
+      takenSlugs,
+    });
     const sandboxName =
       options.explicitSandboxName ??
-      validateSandboxName(
-        deriveSandboxIdentity({
-          repoRoot: options.repoRoot,
-          worktreePath: options.worktreePath,
-        }).hostnameSlug
-      );
+      validateSandboxName(inferredIdentity.hostnameSlug);
     yield* Effect.annotateCurrentSpan("sandboxName", sandboxName);
     yield* Effect.annotateCurrentSpan("worktreePath", options.worktreePath);
     yield* Effect.annotateCurrentSpan("repoRoot", options.repoRoot);
+    yield* Effect.annotateCurrentSpan(
+      "preferredNameSource",
+      getPreferredNameSource(options)
+    );
+    yield* Effect.annotateCurrentSpan(
+      "branchResolved",
+      String(options.branchName !== undefined)
+    );
+    yield* Effect.annotateCurrentSpan(
+      "inferredHostnameSlug",
+      inferredIdentity.hostnameSlug
+    );
+    yield* Effect.annotateCurrentSpan(
+      "takenSlugCount",
+      String(takenSlugs.size)
+    );
 
     yield* reportStep("preflight", "running", "validating environment");
     const sharedEnvironment = yield* options.loadSharedEnvironment();
@@ -215,3 +239,15 @@ export const bringSandboxUp = Effect.fn("SandboxLifecycle.bringSandboxUp")(
     };
   }
 );
+
+function getPreferredNameSource(options: BringSandboxUpOptions) {
+  if (options.explicitSandboxName) {
+    return "explicit";
+  }
+
+  if (options.branchName) {
+    return "branch";
+  }
+
+  return "worktree";
+}

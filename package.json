@@ -2,6 +2,7 @@
   "name": "ceird",
   "private": true,
   "scripts": {
+    "api:test:with-sandbox": "node scripts/test-with-sandbox.mjs --api",
     "build": "turbo run build",
     "check": "ultracite check .",
     "check-types": "turbo run check-types",
@@ -25,7 +26,8 @@
     "sandbox:up": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts up",
     "sandbox:url": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts url",
     "test": "turbo run test && pnpm run test:scripts",
-    "test:scripts": "node --test scripts/*.test.mjs"
+    "test:scripts": "node --test scripts/*.test.mjs",
+    "test:with-sandbox": "node scripts/test-with-sandbox.mjs"
   },
   "devDependencies": {
     "lefthook": "^2.1.6",

@@ -167,6 +167,13 @@ Run them with:
 pnpm --filter api test
 ```
 
+When database-backed integration coverage is required from the host, run the
+sandbox-aware wrapper:
+
+```bash
+pnpm api:test:with-sandbox
+```
+
 Database-backed integration tests create an isolated database from a base
 Postgres URL. By default they use the local app database URL, but
 `API_TEST_DATABASE_URL` or `TEST_DATABASE_URL` can point them at any sandbox

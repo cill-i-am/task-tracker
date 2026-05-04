@@ -45,6 +45,30 @@ export function formatSandboxViewLines(
   ];
 }
 
+export function formatSandboxJsonLines(
+  record: {
+    readonly sandboxName: SandboxName;
+    readonly composeProjectName: ComposeProjectName;
+    readonly status: SandboxStatus;
+  },
+  urls: SandboxUrls
+): readonly string[] {
+  return [
+    JSON.stringify({
+      sandbox: record.sandboxName,
+      composeProject: record.composeProjectName,
+      status: record.status,
+      urls: {
+        app: urls.app,
+        api: urls.api,
+        postgres: urls.postgres,
+        fallbackApp: urls.fallbackApp,
+        fallbackApi: urls.fallbackApi,
+      },
+    }),
+  ];
+}
+
 export function formatSandboxStartupTimeoutLines(input: {
   readonly sandboxName: SandboxName;
   readonly composeProjectName: ComposeProjectName;

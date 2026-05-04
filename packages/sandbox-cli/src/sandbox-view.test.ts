@@ -6,6 +6,7 @@ import {
 } from "@task-tracker/sandbox-core";
 
 import {
+  formatSandboxJsonLines,
   formatSandboxStartupProgressLine,
   formatSandboxStartupTimeoutLines,
   formatSandboxViewLines,
@@ -47,6 +48,45 @@ describe("formatSandboxViewLines()", () => {
       "  app fallback url: http://127.0.0.1:4300",
       "  api fallback url: http://127.0.0.1:4301",
     ]);
+  }, 10_000);
+});
+
+describe("formatSandboxJsonLines()", () => {
+  it("formats sandbox URLs as a stable machine-readable payload", () => {
+    const lines = formatSandboxJsonLines(
+      {
+        sandboxName: validateSandboxName("feature-branch"),
+        composeProjectName: makeComposeProjectName(
+          validateSandboxName("feature-branch")
+        ),
+        status: "ready",
+      },
+      buildSandboxUrls(
+        {
+          hostnameSlug: validateHostnameSlug("feature-branch"),
+          ports: {
+            app: 4300,
+            api: 4301,
+            postgres: 5439,
+          },
+        },
+        { aliasesHealthy: true, proxyPort: 1355 }
+      )
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] ?? "")).toStrictEqual({
+      sandbox: "feature-branch",
+      composeProject: "tt-sbx-feature-branch",
+      status: "ready",
+      urls: {
+        app: "https://feature-branch.app.task-tracker.localhost:1355",
+        api: "https://feature-branch.api.task-tracker.localhost:1355",
+        postgres: "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
+        fallbackApp: "http://127.0.0.1:4300",
+        fallbackApi: "http://127.0.0.1:4301",
+      },
+    });
   }, 10_000);
 });
 

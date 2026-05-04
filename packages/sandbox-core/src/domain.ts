@@ -41,6 +41,7 @@ export interface SandboxIdentity {
 export interface DeriveSandboxIdentityOptions {
   readonly repoRoot: string;
   readonly worktreePath: string;
+  readonly preferredName?: string;
   readonly takenSlugs?: ReadonlySet<HostnameSlug>;
 }
 
@@ -131,13 +132,14 @@ export function deriveSandboxIdentity(
 ): SandboxIdentity {
   const worktreeSegments = options.worktreePath.split(/[/\\]/).filter(Boolean);
   const worktreeName = worktreeSegments.at(-1) ?? "sandbox";
+  const preferredName = options.preferredName ?? worktreeName;
   const sandboxId = hashSandboxSeed(
     `${options.repoRoot}::${options.worktreePath}`,
     SANDBOX_ID_LENGTH
   );
   const validatedSandboxId = validateSandboxId(sandboxId);
   const preferredSlug =
-    sanitizeForHostname(worktreeName) ||
+    sanitizeForHostname(preferredName) ||
     `sandbox-${validatedSandboxId.slice(0, 6)}`;
   const hostnameSlug = ensureUniqueSlug(
     preferredSlug,

@@ -2,6 +2,7 @@ import { validateSandboxName } from "@task-tracker/sandbox-core";
 import { Effect, Either } from "effect";
 
 import { bringSandboxUp } from "./lifecycle.js";
+import type { BringSandboxUpOptions } from "./lifecycle.js";
 import { buildSandboxRuntimeAssets } from "./runtime-assets.js";
 import { SandboxPreflightError } from "./sandbox-preflight-error.js";
 
@@ -431,4 +432,83 @@ describe("bringSandboxUp()", () => {
     expect(result.left.causeTag).toMatch(/SandboxNameConflictError/);
     expect(result.left.sandboxName).toBe("agent-one");
   }, 10_000);
+
+  it("derives a unique name when another worktree already uses the same basename", async () => {
+    const result = await Effect.runPromise(
+      bringSandboxUp(
+        makeBasicBringSandboxUpOptions({
+          takenNames: new Set([validateSandboxName("ceird")]),
+        })
+      )
+    );
+
+    expect(result.record.sandboxName).toMatch(/^ceird-[a-f0-9]{6}$/);
+    expect(result.urls.postgres).toBe(
+      "postgresql://postgres:postgres@127.0.0.1:5443/task_tracker"
+    );
+  }, 10_000);
+
+  it("uses the branch name as the inferred sandbox name when available", async () => {
+    const result = await Effect.runPromise(
+      bringSandboxUp(
+        makeBasicBringSandboxUpOptions({
+          branchName: "codex/add-sandbox-aware-tests",
+        })
+      )
+    );
+
+    expect(result.record.sandboxName).toBe("codex-add-sandbox-aware-tests");
+  }, 10_000);
+
+  it("adds a hash suffix when the branch-derived sandbox name is already taken", async () => {
+    const result = await Effect.runPromise(
+      bringSandboxUp(
+        makeBasicBringSandboxUpOptions({
+          branchName: "codex/add-sandbox-aware-tests",
+          takenNames: new Set([
+            validateSandboxName("codex-add-sandbox-aware-tests"),
+          ]),
+        })
+      )
+    );
+
+    expect(result.record.sandboxName).toMatch(
+      /^codex-add-sandbox-aware-tests-[a-f0-9]{6}$/
+    );
+  }, 10_000);
 });
+
+function makeBasicBringSandboxUpOptions(
+  overrides: Partial<BringSandboxUpOptions>
+): BringSandboxUpOptions {
+  return {
+    repoRoot: "/Users/me/task-tracker",
+    worktreePath: "/Users/me/.codex/worktrees/1188/ceird",
+    explicitSandboxName: undefined,
+    now: "2026-04-01T12:00:00.000Z",
+    takenNames: new Set(),
+    existingRecord: undefined,
+    loadSharedEnvironment: () =>
+      Effect.succeed({
+        AUTH_EMAIL_FROM: "auth@example.com",
+        AUTH_EMAIL_FROM_NAME: "Task Tracker",
+        CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
+        CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
+      }),
+    resolveRuntimeAssets: () => Effect.succeed(runtimeAssets),
+    allocatePorts: () =>
+      Effect.succeed({
+        app: 4308,
+        api: 4309,
+        postgres: 5443,
+      }),
+    determineAliasesHealthy: () => Effect.succeed(true),
+    startComposeProject: () => Effect.void,
+    migrateDatabase: () => Effect.void,
+    waitForHealth: () => Effect.void,
+    persist: () => Effect.void,
+    reportProgress: () => Effect.void,
+    generateBetterAuthSecret: () => "generated-secret",
+    ...overrides,
+  };
+}

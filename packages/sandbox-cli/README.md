@@ -12,9 +12,13 @@ pnpm sandbox:up
 pnpm sandbox:status
 pnpm sandbox:list
 pnpm sandbox:url
+pnpm sandbox:url -- --format json
 pnpm sandbox:logs -- --service api
 pnpm sandbox:down
 ```
+
+Use `pnpm sandbox:url -- --format json` when scripts need a stable
+machine-readable URL payload instead of the human-readable status view.
 
 Run directly from the package when working on the CLI:
 
