@@ -11,8 +11,14 @@ contracts used by the app, API, and jobs core package.
 - role helpers: `isAdministrativeOrganizationRole`,
   `isInternalOrganizationRole`, `isExternalOrganizationRole`
 - organization summary schemas and list schemas
+- account identity schemas for email, password, name, login, signup, and
+  password reset inputs
 - create/update organization input schemas
+- organization member invitation input schemas
+- Better Auth session and organization-access session schemas for app server
+  bridges
 - public invitation preview schema
+- public invitation email masking helper
 - decode helpers for untrusted payloads
 
 ## Commands

@@ -1,5 +1,9 @@
 import { useForm } from "@tanstack/react-form";
 import { Link } from "@tanstack/react-router";
+import {
+  decodePasswordResetRequestInput,
+  PasswordResetRequestInputSchema,
+} from "@task-tracker/identity-core";
 import { Schema } from "effect";
 import { useState } from "react";
 
@@ -24,10 +28,6 @@ import {
 import { AuthFormField } from "./auth-form-field";
 import { getLoginNavigationTarget } from "./auth-navigation";
 import type { LoginNavigationTarget } from "./auth-navigation";
-import {
-  decodePasswordResetRequestInput,
-  passwordResetRequestSchema,
-} from "./auth-schemas";
 import { EntryShell, EntrySurfaceCard } from "./entry-shell";
 
 const successCopy =
@@ -63,7 +63,7 @@ export function PasswordResetRequestPage({
       email: "",
     },
     validators: {
-      onSubmit: Schema.standardSchemaV1(passwordResetRequestSchema),
+      onSubmit: Schema.standardSchemaV1(PasswordResetRequestInputSchema),
     },
     onSubmit: async ({ formApi, value }) => {
       formApi.setErrorMap({

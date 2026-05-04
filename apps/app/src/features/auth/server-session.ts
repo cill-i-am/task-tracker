@@ -1,38 +1,12 @@
 import { createServerOnlyFn } from "@tanstack/react-start";
-import { Schema } from "effect";
+import { decodeBetterAuthSession } from "@task-tracker/identity-core";
+import type { BetterAuthSession } from "@task-tracker/identity-core";
 
 import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client.server";
 import {
   normalizeServerApiCookieHeader,
   readServerApiForwardedHeaders,
 } from "#/lib/server-api-forwarded-headers";
-
-const NullableString = Schema.NullOr(Schema.String);
-
-const ServerAuthSessionSchema = Schema.Struct({
-  session: Schema.Struct({
-    id: Schema.String,
-    createdAt: Schema.String,
-    updatedAt: Schema.String,
-    userId: Schema.String,
-    expiresAt: Schema.String,
-    token: Schema.String,
-    ipAddress: Schema.optional(NullableString),
-    userAgent: Schema.optional(NullableString),
-    activeOrganizationId: Schema.optional(NullableString),
-  }),
-  user: Schema.Struct({
-    id: Schema.String,
-    name: Schema.String,
-    email: Schema.String,
-    image: Schema.optional(NullableString),
-    emailVerified: Schema.Boolean,
-    createdAt: Schema.String,
-    updatedAt: Schema.String,
-  }),
-});
-
-type ServerAuthSession = Schema.Schema.Type<typeof ServerAuthSessionSchema>;
 
 export const getCurrentServerSession = createServerOnlyFn(async () => {
   const { getRequestHeader } = await import("@tanstack/react-start/server");
@@ -70,9 +44,9 @@ export const getCurrentServerSession = createServerOnlyFn(async () => {
   return decodeServerAuthSession(payload);
 });
 
-function decodeServerAuthSession(payload: unknown): ServerAuthSession | null {
+function decodeServerAuthSession(payload: unknown): BetterAuthSession | null {
   try {
-    return Schema.decodeUnknownSync(ServerAuthSessionSchema)(payload);
+    return decodeBetterAuthSession(payload);
   } catch {
     return null;
   }

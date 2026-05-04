@@ -1,16 +1,17 @@
 import {
+  decodeLoginInput,
+  decodePasswordResetInput,
+  decodePasswordResetRequestInput,
+  decodeSignupInput,
+} from "@task-tracker/identity-core";
+
+import {
   buildPasswordResetRedirectTo,
   createBrowserTaskTrackerAuthClient,
   createTaskTrackerAuthClient,
   resolveApiBaseURL,
   resolveAuthBaseURL,
 } from "../../lib/auth-client";
-import {
-  decodeLoginInput,
-  decodePasswordResetInput,
-  decodePasswordResetRequestInput,
-  decodeSignupInput,
-} from "./auth-schemas";
 
 describe("auth schemas", () => {
   it("rejects an invalid login email", () => {

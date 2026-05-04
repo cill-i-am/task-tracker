@@ -18,8 +18,14 @@ Exports shared identity and organization primitives:
 - role helpers such as `isAdministrativeOrganizationRole`,
   `isInternalOrganizationRole`, and `isExternalOrganizationRole`
 - organization summary schemas
+- account identity schemas for email, password, name, login, signup, and
+  password reset form inputs
 - create/update organization input schemas
+- organization member invitation input schemas
+- Better Auth session and organization-access session schemas used by the app
+  server bridge
 - public invitation preview schema
+- public invitation masking helpers
 - decode helpers for untrusted payloads
 
 Use this package when app and API code need the same organization or membership

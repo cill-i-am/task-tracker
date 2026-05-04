@@ -1,26 +1,25 @@
 /* oxlint-disable unicorn/no-array-method-this-argument */
 
+import {
+  AccountEmailSchema,
+  AccountNameSchema,
+  AccountPasswordSchema,
+} from "@task-tracker/identity-core";
 import { ParseResult, Schema } from "effect";
 
-import {
-  accountEmailSchema,
-  accountNameSchema,
-  accountPasswordSchema,
-} from "#/features/auth/auth-schemas";
-
-const SettingsEmail = accountEmailSchema.pipe(
+const SettingsEmail = AccountEmailSchema.pipe(
   Schema.annotations({
     message: () => "Enter a valid email address",
   })
 );
 
-const SettingsPassword = accountPasswordSchema.pipe(
+const SettingsPassword = AccountPasswordSchema.pipe(
   Schema.annotations({
     message: () => "Use 8 or more characters",
   })
 );
 
-const SettingsName = accountNameSchema.pipe(
+const SettingsName = AccountNameSchema.pipe(
   Schema.annotations({
     message: () => "Use at least 2 characters",
   })

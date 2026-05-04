@@ -1,5 +1,9 @@
 import { useForm } from "@tanstack/react-form";
 import { Link } from "@tanstack/react-router";
+import {
+  decodeLoginInput,
+  LoginInputSchema,
+} from "@task-tracker/identity-core";
 import { Schema } from "effect";
 
 import { Button } from "#/components/ui/button";
@@ -20,7 +24,6 @@ import {
   getSignupNavigationTarget,
   useAuthSuccessNavigation,
 } from "./auth-navigation";
-import { decodeLoginInput, loginSchema } from "./auth-schemas";
 import { EntryShell, EntrySurfaceCard } from "./entry-shell";
 
 const quietLinkClassName =
@@ -39,7 +42,7 @@ export function LoginPage({
       password: "",
     },
     validators: {
-      onSubmit: Schema.standardSchemaV1(loginSchema),
+      onSubmit: Schema.standardSchemaV1(LoginInputSchema),
     },
     onSubmit: async ({ formApi, value }) => {
       formApi.setErrorMap({

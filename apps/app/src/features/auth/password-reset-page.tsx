@@ -1,5 +1,9 @@
 import { useForm } from "@tanstack/react-form";
 import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  decodePasswordResetInput,
+  PasswordResetInputSchema,
+} from "@task-tracker/identity-core";
 import { Schema } from "effect";
 
 import { Button, buttonVariants } from "#/components/ui/button";
@@ -25,7 +29,6 @@ import {
   getForgotPasswordNavigationTarget,
   getLoginNavigationTarget,
 } from "./auth-navigation";
-import { decodePasswordResetInput, passwordResetSchema } from "./auth-schemas";
 import { EntryShell, EntrySurfaceCard } from "./entry-shell";
 import { decodePasswordResetSearch } from "./password-reset-search";
 import type { PasswordResetSearch } from "./password-reset-search";
@@ -52,7 +55,7 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
       confirmPassword: "",
     },
     validators: {
-      onSubmit: Schema.standardSchemaV1(passwordResetSchema),
+      onSubmit: Schema.standardSchemaV1(PasswordResetInputSchema),
     },
     onSubmit: async ({ formApi, value }) => {
       if (!token) {

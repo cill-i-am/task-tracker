@@ -1,11 +1,14 @@
 import { useForm } from "@tanstack/react-form";
 import {
+  decodeOrganizationMemberInviteInput,
   decodeOrganizationRole,
   INVITABLE_ORGANIZATION_ROLES,
   InvitableOrganizationRole,
+  OrganizationMemberInviteInputSchema,
 } from "@task-tracker/identity-core";
 import type {
   OrganizationId,
+  OrganizationMemberInviteInput,
   OrganizationRole,
 } from "@task-tracker/identity-core";
 import { Schema } from "effect";
@@ -32,12 +35,6 @@ import { AuthFormField } from "#/features/auth/auth-form-field";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 import { authClient } from "#/lib/auth-client";
-
-import {
-  decodeOrganizationMemberInviteInput,
-  organizationMemberInviteSchema,
-} from "./organization-member-invite-schemas";
-import type { OrganizationMemberInviteInput } from "./organization-member-invite-schemas";
 
 interface InvitationSummary {
   readonly email: string;
@@ -166,7 +163,7 @@ export function OrganizationMembersPage({
   const form = useForm({
     defaultValues,
     validators: {
-      onSubmit: Schema.standardSchemaV1(organizationMemberInviteSchema),
+      onSubmit: Schema.standardSchemaV1(OrganizationMemberInviteInputSchema),
     },
     onSubmit: async ({ formApi, value }) => {
       formApi.setErrorMap({

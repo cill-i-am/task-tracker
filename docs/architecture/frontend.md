@@ -102,14 +102,13 @@ preserve the original browser host/protocol for trusted proxy and cookie logic.
 
 Runtime payloads that cross the app/API boundary are decoded with shared Effect
 schemas from `@task-tracker/jobs-core` and `@task-tracker/identity-core`.
-Feature-local form/search schemas live next to the feature that owns them, for
-example:
+Identity form inputs, organization member invite inputs, and server auth
+session payloads come from `@task-tracker/identity-core`. Feature-local search
+schemas live next to the feature that owns them, for example:
 
-- `features/auth/auth-schemas.ts`
 - `features/auth/password-reset-search.ts`
 - `features/auth/email-verification-search.ts`
 - `features/organizations/organization-schemas.ts`
-- `features/organizations/organization-member-invite-schemas.ts`
 - `features/settings/user-settings-schemas.ts`
 
 UI state for API-backed feature workflows is kept in focused state modules such

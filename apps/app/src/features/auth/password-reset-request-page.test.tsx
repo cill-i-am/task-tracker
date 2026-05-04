@@ -1,3 +1,4 @@
+import { PasswordResetRequestInputSchema } from "@task-tracker/identity-core";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Schema } from "effect";
@@ -7,7 +8,6 @@ import type { authClient as AuthClient } from "#/lib/auth-client";
 import type * as AuthClientModule from "#/lib/auth-client";
 import { buildPasswordResetRedirectTo } from "#/lib/auth-client";
 
-import { passwordResetRequestSchema } from "./auth-schemas";
 import { PasswordResetRequestPage } from "./password-reset-request-page";
 
 const { mockedRequestPasswordReset } = vi.hoisted(() => ({
@@ -143,7 +143,9 @@ describe("password reset request page", () => {
 
   it("uses the shared password reset request schema for submit validation", async () => {
     const user = userEvent.setup();
-    const standardSchema = Schema.standardSchemaV1(passwordResetRequestSchema);
+    const standardSchema = Schema.standardSchemaV1(
+      PasswordResetRequestInputSchema
+    );
     const result = standardSchema["~standard"].validate({
       email: "invalid-email",
     });
