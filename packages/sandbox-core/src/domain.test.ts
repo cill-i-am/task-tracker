@@ -205,7 +205,7 @@ describe("buildSandboxUrls()", () => {
     ).toStrictEqual({
       app: "https://agent-one.app.task-tracker.localhost:1355",
       api: "https://agent-one.api.task-tracker.localhost:1355",
-      postgres: "postgresql://127.0.0.1:5439/task_tracker",
+      postgres: "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
       fallbackApp: "http://127.0.0.1:4300",
       fallbackApi: "http://127.0.0.1:4301",
     });
@@ -230,7 +230,7 @@ describe("buildSandboxUrls()", () => {
     ).toStrictEqual({
       app: "http://127.0.0.1:4300",
       api: "http://127.0.0.1:4301",
-      postgres: "postgresql://127.0.0.1:5439/task_tracker",
+      postgres: "postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
       fallbackApp: "http://127.0.0.1:4300",
       fallbackApi: "http://127.0.0.1:4301",
     });

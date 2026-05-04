@@ -43,7 +43,7 @@ describe("formatSandboxViewLines()", () => {
       "  status: ready",
       "  app url: https://feature-branch.app.task-tracker.localhost:1355",
       "  api url: https://feature-branch.api.task-tracker.localhost:1355",
-      "  postgres url: postgresql://127.0.0.1:5439/task_tracker",
+      "  postgres url: postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
       "  app fallback url: http://127.0.0.1:4300",
       "  api fallback url: http://127.0.0.1:4301",
     ]);
@@ -83,7 +83,7 @@ describe("formatSandboxStartupTimeoutLines()", () => {
       "  postgres ready: yes",
       "  api ready: no",
       "  app ready: no",
-      "  postgres url: postgresql://127.0.0.1:5439/task_tracker",
+      "  postgres url: postgresql://postgres:postgres@127.0.0.1:5439/task_tracker",
       "  app fallback url: http://127.0.0.1:4300",
       "  api fallback url: http://127.0.0.1:4301",
       "  next step: pnpm sandbox:logs -- --name feature-branch --service api",

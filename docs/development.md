@@ -138,6 +138,8 @@ High-signal runtime variables:
 | Variable                  | Used by                 | Purpose                                                        |
 | ------------------------- | ----------------------- | -------------------------------------------------------------- |
 | `DATABASE_URL`            | API, sandbox            | App database connection string.                                |
+| `API_TEST_DATABASE_URL`   | API tests               | Base Postgres URL for API integration tests.                   |
+| `TEST_DATABASE_URL`       | test helpers            | Shared fallback base Postgres URL for integration tests.       |
 | `BETTER_AUTH_BASE_URL`    | API, app server helpers | Absolute Better Auth base URL, usually ending in `/api/auth`.  |
 | `BETTER_AUTH_SECRET`      | API                     | Better Auth signing secret.                                    |
 | `AUTH_APP_ORIGIN`         | API                     | Browser-visible app origin for redirects and auth email links. |
@@ -153,6 +155,13 @@ High-signal runtime variables:
 
 Infrastructure deployment variables are documented in
 [Sandbox And Infrastructure](architecture/sandbox-and-infra.md).
+
+When running API database integration tests against a sandbox whose Postgres
+port is not `5439`, set `API_TEST_DATABASE_URL` to the sandbox Postgres URL:
+
+```bash
+API_TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5443/task_tracker pnpm --filter api test -- src/domains/jobs/http.integration.test.ts
+```
 
 ## Deployment
 

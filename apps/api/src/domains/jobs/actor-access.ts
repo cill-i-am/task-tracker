@@ -9,12 +9,14 @@ import {
   JOBS_ACTIVE_ORGANIZATION_REQUIRED_ERROR_TAG,
   JOBS_ACTOR_MEMBERSHIP_NOT_FOUND_ERROR_TAG,
   JOBS_ORGANIZATION_ROLE_NOT_SUPPORTED_ERROR_TAG,
+  JOBS_SESSION_IDENTITY_INVALID_ERROR_TAG,
   JOBS_SESSION_REQUIRED_ERROR_TAG,
 } from "./errors.js";
 import type {
   JobsActiveOrganizationRequiredError,
   JobsActorMembershipNotFoundError,
   JobsOrganizationRoleNotSupportedError,
+  JobsSessionIdentityInvalidError,
   JobsSessionRequiredError,
 } from "./errors.js";
 
@@ -22,6 +24,7 @@ export type ActorResolutionError =
   | JobsActiveOrganizationRequiredError
   | JobsActorMembershipNotFoundError
   | JobsOrganizationRoleNotSupportedError
+  | JobsSessionIdentityInvalidError
   | JobsSessionRequiredError;
 
 export function mapActorResolutionErrorsToAccessDenied(
@@ -45,6 +48,8 @@ export function mapActorResolutionErrorsToAccessDenied(
         [JOBS_ACTOR_MEMBERSHIP_NOT_FOUND_ERROR_TAG]: (error) =>
           Effect.fail(makeAccessDenied(error.message, workItemId)),
         [JOBS_ORGANIZATION_ROLE_NOT_SUPPORTED_ERROR_TAG]: (error) =>
+          Effect.fail(makeAccessDenied(error.message, workItemId)),
+        [JOBS_SESSION_IDENTITY_INVALID_ERROR_TAG]: (error) =>
           Effect.fail(makeAccessDenied(error.message, workItemId)),
         [JOBS_SESSION_REQUIRED_ERROR_TAG]: (error) =>
           Effect.fail(makeAccessDenied(error.message, workItemId)),

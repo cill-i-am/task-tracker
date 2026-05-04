@@ -82,6 +82,12 @@ The jobs service flow is:
 5. Record activity for auditable changes.
 6. Return DTOs defined in `@task-tracker/jobs-core`.
 
+Current actor resolution treats Better Auth session data as an untrusted
+boundary: session user and active organization IDs are decoded into branded
+jobs-core IDs, malformed identity data fails with a typed actor-resolution
+error, and session lookup failures remain typed storage failures instead of
+defects.
+
 External organization members can have collaborator-style access to specific
 jobs. Elevated internal roles can manage organization-wide jobs configuration
 such as labels, service areas, and rate cards.
@@ -160,6 +166,11 @@ Run them with:
 ```bash
 pnpm --filter api test
 ```
+
+Database-backed integration tests create an isolated database from a base
+Postgres URL. By default they use the local app database URL, but
+`API_TEST_DATABASE_URL` or `TEST_DATABASE_URL` can point them at any sandbox
+Postgres port.
 
 High-risk API changes should include tests for the service behavior,
 authorization behavior, repository behavior when SQL is involved, and HTTP

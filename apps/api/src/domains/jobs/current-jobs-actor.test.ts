@@ -1,7 +1,11 @@
+import { JobStorageError } from "@task-tracker/jobs-core";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import { resolveCurrentJobsActor } from "./current-jobs-actor.js";
-import { JobsSessionRequiredError } from "./errors.js";
+import {
+  JobsSessionIdentityInvalidError,
+  JobsSessionRequiredError,
+} from "./errors.js";
 
 interface SessionLike {
   readonly session: {
@@ -96,7 +100,34 @@ describe("current jobs actor resolution", () => {
     });
   }, 10_000);
 
-  it("defects when the auth session lookup throws unexpectedly", async () => {
+  it("fails with a typed actor error when the session identity is invalid", async () => {
+    const exit = await runCurrentJobsActor({
+      session: {
+        session: {
+          activeOrganizationId: "",
+        },
+        user: {
+          id: "user_123",
+        },
+      },
+    });
+
+    expect(exit._tag).toBe("Failure");
+
+    if (Exit.isSuccess(exit)) {
+      throw new Error("Expected jobs actor lookup to fail.");
+    }
+
+    const failure = Option.getOrUndefined(Cause.failureOption(exit.cause));
+
+    expect(failure).toBeInstanceOf(JobsSessionIdentityInvalidError);
+    expect(failure).toMatchObject({
+      field: "activeOrganizationId",
+      message: "Session active organization id is invalid",
+    });
+  }, 10_000);
+
+  it("fails with a typed storage error when the auth session lookup throws", async () => {
     const sessionError = new Error("Auth backend unavailable");
     const exit = await runCurrentJobsActor({
       sessionError,
@@ -108,9 +139,12 @@ describe("current jobs actor resolution", () => {
       throw new Error("Expected jobs actor lookup to fail.");
     }
 
-    expect(Cause.failureOption(exit.cause)._tag).toBe("None");
-    expect(Option.getOrUndefined(Cause.dieOption(exit.cause))).toMatchObject({
-      message: sessionError.message,
+    const failure = Option.getOrUndefined(Cause.failureOption(exit.cause));
+
+    expect(failure).toBeInstanceOf(JobStorageError);
+    expect(failure).toMatchObject({
+      cause: sessionError.message,
+      message: "Jobs session lookup failed",
     });
   }, 10_000);
 });
