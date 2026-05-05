@@ -119,10 +119,15 @@ The stack provisions:
 - Optional Cloudflare account API token for `cloudflare-api` email transport
 - Optional Cloudflare Email Worker binding for `cloudflare-binding` transport
 
-The API Worker is configured with `nodejs_compat`, Better Auth env vars,
-database Hyperdrive binding, auth email queue binding, observability logs, and
-traces. The app is configured with app/API origins and Cloudflare-specific Vite
-flags.
+The API Worker and Cloudflare Vite app share the same Worker compatibility
+contract, including `nodejs_compat`, so runtime packages that rely on Node.js
+compatibility APIs run consistently across both deployable surfaces. The API
+Worker is also configured with Better Auth env vars, database Hyperdrive
+binding, auth email queue binding, observability logs, and traces. The app is
+configured with app/API origins, Cloudflare-specific Vite flags, Sentry tracing,
+Sentry structured logs, and Session Replay. Sentry is initialized client-side
+only for browser replay/tracing and sanitizes sensitive query parameters before
+telemetry leaves the app.
 
 ## Infra Configuration
 
