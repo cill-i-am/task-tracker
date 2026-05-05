@@ -412,4 +412,36 @@ describe("app sidebar", () => {
       ).not.toBeInTheDocument();
     }
   );
+
+  it("keeps external users pointed at jobs while still showing the active organization", () => {
+    mockedMatches.value = [
+      {
+        id: "/_app/_org",
+        routeId: "/_app/_org",
+        context: {
+          activeOrganization: {
+            id: "org_external",
+            name: "External Client",
+            slug: "external-client",
+          },
+          activeOrganizationId: "org_external",
+          currentOrganizationRole: "external",
+        },
+      },
+    ];
+
+    render(<AppSidebar />);
+
+    expect(screen.getByTestId("organization-switcher")).toHaveTextContent(
+      "External Client"
+    );
+    expect(screen.getByRole("link", { name: /ceird/i })).toHaveAttribute(
+      "href",
+      "/jobs"
+    );
+    expect(screen.getByRole("link", { name: /jobs/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /members/i })
+    ).not.toBeInTheDocument();
+  });
 });

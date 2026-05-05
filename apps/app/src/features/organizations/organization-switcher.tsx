@@ -28,6 +28,7 @@ import { Skeleton } from "#/components/ui/skeleton";
 import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkeySequence } from "#/hotkeys/use-app-hotkey";
+import { cn } from "#/lib/utils";
 
 import {
   listOrganizations,
@@ -145,14 +146,12 @@ export function OrganizationSwitcher({
     listState.status === "ready" && organizations.length > 1;
   const activeOrganizationName =
     activeOrganization?.name ?? "No active organization";
+  const activeOrganizationDescription =
+    activeOrganization?.slug ?? "Organization";
   const triggerDisabled =
     listState.status !== "error" &&
     (!activeOrganization ||
       (listState.status === "ready" && organizations.length <= 1));
-  const triggerDescription =
-    listState.status === "ready" && organizations.length === 1
-      ? "Only organization"
-      : null;
 
   useAppHotkeySequence(
     "openOrganizationSwitcher",
@@ -170,7 +169,7 @@ export function OrganizationSwitcher({
             aria-busy={listState.status === "loading" ? true : undefined}
             disabled={triggerDisabled}
             size="lg"
-            className="w-full justify-start gap-2.5"
+            className={cn("w-full justify-start gap-2.5")}
           >
             <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-sidebar-accent text-sidebar-accent-foreground">
               <HugeiconsIcon
@@ -184,11 +183,9 @@ export function OrganizationSwitcher({
               <span className="truncate font-medium">
                 {activeOrganizationName}
               </span>
-              {triggerDescription ? (
-                <span className="truncate text-xs text-muted-foreground">
-                  {triggerDescription}
-                </span>
-              ) : null}
+              <span className="truncate text-xs text-muted-foreground">
+                {activeOrganizationDescription}
+              </span>
             </span>
             {listState.status === "loading" ? (
               <DotMatrixButtonLoader />
