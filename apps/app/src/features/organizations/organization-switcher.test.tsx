@@ -2,6 +2,7 @@ import {
   decodeOrganizationId,
   type OrganizationSummary,
 } from "@ceird/identity-core";
+import { UnfoldMoreIcon } from "@hugeicons/core-free-icons";
 import { HotkeysProvider } from "@tanstack/react-hotkeys";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -249,9 +250,12 @@ vi.mock(import("@hugeicons/react"), async (importActual) => {
 
   return {
     ...actual,
-    HugeiconsIcon: (({ icon }: { icon?: unknown }) => (
-      <span data-testid="hugeicon">{String(icon ?? "icon")}</span>
-    )) as typeof actual.HugeiconsIcon,
+    HugeiconsIcon: (({ icon }: { icon?: unknown }) => {
+      const iconName =
+        icon === UnfoldMoreIcon ? "unfold-more-icon" : "hugeicon";
+
+      return <span data-testid={iconName}>{String(icon ?? "icon")}</span>;
+    }) as typeof actual.HugeiconsIcon,
   };
 });
 
@@ -347,6 +351,7 @@ describe("organization switcher", () => {
     expect(
       await screen.findByText(/couldn't load organizations/i)
     ).toBeInTheDocument();
+    expect(screen.queryByTestId("unfold-more-icon")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /retry/i }));
 
@@ -398,6 +403,8 @@ describe("organization switcher", () => {
     await user.click(
       await screen.findByRole("button", { name: /acme field ops/i })
     );
+
+    expect(screen.getByTestId("unfold-more-icon")).toBeInTheDocument();
 
     await user.click(
       await screen.findByRole("menuitemradio", { name: /beta builds/i })

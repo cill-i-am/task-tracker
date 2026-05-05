@@ -189,7 +189,7 @@ export function OrganizationSwitcher({
             </span>
             {listState.status === "loading" ? (
               <DotMatrixButtonLoader />
-            ) : organizations.length > 1 ? (
+            ) : canSwitchOrganizations ? (
               <HugeiconsIcon
                 aria-hidden="true"
                 icon={UnfoldMoreIcon}
