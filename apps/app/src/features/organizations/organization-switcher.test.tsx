@@ -4,6 +4,7 @@ import {
 } from "@ceird/identity-core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as React from "react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { OrganizationSwitcher } from "./organization-switcher";
@@ -16,7 +17,8 @@ const { mockedListOrganizations, mockedSetActiveOrganization } = vi.hoisted(
   })
 );
 
-const { mockedRouterInvalidate } = vi.hoisted(() => ({
+const { mockedRadioCancel, mockedRouterInvalidate } = vi.hoisted(() => ({
+  mockedRadioCancel: vi.fn<() => void>(),
   mockedRouterInvalidate: vi.fn<() => Promise<void>>(),
 }));
 
@@ -122,13 +124,37 @@ vi.mock(import("#/components/ui/dropdown-menu"), async (importActual) => {
     )) as typeof actual.DropdownMenuLabel,
     DropdownMenuRadioGroup: (({
       children,
+      onValueChange,
       value,
     }: {
       children?: ReactNode;
+      onValueChange?: (
+        value: string,
+        eventDetails: { readonly cancel: () => void }
+      ) => void;
       value?: string;
     }) => (
       <div data-value={value} role="group">
-        {children}
+        {Array.isArray(children)
+          ? children.map((child) => {
+              if (!React.isValidElement(child)) {
+                return child;
+              }
+
+              return React.cloneElement(
+                child as React.ReactElement<{
+                  onValueSelect?: (value: string) => void;
+                }>,
+                {
+                  onValueSelect: (nextValue: string) => {
+                    onValueChange?.(nextValue, {
+                      cancel: mockedRadioCancel,
+                    });
+                  },
+                }
+              );
+            })
+          : children}
       </div>
     )) as typeof actual.DropdownMenuRadioGroup,
     DropdownMenuRadioItem: (({
@@ -136,13 +162,13 @@ vi.mock(import("#/components/ui/dropdown-menu"), async (importActual) => {
       value,
       checked,
       disabled,
-      onSelect,
+      onValueSelect,
     }: {
       children?: ReactNode;
       value?: string;
       checked?: boolean;
       disabled?: boolean;
-      onSelect?: (event: Event) => void | Promise<void>;
+      onValueSelect?: (value: string) => void;
     }) => (
       <button
         type="button"
@@ -151,11 +177,9 @@ vi.mock(import("#/components/ui/dropdown-menu"), async (importActual) => {
         role="menuitemradio"
         value={value}
         onClick={() => {
-          const selectEvent = new Event("select", {
-            cancelable: true,
-          });
-
-          void onSelect?.(selectEvent);
+          if (value) {
+            onValueSelect?.(value);
+          }
         }}
       >
         {children}
@@ -211,6 +235,7 @@ function renderSwitcher(activeOrganization: OrganizationSummary | null) {
 describe("organization switcher", () => {
   beforeEach(() => {
     mockedListOrganizations.mockReset();
+    mockedRadioCancel.mockReset();
     mockedSetActiveOrganization.mockReset();
     mockedRouterInvalidate.mockReset();
   });
@@ -326,6 +351,10 @@ describe("organization switcher", () => {
 
     expect(mockedSetActiveOrganization).toHaveBeenCalledWith("org_beta");
     expect(mockedRouterInvalidate).toHaveBeenCalledWith({ sync: true });
+    expect(mockedRadioCancel).toHaveBeenCalledOnce();
+    expect(
+      mockedSetActiveOrganization.mock.invocationCallOrder[0]
+    ).toBeLessThan(mockedRouterInvalidate.mock.invocationCallOrder[0]);
     expect(
       screen.queryByText(/couldn't switch organizations/i)
     ).not.toBeInTheDocument();
@@ -349,7 +378,9 @@ describe("organization switcher", () => {
 
     expect(mockedRouterInvalidate).not.toHaveBeenCalled();
     expect(
-      await screen.findByText(/couldn't switch organizations/i)
+      await screen.findByRole("alert", {
+        name: /couldn't switch organizations/i,
+      })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /acme field ops/i })

@@ -270,20 +270,35 @@ function renderListContent({
   return (
     <>
       {switchState.status === "error" ? (
-        <div className="px-3 py-2 text-sm text-destructive">
+        <div
+          aria-label="Couldn't switch organizations."
+          role="alert"
+          className="px-3 py-2 text-sm text-destructive"
+        >
           Couldn't switch organizations.
         </div>
       ) : null}
-      <DropdownMenuRadioGroup value={activeOrganization?.id}>
+      <DropdownMenuRadioGroup
+        value={activeOrganization?.id}
+        onValueChange={(selectedValue, eventDetails) => {
+          eventDetails.cancel();
+
+          const selectedOrganization = listState.organizations.find(
+            (organization) => organization.id === selectedValue
+          );
+
+          if (!selectedOrganization) {
+            return;
+          }
+
+          onSwitchOrganization(selectedOrganization.id);
+        }}
+      >
         {listState.organizations.map((organization) => (
           <DropdownMenuRadioItem
             key={organization.id}
             value={organization.id}
             disabled={switchState.status === "switching"}
-            onSelect={(event) => {
-              event.preventDefault();
-              onSwitchOrganization(organization.id);
-            }}
           >
             <span className="min-w-0 truncate">{organization.name}</span>
             {switchState.status === "switching" &&
