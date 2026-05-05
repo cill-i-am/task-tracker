@@ -1,12 +1,13 @@
 "use client";
 
-import type { OrganizationSummary } from "@ceird/identity-core";
+import type { OrganizationId, OrganizationSummary } from "@ceird/identity-core";
 import {
   Building03Icon,
   RefreshIcon,
   UnfoldMoreIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useRouter } from "@tanstack/react-router";
 import * as React from "react";
 
 import { DotMatrixButtonLoader } from "#/components/ui/dot-matrix-loader";
@@ -24,7 +25,10 @@ import {
 import { SidebarMenuButton } from "#/components/ui/sidebar";
 import { Skeleton } from "#/components/ui/skeleton";
 
-import { listOrganizations } from "./organization-access";
+import {
+  listOrganizations,
+  setActiveOrganization,
+} from "./organization-access";
 
 type ListState =
   | {
@@ -40,14 +44,28 @@ type ListState =
       readonly organizations: readonly OrganizationSummary[];
     };
 
+type SwitchState =
+  | { readonly status: "idle"; readonly organizationId: null }
+  | {
+      readonly status: "switching";
+      readonly organizationId: OrganizationId;
+    }
+  | { readonly status: "error"; readonly organizationId: OrganizationId };
+
 export function OrganizationSwitcher({
   activeOrganization,
 }: {
   readonly activeOrganization?: OrganizationSummary | null;
 }) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
   const [listState, setListState] = React.useState<ListState>({
     status: "loading",
     organizations: activeOrganization ? [activeOrganization] : [],
+  });
+  const [switchState, setSwitchState] = React.useState<SwitchState>({
+    status: "idle",
+    organizationId: null,
   });
   const requestIdRef = React.useRef(0);
 
@@ -92,6 +110,32 @@ export function OrganizationSwitcher({
     };
   }, [loadOrganizations]);
 
+  const handleSwitchOrganization = React.useCallback(
+    async (nextOrganizationId: OrganizationId) => {
+      if (activeOrganization?.id === nextOrganizationId) {
+        return;
+      }
+
+      setSwitchState({
+        status: "switching",
+        organizationId: nextOrganizationId,
+      });
+
+      try {
+        await setActiveOrganization(nextOrganizationId);
+        await router.invalidate({ sync: true });
+        setOpen(false);
+        setSwitchState({ status: "idle", organizationId: null });
+      } catch {
+        setSwitchState({
+          status: "error",
+          organizationId: nextOrganizationId,
+        });
+      }
+    },
+    [activeOrganization?.id, router]
+  );
+
   const organizations = listState.organizations;
   const activeOrganizationName =
     activeOrganization?.name ?? "No active organization";
@@ -105,7 +149,7 @@ export function OrganizationSwitcher({
       : null;
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         render={
           <SidebarMenuButton
@@ -151,7 +195,9 @@ export function OrganizationSwitcher({
         {renderListContent({
           activeOrganization,
           listState,
+          switchState,
           onRetry: loadOrganizations,
+          onSwitchOrganization: handleSwitchOrganization,
         })}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -161,11 +207,15 @@ export function OrganizationSwitcher({
 function renderListContent({
   activeOrganization,
   listState,
+  switchState,
   onRetry,
+  onSwitchOrganization,
 }: {
   readonly activeOrganization?: OrganizationSummary | null;
   readonly listState: ListState;
+  readonly switchState: SwitchState;
   readonly onRetry: () => void;
+  readonly onSwitchOrganization: (organizationId: OrganizationId) => void;
 }) {
   if (listState.status === "loading") {
     return (
@@ -218,12 +268,31 @@ function renderListContent({
   }
 
   return (
-    <DropdownMenuRadioGroup value={activeOrganization?.id}>
-      {listState.organizations.map((organization) => (
-        <DropdownMenuRadioItem key={organization.id} value={organization.id}>
-          <span className="min-w-0 truncate">{organization.name}</span>
-        </DropdownMenuRadioItem>
-      ))}
-    </DropdownMenuRadioGroup>
+    <>
+      {switchState.status === "error" ? (
+        <div className="px-3 py-2 text-sm text-destructive">
+          Couldn't switch organizations.
+        </div>
+      ) : null}
+      <DropdownMenuRadioGroup value={activeOrganization?.id}>
+        {listState.organizations.map((organization) => (
+          <DropdownMenuRadioItem
+            key={organization.id}
+            value={organization.id}
+            disabled={switchState.status === "switching"}
+            onSelect={(event) => {
+              event.preventDefault();
+              onSwitchOrganization(organization.id);
+            }}
+          >
+            <span className="min-w-0 truncate">{organization.name}</span>
+            {switchState.status === "switching" &&
+            switchState.organizationId === organization.id ? (
+              <DotMatrixButtonLoader />
+            ) : null}
+          </DropdownMenuRadioItem>
+        ))}
+      </DropdownMenuRadioGroup>
+    </>
   );
 }

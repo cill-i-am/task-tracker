@@ -306,4 +306,72 @@ describe("organization switcher", () => {
       await screen.findByRole("menuitemradio", { name: /beta builds/i })
     ).toBeInTheDocument();
   });
+
+  it("switches organizations and invalidates router state synchronously", async () => {
+    mockedListOrganizations.mockResolvedValue([
+      organization({ id: "org_acme", name: "Acme Field Ops", slug: "acme" }),
+      organization({ id: "org_beta", name: "Beta Builds", slug: "beta" }),
+    ]);
+    mockedSetActiveOrganization.mockResolvedValue();
+    mockedRouterInvalidate.mockResolvedValue();
+
+    const user = userEvent.setup();
+    renderSwitcher(
+      organization({ id: "org_acme", name: "Acme Field Ops", slug: "acme" })
+    );
+
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: /beta builds/i })
+    );
+
+    expect(mockedSetActiveOrganization).toHaveBeenCalledWith("org_beta");
+    expect(mockedRouterInvalidate).toHaveBeenCalledWith({ sync: true });
+    expect(
+      screen.queryByText(/couldn't switch organizations/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the current organization visible when switching fails", async () => {
+    mockedListOrganizations.mockResolvedValue([
+      organization({ id: "org_acme", name: "Acme Field Ops", slug: "acme" }),
+      organization({ id: "org_beta", name: "Beta Builds", slug: "beta" }),
+    ]);
+    mockedSetActiveOrganization.mockRejectedValue(new Error("switch failed"));
+
+    const user = userEvent.setup();
+    renderSwitcher(
+      organization({ id: "org_acme", name: "Acme Field Ops", slug: "acme" })
+    );
+
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: /beta builds/i })
+    );
+
+    expect(mockedRouterInvalidate).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/couldn't switch organizations/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /acme field ops/i })
+    ).toBeInTheDocument();
+  });
+
+  it("does not call setActive for the already active organization", async () => {
+    mockedListOrganizations.mockResolvedValue([
+      organization({ id: "org_acme", name: "Acme Field Ops", slug: "acme" }),
+      organization({ id: "org_beta", name: "Beta Builds", slug: "beta" }),
+    ]);
+
+    const user = userEvent.setup();
+    renderSwitcher(
+      organization({ id: "org_acme", name: "Acme Field Ops", slug: "acme" })
+    );
+
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: /acme field ops/i })
+    );
+
+    expect(mockedSetActiveOrganization).not.toHaveBeenCalled();
+    expect(mockedRouterInvalidate).not.toHaveBeenCalled();
+  });
 });
