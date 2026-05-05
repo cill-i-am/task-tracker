@@ -601,6 +601,12 @@ function isPendingInvitation(input: { readonly status: string }) {
   return input.status === "pending";
 }
 
+function decodeInvitationExpiresAt(input: unknown): IsoDateTimeStringType {
+  return ParseResult.decodeUnknownSync(IsoDateTimeString)(
+    input instanceof Date ? input.toISOString() : input
+  );
+}
+
 function toInvitation(input: {
   readonly email: string;
   readonly expiresAt: unknown;
@@ -610,9 +616,7 @@ function toInvitation(input: {
 }): InvitationSummary {
   return {
     email: input.email,
-    expiresAt: ParseResult.decodeUnknownSync(IsoDateTimeString)(
-      input.expiresAt
-    ),
+    expiresAt: decodeInvitationExpiresAt(input.expiresAt),
     id: input.id,
     role: ParseResult.decodeUnknownSync(InvitableOrganizationRole)(input.role),
     status: input.status,

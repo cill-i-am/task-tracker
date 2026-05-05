@@ -17,7 +17,7 @@ type InviteMemberInput = Parameters<
 >[0];
 interface InvitationPayload {
   readonly email: string;
-  readonly expiresAt: string;
+  readonly expiresAt: Date | string;
   readonly id: string;
   readonly role: string;
   readonly status: string;
@@ -169,6 +169,25 @@ describe("organization members page", () => {
         organizationId: "org_123",
       },
     });
+  }, 10_000);
+
+  it("loads pending invitations when the auth client returns Date expiry values", async () => {
+    mockedListInvitations.mockResolvedValue({
+      data: [
+        createInvitation({
+          email: "date-expiry@example.com",
+          expiresAt: new Date(defaultInvitationExpiresAt),
+        }),
+      ],
+      error: null,
+    });
+
+    render(<OrganizationMembersPage activeOrganizationId={organizationId} />);
+
+    await expect(
+      screen.findByTitle("date-expiry@example.com")
+    ).resolves.toBeVisible();
+    expect(screen.getByText("Expires 12 Apr 2026")).toBeVisible();
   }, 10_000);
 
   it("submits invites for the active organization", async () => {
