@@ -1,3 +1,4 @@
+import { decodeOrganizationId } from "@ceird/identity-core";
 import type { OrganizationRole } from "@ceird/identity-core";
 /* oxlint-disable vitest/prefer-import-in-mock */
 import { isRedirect } from "@tanstack/react-router";
@@ -8,6 +9,7 @@ const readySync: ActiveOrganizationSync = {
   required: false,
   targetOrganizationId: null,
 };
+const switchedOrganizationId = decodeOrganizationId("org_next");
 
 describe("members route loader", () => {
   it.each<OrganizationRole>(["owner", "admin"])(
@@ -56,7 +58,10 @@ describe("members route loader", () => {
 
     try {
       loadMembersRouteData({
-        activeOrganizationSync: readySync,
+        activeOrganizationSync: {
+          required: false,
+          targetOrganizationId: switchedOrganizationId,
+        },
         currentOrganizationRole: "external",
       });
     } catch (error) {

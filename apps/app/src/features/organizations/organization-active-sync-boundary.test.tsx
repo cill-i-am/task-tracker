@@ -26,8 +26,13 @@ describe("OrganizationActiveSyncBoundary", () => {
   });
 
   it("synchronizes the active organization and invalidates router state", async () => {
-    mockedSynchronizeClientActiveOrganization.mockResolvedValue();
-    mockedRouterInvalidate.mockResolvedValue();
+    const syncDeferred = createDeferred();
+    const invalidateDeferred = createDeferred();
+
+    mockedSynchronizeClientActiveOrganization.mockReturnValue(
+      syncDeferred.promise
+    );
+    mockedRouterInvalidate.mockReturnValue(invalidateDeferred.promise);
 
     render(
       <OrganizationActiveSyncBoundary
@@ -48,7 +53,30 @@ describe("OrganizationActiveSyncBoundary", () => {
         targetOrganizationId: "org_next",
       });
     });
-    expect(mockedRouterInvalidate).toHaveBeenCalledWith({ sync: true });
+    expect(mockedRouterInvalidate).not.toHaveBeenCalled();
+    expect(screen.queryByText("Loaded app")).not.toBeInTheDocument();
+
+    syncDeferred.resolve();
+
+    await waitFor(() => {
+      expect(mockedRouterInvalidate).toHaveBeenCalledWith({ sync: true });
+    });
+    expect(screen.queryByText("Loaded app")).not.toBeInTheDocument();
+
+    invalidateDeferred.resolve();
+
     expect(await screen.findByText("Loaded app")).toBeInTheDocument();
   });
 });
+
+function createDeferred() {
+  let resolve: () => void = () => {};
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+
+  return {
+    promise,
+    resolve,
+  };
+}
