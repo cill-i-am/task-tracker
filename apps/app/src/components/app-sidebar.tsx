@@ -20,9 +20,11 @@ import {
   SidebarMenuItem,
 } from "#/components/ui/sidebar";
 import {
+  useActiveOrganizationFromMatches,
   useCurrentOrganizationRoleFromMatches,
   useIsInOrganizationRoute,
 } from "#/features/organizations/organization-route-context";
+import { OrganizationSwitcher } from "#/features/organizations/organization-switcher";
 
 export function AppSidebar({
   currentOrganizationRole: appCurrentOrganizationRole,
@@ -34,6 +36,7 @@ export function AppSidebar({
 }) {
   const navigate = useNavigate({ from: "/" });
   const isInOrganizationRoute = useIsInOrganizationRoute();
+  const activeOrganization = useActiveOrganizationFromMatches();
   const matchedOrganizationRole = useCurrentOrganizationRoleFromMatches();
   const currentOrganizationRole =
     matchedOrganizationRole ??
@@ -71,6 +74,11 @@ export function AppSidebar({
                 <span className="truncate font-medium">Ceird</span>
               </div>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <OrganizationSwitcher
+              activeOrganization={activeOrganization ?? null}
+            />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>

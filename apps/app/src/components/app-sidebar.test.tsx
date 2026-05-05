@@ -8,6 +8,8 @@ const { mockedMatches, mockedNavigate } = vi.hoisted(() => ({
   mockedMatches: {
     value: [] as {
       context?: {
+        activeOrganization?: { id: string; name: string; slug: string } | null;
+        activeOrganizationId?: string | null;
         currentOrganizationRole?: "owner" | "admin" | "member" | "external";
       };
       id?: string;
@@ -15,6 +17,20 @@ const { mockedMatches, mockedNavigate } = vi.hoisted(() => ({
     }[],
   },
   mockedNavigate: vi.fn<() => Promise<void>>(),
+}));
+
+const { mockedOrganizationSwitcher } = vi.hoisted(() => ({
+  mockedOrganizationSwitcher: vi.fn(
+    ({
+      activeOrganization,
+    }: {
+      activeOrganization?: { id: string; name: string; slug: string } | null;
+    }) => (
+      <div data-testid="organization-switcher">
+        {activeOrganization?.name ?? "missing organization"}
+      </div>
+    )
+  ),
 }));
 
 vi.mock(import("@tanstack/react-router"), async (importActual) => {
@@ -66,6 +82,10 @@ vi.mock(import("@tanstack/react-router"), async (importActual) => {
     }) as typeof actual.useRouterState,
   };
 });
+
+vi.mock(import("#/features/organizations/organization-switcher"), () => ({
+  OrganizationSwitcher: mockedOrganizationSwitcher,
+}));
 
 vi.mock(import("#/components/ui/sidebar"), async (importActual) => {
   const actual = await importActual();
@@ -212,6 +232,12 @@ describe("app sidebar", () => {
         id: "/_app/_org",
         routeId: "/_app/_org",
         context: {
+          activeOrganization: {
+            id: "org_acme",
+            name: "Acme Field Ops",
+            slug: "acme-field-ops",
+          },
+          activeOrganizationId: "org_acme",
           currentOrganizationRole: "owner",
         },
       },
@@ -220,6 +246,24 @@ describe("app sidebar", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("shows the active organization in the sidebar header", () => {
+    render(<AppSidebar />);
+
+    expect(screen.getByTestId("organization-switcher")).toHaveTextContent(
+      "Acme Field Ops"
+    );
+    expect(mockedOrganizationSwitcher).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeOrganization: {
+          id: "org_acme",
+          name: "Acme Field Ops",
+          slug: "acme-field-ops",
+        },
+      }),
+      undefined
+    );
   });
 
   it(

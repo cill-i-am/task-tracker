@@ -9,6 +9,22 @@ export function useCurrentOrganizationRoleFromMatches() {
   });
 }
 
+export function useActiveOrganizationFromMatches() {
+  return useMatch({
+    from: "/_app/_org",
+    shouldThrow: false,
+    select: (match) => match.context.activeOrganization,
+  });
+}
+
+export function useActiveOrganizationIdFromMatches() {
+  return useMatch({
+    from: "/_app/_org",
+    shouldThrow: false,
+    select: (match) => match.context.activeOrganizationId,
+  });
+}
+
 export function useIsInOrganizationRoute() {
   return Boolean(
     useMatch({
