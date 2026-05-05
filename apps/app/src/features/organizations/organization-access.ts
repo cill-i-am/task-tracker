@@ -286,6 +286,18 @@ function decodeNullableOrganizationId(
   return organizationId ? decodeOrganizationId(organizationId) : null;
 }
 
+export async function setActiveOrganization(
+  organizationId: OrganizationIdType
+) {
+  const result = await authClient.organization.setActive({
+    organizationId,
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+}
+
 export async function synchronizeClientActiveOrganization(
   activeOrganizationSync: ActiveOrganizationSync
 ) {
@@ -293,11 +305,9 @@ export async function synchronizeClientActiveOrganization(
     return;
   }
 
-  const result = await authClient.organization.setActive({
-    organizationId: activeOrganizationSync.targetOrganizationId,
-  });
-
-  if (result.error) {
-    throw result.error;
+  if (!activeOrganizationSync.targetOrganizationId) {
+    return;
   }
+
+  await setActiveOrganization(activeOrganizationSync.targetOrganizationId);
 }

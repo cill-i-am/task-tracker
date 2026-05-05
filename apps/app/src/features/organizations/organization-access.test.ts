@@ -8,6 +8,7 @@ import {
   redirectIfOrganizationReady,
   requireOrganizationAdministrationAccess,
   requireOrganizationAccess,
+  setActiveOrganization,
 } from "./organization-access";
 import type { OrganizationSummary } from "./organization-access";
 
@@ -152,6 +153,33 @@ describe("organization access helpers", () => {
     ]);
     expect(mockedGetStrictServerOrganizations).not.toHaveBeenCalled();
   }, 1000);
+
+  it("sets the client active organization through Better Auth", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+
+    await expect(
+      setActiveOrganization(decodeOrganizationId("org_next"))
+    ).resolves.toBeUndefined();
+
+    expect(mockedSetClientActiveOrganization).toHaveBeenCalledWith({
+      organizationId: "org_next",
+    });
+  });
+
+  it("rethrows active organization switch failures", async () => {
+    mockedIsServerEnvironment.mockReturnValue(false);
+    mockedSetClientActiveOrganization.mockResolvedValue({
+      data: null,
+      error: new Error("switch failed"),
+    });
+
+    const failure = await setActiveOrganization(
+      decodeOrganizationId("org_next")
+    ).catch((caughtError) => caughtError);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("switch failed");
+  });
 
   it("uses the strict server list helper during SSR", async () => {
     mockedIsServerEnvironment.mockReturnValue(true);
