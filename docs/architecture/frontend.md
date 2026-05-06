@@ -47,6 +47,18 @@ initialization script before hydration, loads global CSS, wraps the app in
 `TooltipProvider` and `HotkeysProvider`, and lazily loads TanStack devtools in
 development.
 
+The sidebar header shows the active organization in the authenticated app shell,
+using `_app/_org` route data on organization routes and the `_app` session
+fallback elsewhere. Multi-organization users can open the organization switcher
+from the sidebar or with `G O`. The switcher calls Better Auth's organization
+list and set-active client APIs through
+`features/organizations/organization-access.ts`, then calls
+`router.invalidate({ sync: true })` after a successful switch so `_app`,
+`_app/_org`, and child route loaders refresh session, active organization, role,
+and organization-owned data together. If Better Auth accepts the switch but the
+router refresh fails, the app reloads to avoid showing stale organization data
+against the new active session.
+
 Authenticated layout and navigation live under:
 
 - `features/auth/authenticated-app-layout.tsx`
@@ -61,9 +73,10 @@ Authenticated layout and navigation live under:
 
 ## Observability
 
-The app initializes Sentry from `apps/app/src/router.tsx` using
-`@sentry/tanstackstart-react`. Client-side Sentry is guarded behind a browser
-runtime check because the router module is also used during SSR. Browser
+The app initializes browser Sentry from `apps/app/src/router.tsx` using a
+dynamic `@sentry/tanstackstart-react` import. Client-side Sentry is guarded
+behind a browser runtime check before the SDK is imported because the router
+module is also used during SSR and Cloudflare Worker startup. Browser
 instrumentation includes TanStack Router tracing, structured logs, and Session
 Replay with text and media masking enabled. Shared DSN, production-safe
 sample-rate defaults, and Sentry URL/query sanitization live in
@@ -73,9 +86,9 @@ before events, transactions, spans, logs, or replay recording events leave the
 app.
 
 Server-side app requests use the explicit TanStack Start server entry at
-`apps/app/src/server.ts`, which imports `apps/app/src/sentry-server.ts` and
-wraps the Start fetch handler with `wrapFetchWithSentry` so server request and
-server-function tracing is captured.
+`apps/app/src/server.ts`. The Cloudflare app Worker intentionally does not load
+the Node Sentry SDK during Worker startup; Cloudflare observability remains
+enabled from infrastructure.
 
 ## Feature Folders
 
@@ -164,6 +177,9 @@ New route navigation targets, primary workflow actions, command/menu items, and
 icon-only controls should either register a shortcut or have an explicit reason
 why a shortcut would be harmful or unnecessary. Show shortcuts with the shared
 keycap and help overlay components.
+
+`G O` opens the organization switcher only when more than one organization is
+available.
 
 ## Styling
 
