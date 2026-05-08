@@ -10,10 +10,8 @@ import {
 } from "#/features/organizations/organization-access";
 import type { ActiveOrganizationSync } from "#/features/organizations/organization-access";
 
-import {
-  CREATE_JOB_ROUTE_DATA,
-  type CreateJobRouteData,
-} from "./jobs-detail-route-data";
+import { CREATE_JOB_ROUTE_DATA } from "./jobs-detail-route-data";
+import type { CreateJobRouteData } from "./jobs-detail-route-data";
 
 const decodeWorkItemId = Schema.decodeUnknownSync(WorkItemId);
 
