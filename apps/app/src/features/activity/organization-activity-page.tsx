@@ -6,6 +6,8 @@ import type {
   OrganizationActivityItem,
   OrganizationActivityListResponse,
 } from "@ceird/jobs-core";
+import { Activity01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { Link } from "@tanstack/react-router";
 import type * as React from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -68,8 +70,12 @@ export function OrganizationActivityPage({
   const shouldShowFilters = activity.items.length > 0 || hasActiveFilters;
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col gap-5 p-4 sm:p-6">
-      <AppPageHeader title="Activity">
+    <main className="flex min-h-0 flex-1 flex-col gap-4 p-3 sm:p-4 lg:p-5">
+      <AppPageHeader
+        variant="compact"
+        title="Activity"
+        leading={<HugeiconsIcon icon={Activity01Icon} strokeWidth={2} />}
+      >
         {shouldShowFilters ? (
           <ActivityFilters
             options={options}

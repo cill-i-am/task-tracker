@@ -15,6 +15,7 @@ import type {
 } from "@ceird/identity-core";
 import {
   Add01Icon,
+  CommandIcon,
   MoreHorizontalCircle01Icon,
   Refresh01Icon,
   UserRemove01Icon,
@@ -777,7 +778,7 @@ export function OrganizationMembersPage({
   });
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+    <div className="flex flex-1 flex-col gap-4 p-3 sm:p-4 lg:p-5">
       <MembersPageHeader
         canInviteMembers={canInviteMembers}
         isHydrated={isHydrated}
@@ -957,10 +958,17 @@ function MembersPageHeader({
 }) {
   return (
     <AppPageHeader
+      variant="compact"
       title="Members"
+      leading={<HugeiconsIcon icon={CommandIcon} strokeWidth={2} />}
       actions={
         canInviteMembers ? (
-          <Button type="button" onClick={onInvite} disabled={!isHydrated}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={onInvite}
+            disabled={!isHydrated}
+          >
             <HugeiconsIcon
               icon={Add01Icon}
               strokeWidth={2}

@@ -35,4 +35,22 @@ describe("app page header", () => {
       expect(screen.getByText("1 pending invitation")).toBeInTheDocument();
     }
   );
+
+  it("renders compact page headers with leading media", () => {
+    render(
+      <AppPageHeader
+        variant="compact"
+        title="Jobs"
+        leading={<span data-testid="header-leading">J</span>}
+        actions={<Button type="button">New job</Button>}
+      >
+        <p>Active jobs</p>
+      </AppPageHeader>
+    );
+
+    expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
+    expect(screen.getByTestId("header-leading")).toHaveTextContent("J");
+    expect(screen.getByRole("button", { name: "New job" })).toBeInTheDocument();
+    expect(screen.getByText("Active jobs")).toBeInTheDocument();
+  });
 });

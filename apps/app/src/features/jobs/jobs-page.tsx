@@ -18,6 +18,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 
+import { AppPageHeader } from "#/components/app-page-header";
 import {
   Alert,
   AlertAction,
@@ -363,26 +364,19 @@ export function JobsPage({
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-3 sm:p-4 lg:p-5">
-      <header className="flex min-w-0 flex-col gap-4 border-b pb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />
-            </span>
-            <div className="min-w-0">
-              <h1 className="truncate font-heading text-xl font-medium">
-                Jobs
-              </h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
+      <AppPageHeader
+        variant="compact"
+        title="Jobs"
+        leading={<HugeiconsIcon icon={Briefcase01Icon} strokeWidth={2} />}
+        actions={
+          <>
             {canUseInternalOptions ? (
               <ViewModeSwitch value={viewMode} onValueChange={setViewMode} />
             ) : null}
             {canCreateJobs ? <NewJobLink /> : null}
-          </div>
-        </div>
-
+          </>
+        }
+      >
         <JobsCommandToolbar
           activeSavedView={activeSavedView}
           filters={filters}
@@ -397,7 +391,7 @@ export function JobsPage({
           searchInputRef={searchInputRef}
           showInternalFilters={canUseInternalOptions}
         />
-      </header>
+      </AppPageHeader>
 
       {notice ? (
         <Alert

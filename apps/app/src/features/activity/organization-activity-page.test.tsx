@@ -137,6 +137,9 @@ describe("organization activity page", () => {
       );
 
       expect(
+        screen.getByRole("heading", { name: "Activity" })
+      ).toBeInTheDocument();
+      expect(
         screen.getByText("Taylor Owner created the job.")
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Actor")).toBeInTheDocument();
