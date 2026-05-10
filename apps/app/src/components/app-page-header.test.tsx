@@ -36,10 +36,9 @@ describe("app page header", () => {
     }
   );
 
-  it("renders compact page headers with leading media", () => {
+  it("renders the canonical page header with leading media", () => {
     render(
       <AppPageHeader
-        variant="compact"
         title="Jobs"
         leading={<span data-testid="header-leading">J</span>}
         actions={<Button type="button">New job</Button>}

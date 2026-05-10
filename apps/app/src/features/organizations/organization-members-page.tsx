@@ -958,7 +958,6 @@ function MembersPageHeader({
 }) {
   return (
     <AppPageHeader
-      variant="compact"
       title="Members"
       leading={<HugeiconsIcon icon={CommandIcon} strokeWidth={2} />}
       actions={

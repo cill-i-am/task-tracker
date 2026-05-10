@@ -101,7 +101,6 @@ export function SitesPage({
   return (
     <main className="flex flex-1 flex-col gap-4 p-3 sm:p-4 lg:p-5">
       <AppPageHeader
-        variant="compact"
         title="Sites"
         leading={<HugeiconsIcon icon={Location01Icon} strokeWidth={2} />}
         actions={
