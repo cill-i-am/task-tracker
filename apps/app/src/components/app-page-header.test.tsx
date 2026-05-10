@@ -14,6 +14,7 @@ describe("app page header", () => {
       render(
         <AppPageHeader
           eyebrow="Workspace"
+          leading={<span data-testid="header-leading">C</span>}
           title="Crew access"
           description="Keep teammates moving without adding admin noise."
           actions={<Button type="button">Invite teammate</Button>}
@@ -31,25 +32,9 @@ describe("app page header", () => {
       expect(
         screen.getByRole("button", { name: "Invite teammate" })
       ).toBeInTheDocument();
+      expect(screen.getByTestId("header-leading")).toHaveTextContent("C");
       expect(screen.getByText("Workspace")).toBeInTheDocument();
       expect(screen.getByText("1 pending invitation")).toBeInTheDocument();
     }
   );
-
-  it("renders the canonical page header with leading media", () => {
-    render(
-      <AppPageHeader
-        title="Jobs"
-        leading={<span data-testid="header-leading">J</span>}
-        actions={<Button type="button">New job</Button>}
-      >
-        <p>Active jobs</p>
-      </AppPageHeader>
-    );
-
-    expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
-    expect(screen.getByTestId("header-leading")).toHaveTextContent("J");
-    expect(screen.getByRole("button", { name: "New job" })).toBeInTheDocument();
-    expect(screen.getByText("Active jobs")).toBeInTheDocument();
-  });
 });
