@@ -172,9 +172,19 @@ Core files:
 | `service-areas-service.ts` | Service-area list, create, and update use cases.                                        |
 | `repositories.ts`          | SQL repository layer for sites, service areas, and site-contact links.                  |
 | `schema.ts`                | Sites and service-area Drizzle tables and relations.                                    |
-| `geocoder.ts`              | Site geocoding boundary.                                                                |
-| `geocoding-config.ts`      | Geocoder runtime mode/config.                                                           |
+| `geocoder.ts`              | Site geocoding capability plus development and Google provider layers.                  |
 | `id-generation.ts`         | Site and service-area ID generation.                                                    |
+
+Site and job services depend on the `SiteGeocoder` capability, not on a
+provider-specific implementation. Runtime entrypoints choose the provider layer:
+local Node/sandbox composition uses `SiteGeocoder.Local`, which selects Google
+when `GOOGLE_MAPS_API_KEY` is present and falls back to deterministic
+development coordinates when it is absent. The Cloudflare Worker composition
+uses `SiteGeocoder.Google`, so deployed API startup fails fast without the
+Google Maps key. Environment variables configure provider credentials; they do
+not select provider topology. Address-level misses return the user-correctable
+geocoding failure contract, while upstream Google/configuration failures return
+the provider failure contract so deployed misconfiguration fails visibly.
 
 ## Labels API Endpoints
 

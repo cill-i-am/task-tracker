@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +28,8 @@ for (const packageName of packageNames) {
   ensureNativePackage(packageName);
 }
 
+ensureEsbuildNativePackages();
+
 function ensureNativePackage(packageName) {
   try {
     const resolved = require.resolve(packageName);
@@ -32,6 +41,73 @@ function ensureNativePackage(packageName) {
 
   const version = findLockedVersion(packageName);
   const targetDirectory = join("node_modules", ...packageName.split("/"));
+
+  extractPackage(packageName, version, targetDirectory);
+
+  const resolved = execFileSync(
+    process.execPath,
+    [
+      "-e",
+      `process.stdout.write(require.resolve(${JSON.stringify(packageName)}))`,
+    ],
+    { encoding: "utf8" }
+  );
+  console.log(`Installed ${packageName} at ${resolved}.`);
+}
+
+function ensureEsbuildNativePackages() {
+  const pnpmVirtualStore = join("node_modules", ".pnpm");
+  const entries = readdirSync(pnpmVirtualStore, { withFileTypes: true });
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith("esbuild@")) {
+      continue;
+    }
+
+    const esbuildPackageDirectory = join(
+      pnpmVirtualStore,
+      entry.name,
+      "node_modules",
+      "esbuild"
+    );
+    const packageJsonPath = join(esbuildPackageDirectory, "package.json");
+
+    if (!existsSync(packageJsonPath)) {
+      continue;
+    }
+
+    const { version } = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    const packageName = "@esbuild/linux-x64";
+    const targetDirectory = join(
+      pnpmVirtualStore,
+      entry.name,
+      "node_modules",
+      ...packageName.split("/")
+    );
+    const binaryPath = join(targetDirectory, "bin", "esbuild");
+
+    if (existsSync(binaryPath)) {
+      console.log(
+        `${packageName}@${version} already available for ${entry.name}.`
+      );
+    } else {
+      extractPackage(packageName, version, targetDirectory);
+      console.log(`Installed ${packageName}@${version} for ${entry.name}.`);
+    }
+
+    const installedVersion = execFileSync(binaryPath, ["--version"], {
+      encoding: "utf8",
+    }).trim();
+
+    if (installedVersion !== version) {
+      throw new Error(
+        `${binaryPath} reported ${installedVersion}, expected ${version}.`
+      );
+    }
+  }
+}
+
+function extractPackage(packageName, version, targetDirectory) {
   const tempDirectory = mkdtempSync(join(tmpdir(), "native-package-"));
 
   try {
@@ -62,16 +138,6 @@ function ensureNativePackage(packageName) {
       targetDirectory,
       "--strip-components=1",
     ]);
-
-    const resolved = execFileSync(
-      process.execPath,
-      [
-        "-e",
-        `process.stdout.write(require.resolve(${JSON.stringify(packageName)}))`,
-      ],
-      { encoding: "utf8" }
-    );
-    console.log(`Installed ${packageName} at ${resolved}.`);
   } finally {
     rmSync(tempDirectory, { force: true, recursive: true });
   }
