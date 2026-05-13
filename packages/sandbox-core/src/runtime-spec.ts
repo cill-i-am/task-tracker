@@ -96,7 +96,6 @@ const RequiredSandboxRuntimeOverrides = SandboxRuntimeBaseOverrides.pipe(
     Schema.Struct({
       AUTH_EMAIL_FROM: Schema.NonEmptyString,
       AUTH_EMAIL_FROM_NAME: Schema.NonEmptyString,
-      AUTH_EMAIL_TRANSPORT: Schema.Literal("cloudflare-api", "noop"),
     })
   )
 );
@@ -158,8 +157,6 @@ export function buildSandboxRuntimeOverrides(input: {
     ...buildSandboxRuntimeBaseOverrides(input),
     AUTH_EMAIL_FROM: input.sharedEnvironment.AUTH_EMAIL_FROM,
     AUTH_EMAIL_FROM_NAME: input.sharedEnvironment.AUTH_EMAIL_FROM_NAME,
-    AUTH_EMAIL_TRANSPORT:
-      input.sharedEnvironment.AUTH_EMAIL_TRANSPORT ?? "noop",
   };
 
   return Schema.decodeUnknownSync(SandboxRuntimeOverrides)({

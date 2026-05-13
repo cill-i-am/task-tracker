@@ -82,7 +82,6 @@ function makeEnv(
     AUTH_EMAIL_QUEUE: {
       send: () => Promise.resolve(),
     } as unknown as Queue<AuthEmailQueueMessage>,
-    AUTH_EMAIL_TRANSPORT: "cloudflare-binding",
     BETTER_AUTH_BASE_URL: "https://api.example.com/api/auth",
     BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
     DATABASE: {
@@ -145,21 +144,41 @@ describe("worker queue auth email delivery", () => {
     expect(message.retry).not.toHaveBeenCalled();
   }, 10_000);
 
-  it("honors noop transport mode for queued auth email", async () => {
+  it("fails fast when the Worker email binding is missing", async () => {
     const sendEmail = makeSendEmailMock();
     const message = makeMessage(makePasswordResetQueueMessage());
 
-    await runWorkerQueue(
-      makeBatch([message]),
-      makeEnv({
-        AUTH_EMAIL: undefined,
-        AUTH_EMAIL_TRANSPORT: "noop",
-        sendEmail,
-      })
-    );
+    await expect(
+      runWorkerQueue(
+        makeBatch([message]),
+        makeEnv({
+          AUTH_EMAIL: undefined,
+          sendEmail,
+        })
+      )
+    ).rejects.toThrow(/AUTH_EMAIL Worker binding/);
 
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.ack).not.toHaveBeenCalled();
+    expect(message.retry).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it("fails fast when deployed auth email sender config is invalid", async () => {
+    const sendEmail = makeSendEmailMock();
+    const message = makeMessage(makePasswordResetQueueMessage());
+
+    await expect(
+      runWorkerQueue(
+        makeBatch([message]),
+        makeEnv({
+          AUTH_EMAIL_FROM: "not-an-email",
+          sendEmail,
+        })
+      )
+    ).rejects.toThrow(/Invalid auth email configuration/);
+
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(message.ack).not.toHaveBeenCalled();
     expect(message.retry).not.toHaveBeenCalled();
   }, 10_000);
 });

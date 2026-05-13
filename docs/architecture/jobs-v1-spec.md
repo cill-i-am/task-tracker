@@ -165,7 +165,7 @@ current launch scope.
 Latitude and longitude are server-derived persistence fields, not user-editable
 inputs. Server geocoding should sit behind a provider-neutral service: Google is
 the initial production provider, while local, dev, test, and sandbox
-environments can use stub mode.
+environments can use deterministic development geocoding.
 
 The app keeps rendering saved coordinates with the existing map renderer for
 now. Future routing, directions, and provider swaps should remain behind

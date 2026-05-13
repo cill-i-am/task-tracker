@@ -3,7 +3,7 @@ import { ConfigProvider, Effect } from "effect";
 import { AuthEmailPromiseBridge } from "./auth-email-promise-bridge.js";
 
 describe("auth email promise bridge", () => {
-  it("supports a noop transport without Cloudflare credentials", async () => {
+  it("supports development transport without Cloudflare credentials", async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* AuthEmailPromiseBridgeEffect() {
         const bridge = yield* AuthEmailPromiseBridge;
@@ -22,7 +22,6 @@ describe("auth email promise bridge", () => {
         Effect.withConfigProvider(
           ConfigProvider.fromMap(
             new Map([
-              ["AUTH_EMAIL_TRANSPORT", "noop"],
               ["AUTH_APP_ORIGIN", "http://127.0.0.1:4173"],
               ["AUTH_EMAIL_FROM", "auth@ceird.localhost"],
               ["AUTH_EMAIL_FROM_NAME", "Ceird"],

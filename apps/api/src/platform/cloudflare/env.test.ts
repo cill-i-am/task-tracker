@@ -12,7 +12,6 @@ function makeWorkerEnv(): ApiWorkerEnv {
     AUTH_EMAIL_QUEUE: {
       send: () => Promise.resolve(),
     } as unknown as Queue<AuthEmailQueueMessage>,
-    AUTH_EMAIL_TRANSPORT: "cloudflare-binding",
     BETTER_AUTH_BASE_URL: "https://api.example.com/api/auth",
     BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
     DATABASE: {

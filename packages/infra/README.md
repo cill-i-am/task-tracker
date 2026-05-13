@@ -37,9 +37,9 @@ pnpm --filter @ceird/infra dev
 ## Deployed Resources
 
 The stack provisions PlanetScale Postgres, Cloudflare Hyperdrive, a Cloudflare
-Worker API, a Cloudflare Vite app, an auth email queue, an auth email dead-letter
-queue, and optional Cloudflare email credentials or bindings depending on
-`AUTH_EMAIL_TRANSPORT`.
+Worker API, a Cloudflare Vite app, an auth email queue, an auth email
+dead-letter queue, and the Cloudflare Email Worker binding used by deployed
+auth email delivery.
 
 Hyperdrive is configured with a conservative origin connection limit. When
 migrations are enabled, Alchemy applies that Hyperdrive configuration before

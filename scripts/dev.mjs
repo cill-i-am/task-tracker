@@ -9,7 +9,6 @@ const DEFAULT_AUTH_EMAIL_FROM_NAME = "Ceird";
 
 export function createDevEnvironment(baseEnvironment = process.env) {
   const proxyPort = baseEnvironment.PORTLESS_PORT ?? "1355";
-  const authEmailTransport = baseEnvironment.AUTH_EMAIL_TRANSPORT ?? "noop";
 
   return {
     ...baseEnvironment,
@@ -21,7 +20,6 @@ export function createDevEnvironment(baseEnvironment = process.env) {
     AUTH_EMAIL_FROM: baseEnvironment.AUTH_EMAIL_FROM ?? DEFAULT_AUTH_EMAIL_FROM,
     AUTH_EMAIL_FROM_NAME:
       baseEnvironment.AUTH_EMAIL_FROM_NAME ?? DEFAULT_AUTH_EMAIL_FROM_NAME,
-    AUTH_EMAIL_TRANSPORT: authEmailTransport,
     BETTER_AUTH_BASE_URL:
       baseEnvironment.BETTER_AUTH_BASE_URL ??
       `https://api.ceird.localhost:${proxyPort}`,

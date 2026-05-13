@@ -55,7 +55,8 @@ Core files:
 | `config.ts`                                        | Better Auth runtime config, trusted origins, cookie-domain logic, and rate-limit config.                                 |
 | `schema.ts`                                        | Better Auth Drizzle tables and relations.                                                                                |
 | `auth-email.ts`                                    | Auth email payloads and send orchestration.                                                                              |
-| `auth-email-config.ts`                             | Email transport config for `noop`, `cloudflare-api`, and `cloudflare-binding`.                                           |
+| `auth-email-config.ts`                             | Auth email sender config and Cloudflare credential loading.                                                              |
+| `auth-email-transport.ts`                          | Auth email transport capability plus development, local, Cloudflare API, and Cloudflare binding provider layers.         |
 | `auth-email-queue.ts`                              | Queue payload handling.                                                                                                  |
 | `auth-email-scheduler.ts`                          | Background scheduling boundary for auth emails.                                                                          |
 | `cloudflare-auth-email-transport.ts`               | Cloudflare API email transport.                                                                                          |
@@ -65,6 +66,15 @@ Better Auth owns standard auth routes under `/api/auth/*`. The API also exposes
 a public invitation preview route matched by
 `/api/public/invitations/:invitationId/preview`, returning a masked email,
 organization name, and role for pending non-expired invitations.
+
+Auth email senders depend on the `AuthEmailTransport` capability rather than a
+specific provider. Local Node and sandbox composition use
+`AuthEmailTransport.Local`, which selects the Cloudflare API provider only when
+both Cloudflare credentials are present and otherwise falls back to deterministic
+development delivery. The deployed Worker queue composes
+`AuthEmailTransport.CloudflareBinding` directly, so missing Worker bindings or
+invalid sender config fail through the Effect layer/config boundary instead of
+being selected by an environment variable.
 
 Organization rules are enforced through Better Auth plugin hooks and shared
 decoders from `@ceird/identity-core`. Only organization name can be

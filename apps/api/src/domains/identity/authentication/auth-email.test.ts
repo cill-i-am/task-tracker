@@ -1,6 +1,10 @@
-import { ConfigProvider, Effect, Layer } from "effect";
+import { describe, expect, it } from "@effect/vitest";
+import { ConfigProvider, Effect, Layer, Redacted } from "effect";
 
-import { loadAuthEmailConfig } from "./auth-email-config.js";
+import {
+  loadAuthEmailConfig,
+  loadCloudflareAuthEmailConfig,
+} from "./auth-email-config.js";
 import {
   AuthEmailConfigurationError,
   AuthEmailRejectedError,
@@ -603,7 +607,7 @@ describe("auth email config loading", () => {
     expect(result.left.cause).toMatch(/AUTH_EMAIL_FROM/);
   }, 10_000);
 
-  it("loads noop auth email config by default without Cloudflare credentials", async () => {
+  it("loads base auth email config without Cloudflare credentials", async () => {
     const config = await Effect.runPromise(
       loadAuthEmailConfig.pipe(
         Effect.withConfigProvider(
@@ -618,22 +622,18 @@ describe("auth email config loading", () => {
     );
 
     expect(config).toStrictEqual({
-      transportMode: "noop",
       appOrigin: "https://app.ceird.localhost",
       from: "auth@ceird.localhost",
       fromName: "Ceird",
-      cloudflareAccountId: "",
-      cloudflareApiToken: "",
     });
   }, 10_000);
 
-  it("loads cloudflare-api auth email config with Cloudflare credentials", async () => {
+  it("loads Cloudflare auth email config with Cloudflare credentials", async () => {
     const config = await Effect.runPromise(
-      loadAuthEmailConfig.pipe(
+      loadCloudflareAuthEmailConfig.pipe(
         Effect.withConfigProvider(
           ConfigProvider.fromMap(
             new Map([
-              ["AUTH_EMAIL_TRANSPORT", "cloudflare-api"],
               ["AUTH_APP_ORIGIN", "https://app.ceird.localhost"],
               ["AUTH_EMAIL_FROM", "auth@ceird.localhost"],
               ["CLOUDFLARE_ACCOUNT_ID", "account_123"],
@@ -644,39 +644,13 @@ describe("auth email config loading", () => {
       )
     );
 
-    expect(config).toStrictEqual({
-      transportMode: "cloudflare-api",
+    expect(config).toMatchObject({
       appOrigin: "https://app.ceird.localhost",
       from: "auth@ceird.localhost",
       fromName: "Ceird",
       cloudflareAccountId: "account_123",
-      cloudflareApiToken: "token_123",
     });
-  }, 10_000);
-
-  it("loads cloudflare-binding auth email config without Cloudflare API credentials", async () => {
-    const config = await Effect.runPromise(
-      loadAuthEmailConfig.pipe(
-        Effect.withConfigProvider(
-          ConfigProvider.fromMap(
-            new Map([
-              ["AUTH_EMAIL_TRANSPORT", "cloudflare-binding"],
-              ["AUTH_APP_ORIGIN", "https://app.ceird.localhost"],
-              ["AUTH_EMAIL_FROM", "auth@ceird.localhost"],
-            ])
-          )
-        )
-      )
-    );
-
-    expect(config).toStrictEqual({
-      transportMode: "cloudflare-binding",
-      appOrigin: "https://app.ceird.localhost",
-      from: "auth@ceird.localhost",
-      fromName: "Ceird",
-      cloudflareAccountId: "",
-      cloudflareApiToken: "",
-    });
+    expect(Redacted.value(config.cloudflareApiToken)).toBe("token_123");
   }, 10_000);
 
   it("requires AUTH_APP_ORIGIN in auth email config", async () => {
@@ -702,11 +676,10 @@ describe("auth email config loading", () => {
 
   it("maps missing Cloudflare API config into AuthEmailConfigurationError", async () => {
     const result = await Effect.runPromise(
-      loadAuthEmailConfig.pipe(
+      loadCloudflareAuthEmailConfig.pipe(
         Effect.withConfigProvider(
           ConfigProvider.fromMap(
             new Map([
-              ["AUTH_EMAIL_TRANSPORT", "cloudflare-api"],
               ["AUTH_APP_ORIGIN", "https://app.ceird.localhost"],
               ["AUTH_EMAIL_FROM", "auth@ceird.localhost"],
             ])

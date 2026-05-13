@@ -107,17 +107,20 @@ The auth email boundary adds runtime config in
 
 Required values:
 
+- `AUTH_APP_ORIGIN`
 - `AUTH_EMAIL_FROM`
 
 Current defaulted value:
 
-- `AUTH_EMAIL_TRANSPORT`, which defaults to `"noop"` locally and is set to
-  `"cloudflare-binding"` by the Cloudflare infra stage
 - `AUTH_EMAIL_FROM_NAME`, which defaults to `"Ceird"`
 
-`AUTH_EMAIL_TRANSPORT=cloudflare-api` is the local/manual opt-in path for real
-email delivery outside Workers. In that mode only, the API also requires
-`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`.
+Environment variables configure credentials and email metadata, not transport
+topology. Local Node and sandbox runtimes compose `AuthEmailTransport.Local`,
+which uses the Cloudflare REST API only when `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN` are present; otherwise it falls back to deterministic
+development delivery. The Cloudflare Worker composes
+`AuthEmailTransport.CloudflareBinding` directly and fails fast when the
+`AUTH_EMAIL` Worker binding is missing.
 
 ### Auth Email Delivery Boundary
 
@@ -127,6 +130,9 @@ boundary in `apps/api`:
 - `apps/api/src/domains/identity/authentication/auth-email.ts` defines
   `AuthEmailSender`, an auth-domain Effect service for sending password reset,
   verification, and organization invitation mail
+- `apps/api/src/domains/identity/authentication/auth-email-transport.ts`
+  defines the provider-neutral `AuthEmailTransport` capability and its
+  `Development`, `CloudflareApi`, `CloudflareBinding`, and `Local` layers
 - `AuthEmailSender` validates each payload, renders the auth email content,
   and keeps the transport contract provider-neutral through `deliveryKey`
 - `apps/api/src/domains/identity/authentication/cloudflare-email-binding-auth-email-transport.ts`
@@ -141,8 +147,8 @@ Rule:
 - Better Auth still owns the reset HTTP endpoints and token semantics
 - the app-owned boundary starts at delivery policy, not at route ownership
 - auth startup now depends on valid auth email config as well as core Better
-  Auth config, because `AuthenticationLive` composes `AuthEmailSender` with
-  `CloudflareAuthEmailTransportLive` at boot
+  Auth config, because `AuthenticationLive` composes `AuthEmailSender` through
+  the auth email transport capability
 - password reset emails carry a stable provider-neutral `deliveryKey` at the
   auth boundary for correlation and transport stability
 - that `deliveryKey` stays consistent across transports so future verification
@@ -151,8 +157,10 @@ Rule:
 - verification and organization invitation mail now pass through the same
   `AuthEmailSender` boundary
 - Node and sandbox runtimes send auth email through the direct promise bridge
+  with `AuthEmailTransport.Local`
 - the Cloudflare Worker runtime enqueues auth email work to Cloudflare Queues
-  and consumes it from the same Worker through the `queue()` handler
+  and consumes it from the same Worker through the `queue()` handler with
+  `AuthEmailTransport.CloudflareBinding`
 
 ### Cloudflare Queue Scheduling
 
@@ -189,12 +197,12 @@ Current defaults by entry point:
   `https://<slug>.api.ceird.localhost:1355`
 - when sandbox aliases are unavailable, that injected origin falls back to the
   loopback API URL such as `http://127.0.0.1:4301`
-- local dev and Playwright launchers inject `AUTH_EMAIL_FROM`,
-  `AUTH_EMAIL_FROM_NAME`, and `AUTH_EMAIL_TRANSPORT`
-- local dev selects `AUTH_EMAIL_TRANSPORT=cloudflare-api` when real Cloudflare
-  API credentials are present, otherwise it uses `noop`
-- sandbox startup preflight validates the auth email sender address and defaults
-  delivery to `noop`
+- local dev and Playwright launchers inject `AUTH_EMAIL_FROM` and
+  `AUTH_EMAIL_FROM_NAME`
+- local dev uses Cloudflare email when real Cloudflare API credentials are
+  present, otherwise it uses the deterministic development transport
+- sandbox startup preflight validates the auth email sender address and allows
+  blank Cloudflare API credentials for development fallback
 
 ### Trusted Origins and CORS
 

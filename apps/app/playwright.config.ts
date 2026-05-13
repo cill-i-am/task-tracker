@@ -41,7 +41,6 @@ export default defineConfig({
           AUTH_APP_ORIGIN: playwrightBaseUrl,
           AUTH_EMAIL_FROM: playwrightAuthEmailFrom,
           AUTH_EMAIL_FROM_NAME: playwrightAuthEmailFromName,
-          AUTH_EMAIL_TRANSPORT: "noop",
           AUTH_RATE_LIMIT_ENABLED: "false",
           BETTER_AUTH_BASE_URL: playwrightApiUrl,
           BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",

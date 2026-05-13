@@ -1,3 +1,4 @@
+import { describe, expect, it, vi } from "@effect/vitest";
 import { ConfigProvider, Effect } from "effect";
 
 import {
@@ -11,7 +12,6 @@ function makeConfigProvider() {
   return ConfigProvider.fromMap(
     new Map([
       ["AUTH_APP_ORIGIN", "https://app.ceird.localhost"],
-      ["AUTH_EMAIL_TRANSPORT", "cloudflare-api"],
       ["AUTH_EMAIL_FROM", "auth@ceird.localhost"],
       ["AUTH_EMAIL_FROM_NAME", "Ceird Auth"],
       ["CLOUDFLARE_ACCOUNT_ID", "account_123"],
@@ -262,6 +262,33 @@ describe("makeCloudflareAuthEmailTransport()", () => {
       message: "Auth email request failed",
       cause: "socket hang up",
     });
+  }, 10_000);
+
+  it("redacts recipient addresses from Cloudflare request failure causes", async () => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(
+        makeCloudflareAuthEmailTransport({
+          cloudflare: {
+            send: () =>
+              Promise.reject(
+                new Error("Cloudflare rejected alice@example.com for policy")
+              ),
+          },
+        }),
+        (transport) => transport.send(makeMessage())
+      ).pipe(Effect.withConfigProvider(makeConfigProvider()), Effect.either)
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") {
+      return;
+    }
+
+    expect(result.left).toBeInstanceOf(AuthEmailRequestError);
+    expect(result.left.cause).toBe(
+      "Cloudflare rejected [redacted-email] for policy"
+    );
+    expect(result.left.cause).not.toContain("alice@example.com");
   }, 10_000);
 
   it("fails when Cloudflare returns an unexpected single-recipient response", async () => {

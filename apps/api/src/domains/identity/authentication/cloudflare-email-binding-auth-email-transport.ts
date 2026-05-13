@@ -1,14 +1,14 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect } from "effect";
 
 import { AuthEmailConfigService } from "./auth-email-config.js";
 import { AuthEmailRequestError } from "./auth-email-errors.js";
 import {
   buildRecipientLogContext,
   makeDeliveryKeyDedupeStore,
+  sendWithDeliveryKeyDedupe,
   serializeUnknownError,
 } from "./auth-email-transport-helpers.js";
-import { AuthEmailTransport } from "./auth-email.js";
-import type { TransportMessage } from "./auth-email.js";
+import type { TransportMessage } from "./auth-email-transport.js";
 
 export interface CloudflareEmailBindingMessage {
   readonly from: string | { readonly email: string; readonly name: string };
@@ -52,9 +52,8 @@ function buildBindingMessage(
   };
 }
 
-export const CloudflareEmailBindingAuthEmailTransportLive = Layer.effect(
-  AuthEmailTransport,
-  Effect.gen(function* CloudflareEmailBindingAuthEmailTransportLiveEffect() {
+export function makeCloudflareEmailBindingAuthEmailTransport() {
+  return Effect.gen(function* CloudflareEmailBindingAuthEmailTransportEffect() {
     const binding = yield* CloudflareEmailBinding;
     const config = yield* AuthEmailConfigService;
     const deliveryKeyDedupe = makeDeliveryKeyDedupeStore();
@@ -92,38 +91,24 @@ export const CloudflareEmailBindingAuthEmailTransportLive = Layer.effect(
           Effect.zipRight(logOutcome("sent")),
           Effect.catchTag("AuthEmailRequestError", (error) =>
             logOutcome("request_failed").pipe(
+              Effect.annotateLogs({
+                authEmailFailureCause: error.cause ?? error.message,
+                authEmailFailureTag: error._tag,
+              }),
               Effect.zipRight(Effect.fail(error))
             )
           )
         );
 
-        const { deliveryKey } = message;
-
-        if (!deliveryKey) {
-          return yield* sendEffect;
-        }
-
-        return yield* Effect.sync(() =>
-          deliveryKeyDedupe.reserve(deliveryKey)
-        ).pipe(
-          Effect.flatMap((shouldSend) =>
-            shouldSend
-              ? sendEffect.pipe(
-                  Effect.tap(() =>
-                    Effect.sync(() => deliveryKeyDedupe.retain(deliveryKey))
-                  ),
-                  Effect.catchTag("AuthEmailRequestError", (error) =>
-                    Effect.sync(() =>
-                      deliveryKeyDedupe.release(deliveryKey)
-                    ).pipe(Effect.zipRight(Effect.fail(error)))
-                  )
-                )
-              : logOutcome("deduped")
-          )
-        );
+        return yield* sendWithDeliveryKeyDedupe({
+          deliveryKey: message.deliveryKey,
+          dedupeStore: deliveryKeyDedupe,
+          sendEffect,
+          logDeduped: logOutcome("deduped"),
+        });
       }
     );
 
     return { send };
-  })
-).pipe(Layer.provide(AuthEmailConfigService.Default));
+  });
+}
