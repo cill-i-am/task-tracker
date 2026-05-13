@@ -1,12 +1,8 @@
 /* oxlint-disable eslint/max-classes-per-file, unicorn/no-array-method-this-argument */
 
 import { OrganizationRole } from "@ceird/identity-core";
-import { Context, Effect, ParseResult, Schema } from "effect";
+import { Effect, ParseResult, Schema } from "effect";
 
-import type {
-  AuthEmailRejectedError,
-  AuthEmailRequestError,
-} from "./auth-email-errors.js";
 import {
   EmailVerificationEmailRejectedError,
   EmailVerificationEmailRequestError,
@@ -18,6 +14,11 @@ import {
   PasswordResetEmailRejectedError,
   PasswordResetEmailRequestError,
 } from "./auth-email-errors.js";
+import { AuthEmailTransport } from "./auth-email-transport.js";
+import type { TransportMessage } from "./auth-email-transport.js";
+
+export { AuthEmailTransport } from "./auth-email-transport.js";
+export type { TransportMessage } from "./auth-email-transport.js";
 
 const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_RESET_DELIVERY_KEY_PATTERN = /^password-reset\/[0-9a-f]{64}$/;
@@ -135,17 +136,6 @@ function formatParseError(parseError: ParseResult.ParseError) {
   return ParseResult.TreeFormatter.formatErrorSync(parseError);
 }
 
-export interface TransportMessage {
-  readonly deliveryKey?: string;
-  readonly html: string;
-  readonly subject: string;
-  readonly text: string;
-  readonly to: string;
-}
-
-export type AuthEmailTransportError =
-  | AuthEmailRejectedError
-  | AuthEmailRequestError;
 export type OrganizationInvitationEmailError =
   | InvalidOrganizationInvitationEmailInputError
   | OrganizationInvitationEmailRejectedError
@@ -158,17 +148,6 @@ export type EmailVerificationEmailError =
   | InvalidEmailVerificationEmailInputError
   | EmailVerificationEmailRejectedError
   | EmailVerificationEmailRequestError;
-
-export class AuthEmailTransport extends Context.Tag(
-  "@ceird/domains/identity/authentication/AuthEmailTransport"
-)<
-  AuthEmailTransport,
-  {
-    readonly send: (
-      message: TransportMessage
-    ) => Effect.Effect<void, AuthEmailTransportError>;
-  }
->() {}
 
 function decodeAuthEmailInput<Input, ErrorType>(options: {
   readonly rawInput: unknown;

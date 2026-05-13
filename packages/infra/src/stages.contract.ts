@@ -11,7 +11,6 @@ const configWithoutCloudflareBootstrapSecrets = {
   appHostname: "app.example.com",
   authEmailFrom: Redacted.make("no-reply@example.com"),
   authEmailFromName: "Ceird",
-  authEmailTransport: "cloudflare-binding",
   googleMapsApiKey: Redacted.make(
     Schema.decodeUnknownSync(InfraGoogleMapsApiKey)("google-key")
   ),

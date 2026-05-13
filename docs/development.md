@@ -176,9 +176,10 @@ High-signal runtime variables:
 | `BETTER_AUTH_BASE_URL`    | API, app server helpers | Absolute Better Auth base URL, usually ending in `/api/auth`.  |
 | `BETTER_AUTH_SECRET`      | API                     | Better Auth signing secret.                                    |
 | `AUTH_APP_ORIGIN`         | API                     | Browser-visible app origin for redirects and auth email links. |
-| `AUTH_EMAIL_TRANSPORT`    | API, infra              | `noop`, `cloudflare-api`, or `cloudflare-binding`.             |
 | `AUTH_EMAIL_FROM`         | API, infra              | Sender email address for auth emails.                          |
 | `AUTH_EMAIL_FROM_NAME`    | API, infra              | Sender display name.                                           |
+| `CLOUDFLARE_ACCOUNT_ID`   | API, infra              | Optional locally for real auth email delivery.                 |
+| `CLOUDFLARE_API_TOKEN`    | API, infra              | Optional locally for real auth email delivery.                 |
 | `AUTH_RATE_LIMIT_ENABLED` | API                     | Enables or disables Better Auth database-backed rate limits.   |
 | `API_ORIGIN`              | app                     | Server-side API origin.                                        |
 | `VITE_API_ORIGIN`         | app                     | Browser-exposed API origin.                                    |

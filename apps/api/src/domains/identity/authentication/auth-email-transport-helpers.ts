@@ -1,4 +1,8 @@
+import { Effect } from "effect";
+
 const DELIVERY_KEY_DEDUPE_TTL_MS = 10 * 60 * 1000;
+const EMAIL_ADDRESS_IN_TEXT_PATTERN =
+  /[^\s<>()"']+@[^\s<>()"']+\.[^\s<>()"']+/g;
 
 export function buildRecipientLogContext(recipient: string) {
   const [_, domain = ""] = recipient.split("@");
@@ -46,6 +50,38 @@ export function makeDeliveryKeyDedupeStore() {
   };
 }
 
+export function sendWithDeliveryKeyDedupe<E, R>(input: {
+  readonly deliveryKey: string | undefined;
+  readonly dedupeStore: ReturnType<typeof makeDeliveryKeyDedupeStore>;
+  readonly sendEffect: Effect.Effect<void, E, R>;
+  readonly logDeduped: Effect.Effect<void, never, R>;
+}) {
+  const { deliveryKey } = input;
+
+  if (!deliveryKey) {
+    return input.sendEffect;
+  }
+
+  return Effect.sync(() => input.dedupeStore.reserve(deliveryKey)).pipe(
+    Effect.flatMap((shouldSend) =>
+      shouldSend
+        ? input.sendEffect.pipe(
+            Effect.tap(() =>
+              Effect.sync(() => input.dedupeStore.retain(deliveryKey))
+            ),
+            Effect.tapError(() =>
+              Effect.sync(() => input.dedupeStore.release(deliveryKey))
+            )
+          )
+        : input.logDeduped
+    )
+  );
+}
+
+export function sanitizeProviderErrorMessage(message: string) {
+  return message.replaceAll(EMAIL_ADDRESS_IN_TEXT_PATTERN, "[redacted-email]");
+}
+
 export function serializeUnknownError(error: unknown) {
   if (
     typeof error === "object" &&
@@ -53,8 +89,8 @@ export function serializeUnknownError(error: unknown) {
     "message" in error &&
     typeof error.message === "string"
   ) {
-    return error.message;
+    return sanitizeProviderErrorMessage(error.message);
   }
 
-  return String(error);
+  return sanitizeProviderErrorMessage(String(error));
 }

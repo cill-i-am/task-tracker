@@ -1,16 +1,6 @@
-import {
-  Cause,
-  ConfigProvider,
-  Effect,
-  Exit,
-  Layer,
-  Match,
-  Option,
-} from "effect";
+import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect";
 
-import { loadAuthEmailConfig } from "./domains/identity/authentication/auth-email-config.js";
 import { AuthEmailConfigurationError } from "./domains/identity/authentication/auth-email-errors.js";
-import { NoopAuthEmailTransportLive } from "./domains/identity/authentication/auth-email-promise-bridge.js";
 import {
   AuthEmailQueueDeliveryError,
   InvalidAuthEmailQueueMessageError,
@@ -18,16 +8,15 @@ import {
   makeCloudflareAuthenticationEmailSchedulerLive,
   sendAuthEmailQueueMessage,
 } from "./domains/identity/authentication/auth-email-queue.js";
-import { AuthEmailSender } from "./domains/identity/authentication/auth-email.js";
+import {
+  AuthEmailSender,
+  AuthEmailTransport,
+} from "./domains/identity/authentication/auth-email.js";
 import {
   AuthenticationBackgroundTaskHandler,
   makeAuthenticationLive,
 } from "./domains/identity/authentication/auth.js";
-import { CloudflareAuthEmailTransportLive } from "./domains/identity/authentication/cloudflare-auth-email-transport.js";
-import {
-  CloudflareEmailBinding,
-  CloudflareEmailBindingAuthEmailTransportLive,
-} from "./domains/identity/authentication/cloudflare-email-binding-auth-email-transport.js";
+import { CloudflareEmailBinding } from "./domains/identity/authentication/cloudflare-email-binding-auth-email-transport.js";
 import { SiteGeocoder } from "./domains/sites/geocoder.js";
 import type { ApiWorkerEnv } from "./platform/cloudflare/env.js";
 import { apiWorkerEnvConfigMap } from "./platform/cloudflare/env.js";
@@ -66,39 +55,23 @@ function makeWorkerApiHandler(env: ApiWorkerEnv, context: ExecutionContext) {
 }
 
 function makeWorkerAuthEmailTransportLive(env: ApiWorkerEnv) {
-  return Layer.unwrapEffect(
-    loadAuthEmailConfig.pipe(
-      Effect.map(({ transportMode }) =>
-        Match.value(transportMode).pipe(
-          Match.when("noop", () => NoopAuthEmailTransportLive),
-          Match.when("cloudflare-api", () => CloudflareAuthEmailTransportLive),
-          Match.when("cloudflare-binding", () => {
-            const authEmail = env.AUTH_EMAIL;
+  const authEmail = env.AUTH_EMAIL;
 
-            if (!authEmail) {
-              return Layer.fail(
-                new AuthEmailConfigurationError({
-                  message:
-                    "AUTH_EMAIL_TRANSPORT=cloudflare-binding requires the AUTH_EMAIL Worker binding",
-                })
-              );
-            }
+  if (!authEmail) {
+    return Layer.fail(
+      new AuthEmailConfigurationError({
+        message:
+          "Worker auth email delivery requires the AUTH_EMAIL Worker binding",
+      })
+    );
+  }
 
-            const cloudflareEmailBindingLive = Layer.succeed(
-              CloudflareEmailBinding,
-              {
-                send: (message) => authEmail.send(message),
-              }
-            );
+  const cloudflareEmailBindingLive = Layer.succeed(CloudflareEmailBinding, {
+    send: (message) => authEmail.send(message),
+  });
 
-            return CloudflareEmailBindingAuthEmailTransportLive.pipe(
-              Layer.provide(cloudflareEmailBindingLive)
-            );
-          }),
-          Match.exhaustive
-        )
-      )
-    )
+  return AuthEmailTransport.CloudflareBinding.pipe(
+    Layer.provide(cloudflareEmailBindingLive)
   );
 }
 

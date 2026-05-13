@@ -1,11 +1,14 @@
+/* oxlint-disable unicorn/no-array-method-this-argument */
+
 import CloudflareApi, { APIError } from "cloudflare";
 import type {
   EmailSendingSendParams,
   EmailSendingSendResponse,
 } from "cloudflare/resources/email-sending/email-sending";
-import { Effect, Layer, Schema } from "effect";
+import { Array as Arr, Effect, Redacted, Schema } from "effect";
 
-import { loadAuthEmailConfig } from "./auth-email-config.js";
+import type { CloudflareAuthEmailConfig } from "./auth-email-config.js";
+import { loadCloudflareAuthEmailConfig } from "./auth-email-config.js";
 import {
   AuthEmailRejectedError,
   AuthEmailRequestError,
@@ -14,9 +17,10 @@ import {
   buildRecipientLogContext,
   buildRedactedRecipientDescription,
   makeDeliveryKeyDedupeStore,
+  sanitizeProviderErrorMessage,
+  sendWithDeliveryKeyDedupe,
 } from "./auth-email-transport-helpers.js";
-import { AuthEmailTransport } from "./auth-email.js";
-import type { TransportMessage } from "./auth-email.js";
+import type { TransportMessage } from "./auth-email-transport.js";
 
 interface CloudflareEmailSendingClient {
   readonly send: (
@@ -69,15 +73,15 @@ function classifySingleRecipientResponse(
     ),
     Effect.flatMap((buckets) => {
       const deliveryOutcomes = [
-        ...buckets.delivered.map((address) => ({
+        ...Arr.map(buckets.delivered, (address) => ({
           address,
           bucket: "delivered" as const,
         })),
-        ...buckets.queued.map((address) => ({
+        ...Arr.map(buckets.queued, (address) => ({
           address,
           bucket: "queued" as const,
         })),
-        ...buckets.permanent_bounces.map((address) => ({
+        ...Arr.map(buckets.permanent_bounces, (address) => ({
           address,
           bucket: "permanent_bounces" as const,
         })),
@@ -111,11 +115,12 @@ function makeAuthEmailRequestError(cause: unknown) {
 
   if (cause instanceof APIError) {
     const providerMessage =
-      cause.errors.map((error) => error.message).join("; ") || cause.message;
+      Arr.map(cause.errors, (error) => error.message).join("; ") ||
+      cause.message;
 
     return new AuthEmailRequestError({
       message: "Auth email request failed",
-      cause: providerMessage,
+      cause: sanitizeProviderErrorMessage(providerMessage),
     });
   }
 
@@ -127,25 +132,26 @@ function makeAuthEmailRequestError(cause: unknown) {
   ) {
     return new AuthEmailRequestError({
       message: "Auth email request failed",
-      cause: cause.message,
+      cause: sanitizeProviderErrorMessage(cause.message),
     });
   }
 
   return new AuthEmailRequestError({
     message: "Auth email request failed",
-    cause: String(cause),
+    cause: sanitizeProviderErrorMessage(String(cause)),
   });
 }
 
 export function makeCloudflareAuthEmailTransport(options?: {
+  readonly config?: CloudflareAuthEmailConfig;
   readonly cloudflare?: CloudflareEmailSendingClient;
 }) {
   return Effect.gen(function* makeCloudflareAuthEmailTransportEffect() {
-    const config = yield* loadAuthEmailConfig;
+    const config = options?.config ?? (yield* loadCloudflareAuthEmailConfig);
     const cloudflare =
       options?.cloudflare ??
       new CloudflareApi({
-        apiToken: config.cloudflareApiToken,
+        apiToken: Redacted.value(config.cloudflareApiToken),
         accountId: config.cloudflareAccountId,
       }).emailSending;
     const deliveryKeyDedupe = makeDeliveryKeyDedupeStore();
@@ -176,13 +182,7 @@ export function makeCloudflareAuthEmailTransport(options?: {
       }).pipe(
         Effect.zipRight(
           Effect.tryPromise({
-            try: async () => {
-              const response = await cloudflare.send(
-                buildPayload(config, message)
-              );
-
-              return response;
-            },
+            try: () => cloudflare.send(buildPayload(config, message)),
             catch: makeAuthEmailRequestError,
           })
         ),
@@ -206,51 +206,27 @@ export function makeCloudflareAuthEmailTransport(options?: {
             ),
           AuthEmailRequestError: (error) =>
             logOutcome("request_failed").pipe(
+              Effect.annotateLogs({
+                authEmailFailureCause: error.cause ?? error.message,
+                authEmailFailureTag: error._tag,
+              }),
               Effect.zipRight(Effect.fail(error))
             ),
         }),
         Effect.asVoid
       );
 
-      const { deliveryKey } = message;
-
-      if (!deliveryKey) {
-        return yield* sendEffect;
-      }
-
       // This is best-effort, process-local dedupe for the in-process background
       // task model; retryable failures are released so queue retries can attempt
       // delivery again.
-      return yield* Effect.sync(() =>
-        deliveryKeyDedupe.reserve(deliveryKey)
-      ).pipe(
-        Effect.flatMap((shouldSend) =>
-          shouldSend
-            ? sendEffect.pipe(
-                Effect.tap(() =>
-                  Effect.sync(() => deliveryKeyDedupe.retain(deliveryKey))
-                ),
-                Effect.catchTags({
-                  AuthEmailRejectedError: (error) =>
-                    Effect.sync(() =>
-                      deliveryKeyDedupe.release(deliveryKey)
-                    ).pipe(Effect.zipRight(Effect.fail(error))),
-                  AuthEmailRequestError: (error) =>
-                    Effect.sync(() =>
-                      deliveryKeyDedupe.release(deliveryKey)
-                    ).pipe(Effect.zipRight(Effect.fail(error))),
-                })
-              )
-            : logOutcome("deduped").pipe(Effect.asVoid)
-        )
-      );
+      return yield* sendWithDeliveryKeyDedupe({
+        deliveryKey: message.deliveryKey,
+        dedupeStore: deliveryKeyDedupe,
+        sendEffect,
+        logDeduped: logOutcome("deduped").pipe(Effect.asVoid),
+      });
     });
 
     return { send };
   });
 }
-
-export const CloudflareAuthEmailTransportLive = Layer.effect(
-  AuthEmailTransport,
-  makeCloudflareAuthEmailTransport()
-);

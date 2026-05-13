@@ -42,33 +42,9 @@ export function makeCloudflareHyperdrive(input: {
 
 export function makeCloudflareStack(input: CloudflareStackInput) {
   return Effect.gen(function* () {
-    const { accountId } = yield* Cloudflare.CloudflareEnvironment;
     const betterAuthSecret = yield* Alchemy.Random("BetterAuthSecret", {
       bytes: 32,
     });
-    let authEmailCloudflareApiEnv = {};
-    if (input.config.authEmailTransport === "cloudflare-api") {
-      const authEmailApiToken = yield* Cloudflare.AccountApiToken(
-        "AuthEmailApiToken",
-        {
-          name: resourceName(input.config, "auth-email-runtime-token"),
-          policies: [
-            {
-              effect: "allow",
-              permissionGroups: ["Email Sending Write"],
-              resources: {
-                [`com.cloudflare.api.account.${accountId}`]: "*",
-              },
-            },
-          ],
-        }
-      );
-
-      authEmailCloudflareApiEnv = {
-        CLOUDFLARE_ACCOUNT_ID: authEmailApiToken.accountId,
-        CLOUDFLARE_API_TOKEN: authEmailApiToken.value,
-      };
-    }
 
     const authEmailDeadLetterQueue = yield* Cloudflare.Queue(
       "AuthEmailDeadLetterQueue",
@@ -92,7 +68,6 @@ export function makeCloudflareStack(input: CloudflareStackInput) {
         AUTH_APP_ORIGIN: `https://${input.config.appHostname}`,
         AUTH_EMAIL_FROM: input.config.authEmailFrom,
         AUTH_EMAIL_FROM_NAME: input.config.authEmailFromName,
-        AUTH_EMAIL_TRANSPORT: input.config.authEmailTransport,
         BETTER_AUTH_BASE_URL: `https://${input.config.apiHostname}/api/auth`,
         BETTER_AUTH_SECRET: betterAuthSecret.text,
         GOOGLE_MAPS_API_KEY: input.config.googleMapsApiKey,
@@ -100,7 +75,6 @@ export function makeCloudflareStack(input: CloudflareStackInput) {
         ...(input.migrationRunId
           ? { CEIRD_MIGRATIONS_RUN_ID: input.migrationRunId }
           : {}),
-        ...authEmailCloudflareApiEnv,
       },
       domain: input.config.apiHostname,
       observability: {
@@ -126,19 +100,15 @@ export function makeCloudflareStack(input: CloudflareStackInput) {
       ],
     });
 
-    if (input.config.authEmailTransport === "cloudflare-binding") {
-      yield* api.bind`AuthEmailBinding`({
-        bindings: [
-          {
-            type: "send_email",
-            name: "AUTH_EMAIL",
-            allowedSenderAddresses: [
-              Redacted.value(input.config.authEmailFrom),
-            ],
-          },
-        ],
-      });
-    }
+    yield* api.bind`AuthEmailBinding`({
+      bindings: [
+        {
+          type: "send_email",
+          name: "AUTH_EMAIL",
+          allowedSenderAddresses: [Redacted.value(input.config.authEmailFrom)],
+        },
+      ],
+    });
 
     yield* Cloudflare.QueueConsumer("AuthEmailConsumer", {
       queueId: authEmailQueue.queueId,

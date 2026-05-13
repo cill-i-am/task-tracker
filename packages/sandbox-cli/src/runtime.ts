@@ -80,7 +80,6 @@ const SANDBOX_STOP_TIMEOUT_SECONDS = 2;
 const SANDBOX_SHARED_ENV_KEYS = [
   "AUTH_EMAIL_FROM",
   "AUTH_EMAIL_FROM_NAME",
-  "AUTH_EMAIL_TRANSPORT",
   "CLOUDFLARE_ACCOUNT_ID",
   "CLOUDFLARE_API_TOKEN",
   "GOOGLE_MAPS_API_KEY",
@@ -102,10 +101,6 @@ const sandboxSharedEnvironmentFields = {
   AUTH_EMAIL_FROM_NAME: Schema.optionalWith(Schema.String, {
     default: () => "Ceird",
   }),
-  AUTH_EMAIL_TRANSPORT: Schema.optionalWith(
-    Schema.Literal("cloudflare-api", "noop"),
-    { default: () => "noop" }
-  ),
   CLOUDFLARE_ACCOUNT_ID: Schema.optionalWith(Schema.String, {
     default: () => "",
   }),
@@ -118,21 +113,6 @@ const sandboxSharedEnvironmentFields = {
 };
 export const SandboxSharedEnvironment = Schema.Struct(
   sandboxSharedEnvironmentFields
-).pipe(
-  Schema.filter((environment) => {
-    if (environment.AUTH_EMAIL_TRANSPORT !== "cloudflare-api") {
-      return true;
-    }
-
-    return (
-      environment.CLOUDFLARE_ACCOUNT_ID.trim().length > 0 &&
-      environment.CLOUDFLARE_API_TOKEN.trim().length > 0
-    );
-  }),
-  Schema.annotations({
-    message: () =>
-      "CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set when AUTH_EMAIL_TRANSPORT=cloudflare-api",
-  })
 );
 type SandboxSharedEnvironment = Schema.Schema.Type<
   typeof SandboxSharedEnvironment
@@ -1180,7 +1160,6 @@ export function loadSandboxEnvironmentOrThrow(
         requiredKeys: SANDBOX_REQUIRED_ENV_KEYS,
         optionalKeys: [
           "AUTH_EMAIL_FROM_NAME",
-          "AUTH_EMAIL_TRANSPORT",
           "CLOUDFLARE_ACCOUNT_ID",
           "CLOUDFLARE_API_TOKEN",
           "GOOGLE_MAPS_API_KEY",
@@ -1588,10 +1567,7 @@ export function buildComposeFallbackEnvironmentOverrides(
 
 function makeBlankSandboxSharedEnvironmentOverrides(): SandboxSharedEnvironmentOverrides {
   return Object.fromEntries(
-    SANDBOX_SHARED_ENV_KEYS.map((key) => [
-      key,
-      key === "AUTH_EMAIL_TRANSPORT" ? "noop" : "",
-    ])
+    SANDBOX_SHARED_ENV_KEYS.map((key) => [key, ""])
   ) as SandboxSharedEnvironmentOverrides;
 }
 

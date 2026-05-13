@@ -96,16 +96,18 @@ Common sandbox variables include:
 | `AUTH_APP_ORIGIN`         | Browser app origin used by auth redirects and emails.    |
 | `AUTH_EMAIL_FROM`         | Sender address for auth emails.                          |
 | `AUTH_EMAIL_FROM_NAME`    | Sender display name.                                     |
-| `AUTH_EMAIL_TRANSPORT`    | `noop`, `cloudflare-api`, or `cloudflare-binding`.       |
 | `AUTH_RATE_LIMIT_ENABLED` | Disabled during automation to avoid local auth lockouts. |
 | `BETTER_AUTH_BASE_URL`    | API auth URL.                                            |
 | `BETTER_AUTH_SECRET`      | Stable sandbox auth secret.                              |
+| `CLOUDFLARE_ACCOUNT_ID`   | Optional local Cloudflare email API account ID.          |
+| `CLOUDFLARE_API_TOKEN`    | Optional local Cloudflare email API token.               |
 | `DATABASE_URL`            | Sandbox Postgres URL.                                    |
 | `CEIRD_SANDBOX`           | Marks sandbox runtime.                                   |
 | `GOOGLE_MAPS_API_KEY`     | Optional local Google geocoding key for site creation.   |
 
-Cloudflare email API credentials are optional unless
-`AUTH_EMAIL_TRANSPORT=cloudflare-api`.
+Cloudflare email API credentials are optional. When both are present, local API
+runtimes use the Cloudflare email API; when either is absent or blank, auth
+email delivery uses the deterministic development transport.
 The Google Maps key is optional for sandbox startup; when it is missing or
 blank, the API uses deterministic development geocoding.
 
@@ -122,8 +124,7 @@ The stack provisions:
 - Cloudflare Vite app from `apps/app`
 - Cloudflare Queue for auth email
 - Cloudflare dead-letter queue for auth email failures
-- Optional Cloudflare account API token for `cloudflare-api` email transport
-- Optional Cloudflare Email Worker binding for `cloudflare-binding` transport
+- Cloudflare Email Worker binding for deployed auth email delivery
 
 The API Worker and Cloudflare Vite app share the same typed Worker
 compatibility contract, including `nodejs_compat`, so runtime packages that rely
@@ -144,23 +145,22 @@ budget is applied and before new API code is uploaded.
 
 `packages/infra/src/stages.ts` loads deployment config from `CEIRD_*` names.
 
-| Variable                                   | Default              | Purpose                                              |
-| ------------------------------------------ | -------------------- | ---------------------------------------------------- |
-| `CEIRD_INFRA_STAGE`                        | `production`         | `preview` or `production`.                           |
-| `CEIRD_ZONE_NAME`                          | required             | Cloudflare zone.                                     |
-| `CEIRD_APP_HOSTNAME`                       | `app.<zone>`         | App hostname.                                        |
-| `CEIRD_API_HOSTNAME`                       | `api.<zone>`         | API hostname.                                        |
-| `AUTH_EMAIL_FROM`                          | required             | Sender email address.                                |
-| `AUTH_EMAIL_FROM_NAME`                     | `Ceird`              | Sender display name.                                 |
-| `AUTH_EMAIL_TRANSPORT`                     | `cloudflare-binding` | Auth email transport mode.                           |
-| `GOOGLE_MAPS_API_KEY`                      | required             | Google Maps Geocoding API key for deployed API.      |
-| `CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT` | `5`                  | Soft maximum Hyperdrive origin database connections. |
-| `PLANETSCALE_ORGANIZATION`                 | required             | PlanetScale organization.                            |
-| `CEIRD_PLANETSCALE_DATABASE_NAME`          | `ceird-<stage>`      | PlanetScale database name.                           |
-| `CEIRD_PLANETSCALE_DEFAULT_BRANCH`         | `main`               | PlanetScale branch.                                  |
-| `CEIRD_PLANETSCALE_REGION`                 | `eu-west`            | PlanetScale region slug.                             |
-| `CEIRD_PLANETSCALE_CLUSTER_SIZE`           | `PS-5`               | PlanetScale cluster size.                            |
-| `CEIRD_APPLY_MIGRATIONS`                   | `false`              | Run API Drizzle migrations during deploy.            |
+| Variable                                   | Default         | Purpose                                              |
+| ------------------------------------------ | --------------- | ---------------------------------------------------- |
+| `CEIRD_INFRA_STAGE`                        | `production`    | `preview` or `production`.                           |
+| `CEIRD_ZONE_NAME`                          | required        | Cloudflare zone.                                     |
+| `CEIRD_APP_HOSTNAME`                       | `app.<zone>`    | App hostname.                                        |
+| `CEIRD_API_HOSTNAME`                       | `api.<zone>`    | API hostname.                                        |
+| `AUTH_EMAIL_FROM`                          | required        | Sender email address.                                |
+| `AUTH_EMAIL_FROM_NAME`                     | `Ceird`         | Sender display name.                                 |
+| `GOOGLE_MAPS_API_KEY`                      | required        | Google Maps Geocoding API key for deployed API.      |
+| `CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT` | `5`             | Soft maximum Hyperdrive origin database connections. |
+| `PLANETSCALE_ORGANIZATION`                 | required        | PlanetScale organization.                            |
+| `CEIRD_PLANETSCALE_DATABASE_NAME`          | `ceird-<stage>` | PlanetScale database name.                           |
+| `CEIRD_PLANETSCALE_DEFAULT_BRANCH`         | `main`          | PlanetScale branch.                                  |
+| `CEIRD_PLANETSCALE_REGION`                 | `eu-west`       | PlanetScale region slug.                             |
+| `CEIRD_PLANETSCALE_CLUSTER_SIZE`           | `PS-5`          | PlanetScale cluster size.                            |
+| `CEIRD_APPLY_MIGRATIONS`                   | `false`         | Run API Drizzle migrations during deploy.            |
 
 Resource names use `ceird-<stage>-<suffix>`.
 

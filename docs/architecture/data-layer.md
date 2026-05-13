@@ -62,17 +62,15 @@ sizing choices:
 5. Export bootstrap `CLOUDFLARE_API_TOKEN`.
 6. Set `CEIRD_ZONE_NAME`.
 7. Set `AUTH_EMAIL_FROM`.
-8. Set `AUTH_EMAIL_TRANSPORT=cloudflare-binding` or omit it for the production
-   default.
-9. Set `CEIRD_PLANETSCALE_DATABASE_NAME`.
-10. Set `CEIRD_PLANETSCALE_DEFAULT_BRANCH`.
-11. Set `CEIRD_PLANETSCALE_REGION`, defaulting to `eu-west` for
+8. Set `CEIRD_PLANETSCALE_DATABASE_NAME`.
+9. Set `CEIRD_PLANETSCALE_DEFAULT_BRANCH`.
+10. Set `CEIRD_PLANETSCALE_REGION`, defaulting to `eu-west` for
     PlanetScale's Dublin region.
-12. Set `CEIRD_PLANETSCALE_CLUSTER_SIZE`, defaulting to the cheapest
+11. Set `CEIRD_PLANETSCALE_CLUSTER_SIZE`, defaulting to the cheapest
     Postgres size, `PS-5`.
-13. Set `CEIRD_APPLY_MIGRATIONS=true` only when the deploy should apply Drizzle
+12. Set `CEIRD_APPLY_MIGRATIONS=true` only when the deploy should apply Drizzle
     migrations.
-14. Run `ALCHEMY_STAGE=main CEIRD_INFRA_STAGE=production pnpm infra:deploy` to
+13. Run `ALCHEMY_STAGE=main CEIRD_INFRA_STAGE=production pnpm infra:deploy` to
     create or update the database, roles, Hyperdrive config, Workers, queues,
     runtime email token, and routes.
 

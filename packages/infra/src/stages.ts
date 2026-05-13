@@ -5,17 +5,6 @@ import * as Schema from "effect/Schema";
 
 export const InfraStage = Schema.Literals(["preview", "production"]);
 export type InfraStage = Schema.Schema.Type<typeof InfraStage>;
-const INFRA_AUTH_EMAIL_TRANSPORT_MODES = [
-  "cloudflare-api",
-  "cloudflare-binding",
-  "noop",
-] as const;
-export const InfraAuthEmailTransport = Schema.Literals(
-  INFRA_AUTH_EMAIL_TRANSPORT_MODES
-);
-export type InfraAuthEmailTransport = Schema.Schema.Type<
-  typeof InfraAuthEmailTransport
->;
 
 const domainNamePattern = /^[a-z0-9.-]+$/;
 const emailAddressPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,7 +34,6 @@ export interface InfraStageConfig {
   readonly apiHostname: DomainName;
   readonly authEmailFrom: Redacted.Redacted<string>;
   readonly authEmailFromName: string;
-  readonly authEmailTransport: InfraAuthEmailTransport;
   readonly googleMapsApiKey: Redacted.Redacted<InfraGoogleMapsApiKey>;
   readonly hyperdriveOriginConnectionLimit: number;
   readonly planetScaleOrganization: string;
@@ -133,12 +121,6 @@ function decodeGoogleMapsApiKey(value: Redacted.Redacted<string>) {
   );
 }
 
-function decodeInfraAuthEmailTransport(value: string) {
-  return Schema.decodeUnknownEffect(InfraAuthEmailTransport)(value).pipe(
-    Effect.mapError((error) => new Config.ConfigError(error))
-  );
-}
-
 function decodeHyperdriveOriginConnectionLimit(value: number) {
   return Schema.decodeUnknownEffect(HyperdriveOriginConnectionLimit)(
     value
@@ -166,10 +148,6 @@ export const loadInfraStageConfig = Effect.gen(function* () {
   );
   const authEmailFromName = yield* Config.string("AUTH_EMAIL_FROM_NAME").pipe(
     Config.withDefault("Ceird")
-  );
-  const authEmailTransport = yield* Config.string("AUTH_EMAIL_TRANSPORT").pipe(
-    Config.withDefault("cloudflare-binding"),
-    Config.mapOrFail(decodeInfraAuthEmailTransport)
   );
   const googleMapsApiKey = yield* Config.redacted("GOOGLE_MAPS_API_KEY").pipe(
     Config.mapOrFail(decodeGoogleMapsApiKey)
@@ -213,7 +191,6 @@ export const loadInfraStageConfig = Effect.gen(function* () {
     apiHostname,
     authEmailFrom,
     authEmailFromName,
-    authEmailTransport,
     googleMapsApiKey,
     hyperdriveOriginConnectionLimit,
     planetScaleOrganization,

@@ -14,7 +14,6 @@ test("adds default static portless URLs for local dev", () => {
   assert.equal(env.AUTH_APP_ORIGIN, "https://app.ceird.localhost:1355");
   assert.equal(env.AUTH_EMAIL_FROM, "auth@ceird.localhost");
   assert.equal(env.AUTH_EMAIL_FROM_NAME, "Ceird");
-  assert.equal(env.AUTH_EMAIL_TRANSPORT, "noop");
   assert.equal(env.CLOUDFLARE_ACCOUNT_ID, undefined);
   assert.equal(env.CLOUDFLARE_API_TOKEN, undefined);
 });
@@ -24,7 +23,6 @@ test("preserves an explicit Better Auth base URL override", () => {
     API_ORIGIN: "http://127.0.0.1:4301",
     AUTH_EMAIL_FROM: "custom@example.com",
     AUTH_EMAIL_FROM_NAME: "Custom Sender",
-    AUTH_EMAIL_TRANSPORT: "cloudflare-api",
     BETTER_AUTH_BASE_URL: "https://custom-auth.example.com",
     CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
     CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
@@ -36,12 +34,11 @@ test("preserves an explicit Better Auth base URL override", () => {
   assert.equal(env.BETTER_AUTH_BASE_URL, "https://custom-auth.example.com");
   assert.equal(env.AUTH_EMAIL_FROM, "custom@example.com");
   assert.equal(env.AUTH_EMAIL_FROM_NAME, "Custom Sender");
-  assert.equal(env.AUTH_EMAIL_TRANSPORT, "cloudflare-api");
   assert.equal(env.CLOUDFLARE_ACCOUNT_ID, "cloudflare-account-live");
   assert.equal(env.CLOUDFLARE_API_TOKEN, "cloudflare-token-live");
 });
 
-test("keeps local email noop unless the transport is explicit", () => {
+test("preserves Cloudflare credentials for local email provider selection", () => {
   const env = createDevEnvironment({
     CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-live",
     CLOUDFLARE_API_TOKEN: "cloudflare-token-live",
@@ -49,5 +46,6 @@ test("keeps local email noop unless the transport is explicit", () => {
     PORTLESS_PORT: "1355",
   });
 
-  assert.equal(env.AUTH_EMAIL_TRANSPORT, "noop");
+  assert.equal(env.CLOUDFLARE_ACCOUNT_ID, "cloudflare-account-live");
+  assert.equal(env.CLOUDFLARE_API_TOKEN, "cloudflare-token-live");
 });

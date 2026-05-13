@@ -15,9 +15,8 @@ const runtimeAssets = Schema.decodeUnknownSync(SandboxRuntimeAssets)({
 const sharedEnvironment = {
   AUTH_EMAIL_FROM: "auth@example.com",
   AUTH_EMAIL_FROM_NAME: "Ceird",
-  AUTH_EMAIL_TRANSPORT: "noop",
 };
-const noopSharedEnvironmentWithBlankCloudflareCredentials = {
+const sharedEnvironmentWithBlankCloudflareCredentials = {
   ...sharedEnvironment,
   CLOUDFLARE_ACCOUNT_ID: "",
   CLOUDFLARE_API_TOKEN: "",
@@ -28,12 +27,12 @@ describe("validateSandboxName()", () => {
     expect(validateSandboxName("agent-one")).toBe("agent-one");
   }, 10_000);
 
-  it("accepts blank Cloudflare API credentials when sandbox email is noop", async () => {
+  it("accepts blank Cloudflare API credentials for local development fallback", async () => {
     const result = await Effect.runPromise(
       buildSandboxRuntimeSpec({
         repoRoot: "/Users/me/ceird",
         worktreePath: "/Users/me/ceird/.worktrees/feature-sandbox",
-        sandboxName: validateSandboxName("agent-noop-email"),
+        sandboxName: validateSandboxName("agent-local-email"),
         takenNames: new Set(),
         ports: {
           app: 4300,
@@ -44,12 +43,11 @@ describe("validateSandboxName()", () => {
         betterAuthSecret: "0123456789abcdef0123456789abcdef",
         aliasesHealthy: true,
         proxyPort: 1355,
-        sharedEnvironment: noopSharedEnvironmentWithBlankCloudflareCredentials,
+        sharedEnvironment: sharedEnvironmentWithBlankCloudflareCredentials,
       })
     );
 
     expect(result.overrides).toMatchObject({
-      AUTH_EMAIL_TRANSPORT: "noop",
       CLOUDFLARE_ACCOUNT_ID: "",
       CLOUDFLARE_API_TOKEN: "",
     });
@@ -104,7 +102,6 @@ describe("buildSandboxRuntimeSpec()", () => {
         VITE_API_ORIGIN: "https://agent-one.api.ceird.localhost:1355",
         AUTH_EMAIL_FROM: "auth@example.com",
         AUTH_EMAIL_FROM_NAME: "Ceird",
-        AUTH_EMAIL_TRANSPORT: "noop",
       },
     });
     expect(result.overrides).not.toHaveProperty("SITE_GEOCODER_MODE");

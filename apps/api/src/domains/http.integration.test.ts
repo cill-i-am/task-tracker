@@ -1780,7 +1780,6 @@ async function withJobsEnvironment<Result>(
     AUTH_APP_ORIGIN: process.env.AUTH_APP_ORIGIN,
     AUTH_EMAIL_FROM: process.env.AUTH_EMAIL_FROM,
     AUTH_EMAIL_FROM_NAME: process.env.AUTH_EMAIL_FROM_NAME,
-    AUTH_EMAIL_TRANSPORT: process.env.AUTH_EMAIL_TRANSPORT,
     BETTER_AUTH_BASE_URL: process.env.BETTER_AUTH_BASE_URL,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
@@ -1792,11 +1791,10 @@ async function withJobsEnvironment<Result>(
   process.env.AUTH_APP_ORIGIN = "http://127.0.0.1:4173";
   process.env.AUTH_EMAIL_FROM = "noreply@example.com";
   process.env.AUTH_EMAIL_FROM_NAME = "Ceird Test";
-  process.env.AUTH_EMAIL_TRANSPORT = "noop";
   process.env.BETTER_AUTH_BASE_URL = "http://127.0.0.1:3000";
   process.env.BETTER_AUTH_SECRET = "0123456789abcdef0123456789abcdef";
-  process.env.CLOUDFLARE_ACCOUNT_ID = "test-account";
-  process.env.CLOUDFLARE_API_TOKEN = "test-token";
+  delete process.env.CLOUDFLARE_ACCOUNT_ID;
+  delete process.env.CLOUDFLARE_API_TOKEN;
   process.env.DATABASE_URL = databaseUrl;
   delete process.env.PORTLESS_URL;
 
@@ -1819,12 +1817,6 @@ async function withJobsEnvironment<Result>(
       delete process.env.AUTH_EMAIL_FROM_NAME;
     } else {
       process.env.AUTH_EMAIL_FROM_NAME = previous.AUTH_EMAIL_FROM_NAME;
-    }
-
-    if (previous.AUTH_EMAIL_TRANSPORT === undefined) {
-      delete process.env.AUTH_EMAIL_TRANSPORT;
-    } else {
-      process.env.AUTH_EMAIL_TRANSPORT = previous.AUTH_EMAIL_TRANSPORT;
     }
 
     if (previous.BETTER_AUTH_BASE_URL === undefined) {
