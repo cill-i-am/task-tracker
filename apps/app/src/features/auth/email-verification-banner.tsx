@@ -14,6 +14,7 @@ import {
   authClient,
   buildEmailVerificationRedirectTo,
 } from "#/lib/auth-client";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 
 import { getEmailVerificationFailureMessage } from "./auth-form-errors";
 
@@ -40,6 +41,7 @@ export function EmailVerificationBanner({
     setErrorText(undefined);
 
     try {
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.sendVerificationEmail({
         email,
         callbackURL: buildEmailVerificationRedirectTo(window.location.origin),
@@ -50,6 +52,7 @@ export function EmailVerificationBanner({
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       setSuccessText("Another verification email has been requested.");
     } catch (error) {
       setErrorText(getEmailVerificationFailureMessage(error));

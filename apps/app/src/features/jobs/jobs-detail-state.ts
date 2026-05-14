@@ -26,6 +26,7 @@ import { Effect, Option } from "effect";
 
 import { runBrowserAppApiRequest } from "#/features/api/app-api-client";
 import type { AppApiError } from "#/features/api/app-api-errors";
+import { withMinimumMutationPendingDurationEffect } from "#/lib/mutation-feedback-effect";
 
 import {
   jobsListStateAtom,
@@ -70,27 +71,27 @@ export const transitionJobMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, TransitionJobResponse, TransitionJobInput>(
       (input, get) =>
-        transitionBrowserJob(workItemId, input).pipe(
-          Effect.tap((job) => syncChangedJob(get, workItemId, job))
-        )
+        withMinimumMutationPendingDurationEffect(
+          transitionBrowserJob(workItemId, input)
+        ).pipe(Effect.tap((job) => syncChangedJob(get, workItemId, job)))
     )
 );
 
 export const reopenJobMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, JobDetailResponse["job"]>((_, get) =>
-      reopenBrowserJob(workItemId).pipe(
-        Effect.tap((job) => syncChangedJob(get, workItemId, job))
-      )
+      withMinimumMutationPendingDurationEffect(
+        reopenBrowserJob(workItemId)
+      ).pipe(Effect.tap((job) => syncChangedJob(get, workItemId, job)))
     )
 );
 
 export const patchJobMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, PatchJobResponse, PatchJobInput>((input, get) =>
-      patchBrowserJob(workItemId, input).pipe(
-        Effect.tap((job) => syncChangedJob(get, workItemId, job))
-      )
+      withMinimumMutationPendingDurationEffect(
+        patchBrowserJob(workItemId, input)
+      ).pipe(Effect.tap((job) => syncChangedJob(get, workItemId, job)))
     )
 );
 
@@ -98,7 +99,9 @@ export const addJobCommentMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, AddJobCommentResponse, AddJobCommentInput>(
       (input, get) =>
-        addBrowserJobComment(workItemId, input).pipe(
+        withMinimumMutationPendingDurationEffect(
+          addBrowserJobComment(workItemId, input)
+        ).pipe(
           Effect.tap((comment) =>
             Effect.gen(function* () {
               yield* Effect.sync(() => {
@@ -115,7 +118,9 @@ export const addJobCommentMutationAtomFamily = Atom.family(
 export const addJobVisitMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, AddJobVisitResponse, AddJobVisitInput>((input, get) =>
-      addBrowserJobVisit(workItemId, input).pipe(
+      withMinimumMutationPendingDurationEffect(
+        addBrowserJobVisit(workItemId, input)
+      ).pipe(
         Effect.tap((visit) =>
           Effect.gen(function* () {
             yield* Effect.sync(() => {
@@ -132,7 +137,9 @@ export const addJobVisitMutationAtomFamily = Atom.family(
 export const assignJobLabelMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, JobDetailResponse, AssignJobLabelInput>((input, get) =>
-      assignBrowserJobLabel(workItemId, input).pipe(
+      withMinimumMutationPendingDurationEffect(
+        assignBrowserJobLabel(workItemId, input)
+      ).pipe(
         Effect.tap((detail) =>
           Effect.sync(() => syncChangedJobDetail(get, workItemId, detail))
         )
@@ -144,7 +151,9 @@ export const addJobCostLineMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, AddJobCostLineResponse, AddJobCostLineInput>(
       (input, get) =>
-        addBrowserJobCostLine(workItemId, input).pipe(
+        withMinimumMutationPendingDurationEffect(
+          addBrowserJobCostLine(workItemId, input)
+        ).pipe(
           Effect.tap((costLine) =>
             Effect.gen(function* () {
               yield* Effect.sync(() => {
@@ -162,7 +171,9 @@ export const attachJobCollaboratorMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, JobCollaborator, AttachJobCollaboratorInput>(
       (input, get) =>
-        attachBrowserJobCollaborator(workItemId, input).pipe(
+        withMinimumMutationPendingDurationEffect(
+          attachBrowserJobCollaborator(workItemId, input)
+        ).pipe(
           Effect.tap((collaborator) =>
             Effect.sync(() =>
               upsertJobCollaborator(get, workItemId, collaborator)
@@ -182,7 +193,9 @@ export const updateJobCollaboratorMutationAtomFamily = Atom.family(
         readonly input: UpdateJobCollaboratorInput;
       }
     >(({ collaboratorId, input }, get) =>
-      updateBrowserJobCollaborator(workItemId, collaboratorId, input).pipe(
+      withMinimumMutationPendingDurationEffect(
+        updateBrowserJobCollaborator(workItemId, collaboratorId, input)
+      ).pipe(
         Effect.tap((collaborator) =>
           Effect.sync(() =>
             upsertJobCollaborator(get, workItemId, collaborator)
@@ -196,7 +209,9 @@ export const detachJobCollaboratorMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, JobCollaborator, JobCollaboratorIdType>(
       (collaboratorId, get) =>
-        detachBrowserJobCollaborator(workItemId, collaboratorId).pipe(
+        withMinimumMutationPendingDurationEffect(
+          detachBrowserJobCollaborator(workItemId, collaboratorId)
+        ).pipe(
           Effect.tap((collaborator) =>
             Effect.sync(() => {
               const current = get(jobCollaboratorsStateAtomFamily(workItemId));
@@ -214,13 +229,16 @@ export const detachJobCollaboratorMutationAtomFamily = Atom.family(
 export const createAndAssignJobLabelMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, JobDetailResponse, CreateLabelInput>((input, get) =>
-      createBrowserLabel(input).pipe(
-        Effect.tap((label) =>
-          Effect.sync(() => upsertJobOptionLabel(get, label))
-        ),
-        Effect.flatMap((label) =>
-          assignBrowserJobLabel(workItemId, { labelId: label.id })
-        ),
+      withMinimumMutationPendingDurationEffect(
+        createBrowserLabel(input).pipe(
+          Effect.tap((label) =>
+            Effect.sync(() => upsertJobOptionLabel(get, label))
+          ),
+          Effect.flatMap((label) =>
+            assignBrowserJobLabel(workItemId, { labelId: label.id })
+          )
+        )
+      ).pipe(
         Effect.tap((detail) =>
           Effect.sync(() => syncChangedJobDetail(get, workItemId, detail))
         )
@@ -231,7 +249,9 @@ export const createAndAssignJobLabelMutationAtomFamily = Atom.family(
 export const removeJobLabelMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
     Atom.fn<AppApiError, JobDetailResponse, LabelIdType>((labelId, get) =>
-      removeBrowserJobLabel(workItemId, labelId).pipe(
+      withMinimumMutationPendingDurationEffect(
+        removeBrowserJobLabel(workItemId, labelId)
+      ).pipe(
         Effect.tap((detail) =>
           Effect.sync(() => syncChangedJobDetail(get, workItemId, detail))
         )

@@ -1347,6 +1347,9 @@ describe("organization members page", () => {
         role: "member",
       });
     });
+    await expect(
+      screen.findByText("Invitation sent to member@example.com.")
+    ).resolves.toBeInTheDocument();
   }, 10_000);
 
   it("opens the invite role picker with the role hotkey", async () => {
@@ -1423,6 +1426,9 @@ describe("organization members page", () => {
         role: "external",
       });
     });
+    await expect(
+      screen.findByText("Invitation sent to vendor@example.com.")
+    ).resolves.toBeInTheDocument();
   }, 10_000);
 
   it("resends pending invitations from the pending list", async () => {

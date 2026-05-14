@@ -28,6 +28,7 @@ import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 import { authClient } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 import { cn } from "#/lib/utils";
 
 import type { OrganizationSummary } from "./organization-access";
@@ -88,6 +89,8 @@ export function OrganizationSettingsPage({
     id: organization.id,
     name: organization.name,
   });
+  const latestOrganizationIdRef = React.useRef(organization.id);
+  latestOrganizationIdRef.current = organization.id;
   const organizationLabelsKey = React.useMemo(
     () => getLabelsKey(organizationLabels),
     [organizationLabels]
@@ -117,6 +120,8 @@ export function OrganizationSettingsPage({
       }
 
       let result;
+      const actionOrganizationId = organization.id;
+      const mutationFeedback = beginMutationFeedback();
 
       try {
         result = await authClient.organization.update({
@@ -142,6 +147,12 @@ export function OrganizationSettingsPage({
             fields: {},
           },
         });
+        return;
+      }
+
+      await mutationFeedback.waitForSuccess();
+
+      if (latestOrganizationIdRef.current !== actionOrganizationId) {
         return;
       }
 
@@ -275,19 +286,31 @@ export function OrganizationSettingsPage({
     }
 
     setPendingLabelAction("create");
+    const actionOrganizationId = organization.id;
 
     try {
+      const mutationFeedback = beginMutationFeedback();
       const label = await createBrowserLabel({ name: decodedName.name });
+
+      await mutationFeedback.waitForSuccess();
+
+      if (latestOrganizationIdRef.current !== actionOrganizationId) {
+        return;
+      }
 
       setLabels((current) => upsertLabel(current, label));
       setNewLabelName("");
       setLabelStatus("Label created.");
       await refreshRouteData();
     } catch {
-      setLabelError(SAVE_LABEL_FAILURE_MESSAGE);
-      setLabelErrorTarget("create");
+      if (latestOrganizationIdRef.current === actionOrganizationId) {
+        setLabelError(SAVE_LABEL_FAILURE_MESSAGE);
+        setLabelErrorTarget("create");
+      }
     } finally {
-      setPendingLabelAction(null);
+      if (latestOrganizationIdRef.current === actionOrganizationId) {
+        setPendingLabelAction(null);
+      }
     }
   }
 
@@ -323,11 +346,19 @@ export function OrganizationSettingsPage({
     }
 
     setPendingLabelAction("update");
+    const actionOrganizationId = organization.id;
 
     try {
+      const mutationFeedback = beginMutationFeedback();
       const label = await updateBrowserLabel(labelId, {
         name: decodedName.name,
       });
+
+      await mutationFeedback.waitForSuccess();
+
+      if (latestOrganizationIdRef.current !== actionOrganizationId) {
+        return;
+      }
 
       setLabels((current) => upsertLabel(current, label));
       setEditingLabelId(null);
@@ -335,10 +366,14 @@ export function OrganizationSettingsPage({
       setLabelStatus("Label updated.");
       await refreshRouteData();
     } catch {
-      setLabelError(SAVE_LABEL_FAILURE_MESSAGE);
-      setLabelErrorTarget("edit");
+      if (latestOrganizationIdRef.current === actionOrganizationId) {
+        setLabelError(SAVE_LABEL_FAILURE_MESSAGE);
+        setLabelErrorTarget("edit");
+      }
     } finally {
-      setPendingLabelAction(null);
+      if (latestOrganizationIdRef.current === actionOrganizationId) {
+        setPendingLabelAction(null);
+      }
     }
   }
 
@@ -347,9 +382,17 @@ export function OrganizationSettingsPage({
     setLabelErrorTarget(null);
     setLabelStatus(null);
     setPendingLabelAction("archive");
+    const actionOrganizationId = organization.id;
 
     try {
+      const mutationFeedback = beginMutationFeedback();
       await archiveBrowserLabel(labelId);
+      await mutationFeedback.waitForSuccess();
+
+      if (latestOrganizationIdRef.current !== actionOrganizationId) {
+        return;
+      }
+
       setLabels((current) => current.filter((label) => label.id !== labelId));
       setLabelStatus("Label archived.");
 
@@ -360,10 +403,14 @@ export function OrganizationSettingsPage({
 
       await refreshRouteData();
     } catch {
-      setLabelError(ARCHIVE_LABEL_FAILURE_MESSAGE);
-      setLabelErrorTarget("general");
+      if (latestOrganizationIdRef.current === actionOrganizationId) {
+        setLabelError(ARCHIVE_LABEL_FAILURE_MESSAGE);
+        setLabelErrorTarget("general");
+      }
     } finally {
-      setPendingLabelAction(null);
+      if (latestOrganizationIdRef.current === actionOrganizationId) {
+        setPendingLabelAction(null);
+      }
     }
   }
 

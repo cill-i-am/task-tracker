@@ -338,12 +338,11 @@ describe("jobs detail sheet integration", () => {
       );
 
       await waitFor(() => {
-        expect(screen.getAllByText("Warranty").length).toBeGreaterThan(0);
+        expect(screen.getByTestId("option-labels")).toHaveTextContent(
+          "Urgent | Warranty"
+        );
+        expect(screen.getByTestId("list-labels")).toHaveTextContent("Warranty");
       });
-      expect(screen.getByTestId("option-labels")).toHaveTextContent(
-        "Urgent | Warranty"
-      );
-      expect(screen.getByTestId("list-labels")).toHaveTextContent("Warranty");
       expect(mockedCreateLabel).toHaveBeenCalledWith({
         payload: { name: "Warranty" },
       });
@@ -533,7 +532,9 @@ describe("jobs detail sheet integration", () => {
       await expect(
         screen.findByText("I can meet the technician at reception.")
       ).resolves.toBeInTheDocument();
-      expect(screen.getByText("External Partner")).toBeInTheDocument();
+      await expect(
+        screen.findByText("External Partner")
+      ).resolves.toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: /apply status change/i })
       ).not.toBeInTheDocument();

@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "#/components/ui/alert";
 import { Button, buttonVariants } from "#/components/ui/button";
 import { Skeleton } from "#/components/ui/skeleton";
 import { authClient, getPublicInvitationPreview } from "#/lib/auth-client";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 
 import {
   getLoginNavigationTarget,
@@ -324,6 +325,7 @@ export function AcceptInvitationPage({
       invitation: state.invitation,
     });
 
+    const mutationFeedback = beginMutationFeedback();
     const result = await authClient.organization.acceptInvitation({
       invitationId,
     });
@@ -354,6 +356,7 @@ export function AcceptInvitationPage({
       }
     }
 
+    await mutationFeedback.waitForSuccess();
     await navigate({
       to: "/",
     });
@@ -366,6 +369,7 @@ export function AcceptInvitationPage({
     });
 
     try {
+      const mutationFeedback = beginMutationFeedback();
       const result = await signOut();
 
       if (result.error) {
@@ -376,6 +380,8 @@ export function AcceptInvitationPage({
         });
         return;
       }
+
+      await mutationFeedback.waitForSuccess();
 
       try {
         await navigate(getLoginNavigationTarget(invitationId));

@@ -11,6 +11,7 @@ import {
   buildEmailVerificationRedirectTo,
 } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 
 import type { InvitationContinuationSearch } from "../organizations/invitation-continuation";
 import {
@@ -50,6 +51,7 @@ export function SignupPage({
       });
 
       const credentials = decodeSignupInput(value);
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.signUp.email({
         name: credentials.name,
         email: credentials.email,
@@ -68,6 +70,7 @@ export function SignupPage({
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       await navigateOnSuccess();
     },
   });

@@ -7,6 +7,8 @@ import {
 } from "@tanstack/react-router";
 import * as React from "react";
 
+import { Toaster } from "#/components/ui/sonner";
+
 import { TooltipProvider } from "../components/ui/tooltip";
 
 import appCss from "../styles.css?url";
@@ -82,6 +84,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <TooltipProvider>
           <HotkeysProvider>
             {children}
+            <ClientOnly fallback={null}>
+              <Toaster position="top-right" closeButton />
+            </ClientOnly>
             <DevelopmentDevtoolsIsland />
             <Scripts />
           </HotkeysProvider>

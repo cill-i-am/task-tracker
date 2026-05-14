@@ -14,6 +14,7 @@ import { Effect, Option } from "effect";
 
 import { runBrowserAppApiRequest } from "#/features/api/app-api-client";
 import type { AppApiError } from "#/features/api/app-api-errors";
+import { withMinimumMutationPendingDurationEffect } from "#/lib/mutation-feedback-effect";
 
 export interface SitesNotice {
   readonly kind: "created" | "updated";
@@ -44,7 +45,7 @@ export const createSiteMutationAtom = Atom.fn<
   CreateSiteResponse,
   CreateSiteInput
 >((input, get) =>
-  createBrowserSite(input).pipe(
+  withMinimumMutationPendingDurationEffect(createBrowserSite(input)).pipe(
     Effect.tap((createdSite) =>
       Effect.gen(function* () {
         yield* refreshSiteOptionsOrUpsert(get, createdSite);
@@ -62,7 +63,9 @@ export const createSiteMutationAtom = Atom.fn<
 
 export const updateSiteMutationAtomFamily = Atom.family((siteId: SiteIdType) =>
   Atom.fn<AppApiError, UpdateSiteResponse, UpdateSiteInput>((input, get) =>
-    updateBrowserSite(siteId, input).pipe(
+    withMinimumMutationPendingDurationEffect(
+      updateBrowserSite(siteId, input)
+    ).pipe(
       Effect.tap((updatedSite) =>
         Effect.gen(function* () {
           yield* refreshSiteOptionsOrUpsert(get, updatedSite);

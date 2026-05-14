@@ -76,6 +76,7 @@ import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 import { authClient } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 import { cn } from "#/lib/utils";
 
 import {
@@ -471,6 +472,7 @@ export function OrganizationMembersPage({
   // Clear organization-scoped action feedback when switching organizations.
   // react-doctor-disable-next-line
   React.useEffect(() => {
+    setActiveInvitationAction(null);
     setActiveMemberAction(null);
     setMemberActionErrors({});
     setMemberActionSuccessMessage(null);
@@ -493,15 +495,23 @@ export function OrganizationMembersPage({
       setInvitationActionSuccessMessage(null);
       setSuccessMessage(null);
 
+      const actionOrganizationId = activeOrganizationId;
       const invite = decodeOrganizationMemberInviteInput(value);
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.organization.inviteMember({
         email: invite.email,
-        organizationId: activeOrganizationId,
+        organizationId: actionOrganizationId,
         role: invite.role,
       });
 
       if (result.error) {
         setErrorMessage(INVITE_FAILURE_MESSAGE);
+        return;
+      }
+
+      await mutationFeedback.waitForSuccess();
+
+      if (!isLatestActiveOrganization(actionOrganizationId)) {
         return;
       }
 
@@ -515,6 +525,8 @@ export function OrganizationMembersPage({
 
   const handleInvitationAction = React.useCallback(
     async (invitation: InvitationSummary, action: InvitationAction) => {
+      const actionOrganizationId = activeOrganizationId;
+
       setActiveInvitationAction({
         invitationId: invitation.id,
         type: action,
@@ -527,11 +539,12 @@ export function OrganizationMembersPage({
       setSuccessMessage(null);
 
       try {
+        const mutationFeedback = beginMutationFeedback();
         const result =
           action === "resend"
             ? await authClient.organization.inviteMember({
                 email: invitation.email,
-                organizationId: activeOrganizationId,
+                organizationId: actionOrganizationId,
                 resend: true,
                 role: invitation.role,
               })
@@ -541,6 +554,12 @@ export function OrganizationMembersPage({
 
         if (result.error) {
           setInvitationActionErrorMessage(INVITATION_ACTION_FAILURE_MESSAGE);
+          return;
+        }
+
+        await mutationFeedback.waitForSuccess();
+
+        if (!isLatestActiveOrganization(actionOrganizationId)) {
           return;
         }
 
@@ -556,12 +575,16 @@ export function OrganizationMembersPage({
             : `Invitation canceled for ${invitation.email}.`
         );
       } catch {
-        setInvitationActionErrorMessage(INVITATION_ACTION_FAILURE_MESSAGE);
+        if (isLatestActiveOrganization(actionOrganizationId)) {
+          setInvitationActionErrorMessage(INVITATION_ACTION_FAILURE_MESSAGE);
+        }
       } finally {
-        setActiveInvitationAction(null);
+        if (isLatestActiveOrganization(actionOrganizationId)) {
+          setActiveInvitationAction(null);
+        }
       }
     },
-    [activeOrganizationId]
+    [activeOrganizationId, isLatestActiveOrganization]
   );
 
   const currentViewerRole = resolveCurrentViewerRole({
@@ -600,6 +623,7 @@ export function OrganizationMembersPage({
       setSuccessMessage(null);
 
       try {
+        const mutationFeedback = beginMutationFeedback();
         const result = await authClient.organization.updateMemberRole({
           memberId: member.id,
           organizationId: actionOrganizationId,
@@ -615,6 +639,12 @@ export function OrganizationMembersPage({
             ...current,
             [member.id]: `We couldn't update ${displayName}'s role.`,
           }));
+          return;
+        }
+
+        await mutationFeedback.waitForSuccess();
+
+        if (!isLatestActiveOrganization(actionOrganizationId)) {
           return;
         }
 
@@ -683,6 +713,7 @@ export function OrganizationMembersPage({
       setSuccessMessage(null);
 
       try {
+        const mutationFeedback = beginMutationFeedback();
         const result = await authClient.organization.removeMember({
           memberIdOrEmail: member.id,
           organizationId: actionOrganizationId,
@@ -697,6 +728,12 @@ export function OrganizationMembersPage({
             ...current,
             [member.id]: `We couldn't remove ${displayName}.`,
           }));
+          return;
+        }
+
+        await mutationFeedback.waitForSuccess();
+
+        if (!isLatestActiveOrganization(actionOrganizationId)) {
           return;
         }
 

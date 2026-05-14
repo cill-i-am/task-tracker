@@ -36,6 +36,7 @@ interface EntrySurfaceCardProps {
   readonly className?: string;
   readonly description?: string;
   readonly footer?: ReactNode;
+  readonly headerAccessory?: ReactNode;
   readonly title: string;
   readonly titleLevel?: 1 | 2;
 }
@@ -82,8 +83,16 @@ function hasRenderableNode(node: ReactNode): boolean {
 }
 
 export function EntrySurfaceCard(props: EntrySurfaceCardProps) {
-  const { badge, children, className, description, footer, title, titleLevel } =
-    props;
+  const {
+    badge,
+    children,
+    className,
+    description,
+    footer,
+    headerAccessory,
+    title,
+    titleLevel,
+  } = props;
   const hasBody = hasRenderableNode(children);
 
   return (
@@ -118,6 +127,7 @@ export function EntrySurfaceCard(props: EntrySurfaceCardProps) {
               {description}
             </CardDescription>
           ) : null}
+          {headerAccessory}
         </div>
       </CardHeader>
 

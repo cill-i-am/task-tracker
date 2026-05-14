@@ -7,6 +7,7 @@ import { FieldError, FieldGroup } from "#/components/ui/field";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 
 import {
   getErrorText,
@@ -55,6 +56,7 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
       });
 
       const input = decodePasswordResetInput(value);
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.resetPassword({
         token,
         newPassword: input.password,
@@ -83,6 +85,7 @@ export function PasswordResetPage({ search }: PasswordResetPageProps) {
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       await navigate(getLoginNavigationTarget(invitation));
     },
   });

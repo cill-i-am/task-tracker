@@ -21,6 +21,7 @@ import { Effect, Option } from "effect";
 
 import { runBrowserAppApiRequest } from "#/features/api/app-api-client";
 import type { AppApiError } from "#/features/api/app-api-errors";
+import { withMinimumMutationPendingDurationEffect } from "#/lib/mutation-feedback-effect";
 
 type JobsStatusFilter = "active" | "all" | JobStatus;
 
@@ -151,7 +152,7 @@ export const createJobMutationAtom = Atom.fn<
   CreateJobResponse,
   CreateJobInput
 >((input, get) =>
-  createBrowserJob(input).pipe(
+  withMinimumMutationPendingDurationEffect(createBrowserJob(input)).pipe(
     Effect.tap((createdJob) =>
       Effect.gen(function* () {
         const shouldRefreshOptions =

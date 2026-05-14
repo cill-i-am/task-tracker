@@ -32,6 +32,7 @@ import type { LoginNavigationTarget } from "#/features/auth/auth-navigation";
 import { getLoginNavigationTarget } from "#/features/auth/auth-navigation";
 import { hardRedirectToLogin } from "#/features/auth/hard-redirect-to-login";
 import { signOut } from "#/features/auth/sign-out";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 
 export interface NavUserAccount {
   name: string;
@@ -72,12 +73,15 @@ export function NavUser({
 
   async function handleSignOut() {
     try {
+      const mutationFeedback = beginMutationFeedback();
       const result = await signOut();
 
       if (result.error) {
         setErrorMessage("Couldn't sign out. Please try again.");
         return;
       }
+
+      await mutationFeedback.waitForSuccess();
 
       try {
         await navigate(getLoginNavigationTarget());

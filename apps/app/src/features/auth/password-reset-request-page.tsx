@@ -9,6 +9,7 @@ import { Input } from "#/components/ui/input";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient, buildPasswordResetRedirectTo } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 
 import type { InvitationContinuationSearch } from "../organizations/invitation-continuation";
 import {
@@ -53,6 +54,7 @@ export function PasswordResetRequestPage({
       });
 
       const input = decodePasswordResetRequestInput(value);
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.requestPasswordReset({
         email: input.email,
         redirectTo: buildPasswordResetRedirectTo(
@@ -72,6 +74,7 @@ export function PasswordResetRequestPage({
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       setIsSubmitted(true);
     },
   });

@@ -8,6 +8,7 @@ import { Input } from "#/components/ui/input";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 
 import type { InvitationContinuationSearch } from "../organizations/invitation-continuation";
 import {
@@ -47,6 +48,7 @@ export function LoginPage({
       });
 
       const credentials = decodeLoginInput(value);
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.signIn.email(credentials);
 
       if (result.error) {
@@ -60,6 +62,7 @@ export function LoginPage({
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       await navigateOnSuccess();
     },
   });

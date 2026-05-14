@@ -1,13 +1,21 @@
 import type { OrganizationSummary } from "@ceird/identity-core";
+import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useForm } from "@tanstack/react-form";
 import { useNavigate } from "@tanstack/react-router";
 import { Schema } from "effect";
 import * as React from "react";
+import { toast } from "sonner";
 
 import { Button } from "#/components/ui/button";
 import { ResponsiveCommandSelect } from "#/components/ui/command-select";
 import { FieldError, FieldGroup } from "#/components/ui/field";
 import { Input } from "#/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "#/components/ui/tooltip";
 import {
   getErrorText,
   getFormErrorText,
@@ -17,6 +25,8 @@ import { EntryShell, EntrySurfaceCard } from "#/features/auth/entry-shell";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
+import { cn } from "#/lib/utils";
 
 import {
   INVITE_ROLE_SELECTION_GROUPS,
@@ -41,6 +51,8 @@ const DEFAULT_INVITE_VALUES: OrganizationMemberInviteInput = {
   email: "",
   role: "member",
 };
+type SetupStepState = "active" | "complete" | "upcoming";
+type SetupPhase = "create" | "invite";
 
 export function OrganizationOnboardingPage() {
   const navigate = useNavigate({ from: "/create-organization" });
@@ -61,6 +73,7 @@ export function OrganizationOnboardingPage() {
 
       const input = decodeCreateOrganizationNameInput(value);
       let organization: OrganizationSummary;
+      const mutationFeedback = beginMutationFeedback();
 
       try {
         organization = await createCurrentServerOrganization({ data: input });
@@ -75,6 +88,7 @@ export function OrganizationOnboardingPage() {
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       setCreatedOrganization(organization);
     },
   });
@@ -94,6 +108,7 @@ export function OrganizationOnboardingPage() {
             title="Create your team"
             titleLevel={1}
             description="This keeps your jobs, sites, and invites in one shared place."
+            headerAccessory={<WorkspaceSetupStepper phase="create" />}
           >
             <form
               className="flex flex-col gap-6"
@@ -168,7 +183,7 @@ function InviteMembersStep({
   readonly onContinue: () => Promise<void>;
   readonly organization: OrganizationSummary;
 }) {
-  const [statusMessage, setStatusMessage] = React.useState<string | null>(null);
+  const [hasSentInvite, setHasSentInvite] = React.useState(false);
   const [roleSelectOpen, setRoleSelectOpen] = React.useState(false);
   const form = useForm({
     defaultValues: DEFAULT_INVITE_VALUES,
@@ -179,8 +194,8 @@ function InviteMembersStep({
       formApi.setErrorMap({
         onSubmit: undefined,
       });
-      setStatusMessage(null);
 
+      const mutationFeedback = beginMutationFeedback();
       const invite = decodeOrganizationMemberInviteInput(value);
       const result = await authClient.organization.inviteMember({
         email: invite.email,
@@ -198,9 +213,13 @@ function InviteMembersStep({
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       formApi.reset();
       setRoleSelectOpen(false);
-      setStatusMessage(`Invitation sent to ${invite.email}.`);
+      setHasSentInvite(true);
+      toast.success("Invite sent", {
+        description: `${invite.email} will receive an email shortly.`,
+      });
     },
   });
 
@@ -210,15 +229,27 @@ function InviteMembersStep({
       title="Invite members"
       titleLevel={1}
       description="Add the people who need access to jobs, sites, and invites."
+      headerAccessory={<WorkspaceSetupStepper phase="invite" />}
       footer={
-        <div className="flex flex-col items-stretch gap-2 sm:items-start">
+        <div
+          className={cn(
+            "flex flex-col items-stretch gap-2",
+            hasSentInvite ? undefined : "sm:items-start"
+          )}
+        >
           <Button
             type="button"
-            variant="ghost"
-            className="min-h-11 justify-center px-3 text-muted-foreground sm:min-h-9"
+            variant={hasSentInvite ? "default" : "ghost"}
+            size={hasSentInvite ? "lg" : "default"}
+            className={cn(
+              "justify-center",
+              hasSentInvite
+                ? "w-full [view-transition-name:auth-card-action]"
+                : "min-h-11 px-3 text-muted-foreground sm:min-h-9"
+            )}
             onClick={() => void onContinue()}
           >
-            {statusMessage ? "Continue to Ceird" : "Skip for now"}
+            {hasSentInvite ? "Continue to Ceird" : "Skip for now"}
           </Button>
         </div>
       }
@@ -303,26 +334,201 @@ function InviteMembersStep({
           }
         </form.Subscribe>
 
-        {statusMessage ? (
-          <p role="status" className="text-sm/6 text-muted-foreground">
-            {statusMessage}
-          </p>
-        ) : null}
-
         <form.Subscribe selector={(state) => state.isSubmitting}>
           {(isSubmitting) => (
             <Button
               type="submit"
               size="lg"
-              className="w-full [view-transition-name:auth-card-action]"
+              variant={hasSentInvite ? "secondary" : "default"}
+              className={cn(
+                "w-full",
+                hasSentInvite
+                  ? undefined
+                  : "[view-transition-name:auth-card-action]"
+              )}
               loading={isSubmitting}
               disabled={!isHydrated}
             >
-              {isSubmitting ? "Sending invite..." : "Send invite"}
+              {getInviteSubmitLabel({
+                hasSentInvite,
+                isSubmitting,
+              })}
             </Button>
           )}
         </form.Subscribe>
       </form>
     </EntrySurfaceCard>
   );
+}
+
+function WorkspaceSetupStepper({ phase }: { readonly phase: SetupPhase }) {
+  const createState = phase === "create" ? "active" : "complete";
+  const inviteState = phase === "invite" ? "active" : "upcoming";
+  const progressLabel = phase === "invite" ? "Step 2 of 2" : "Step 1 of 2";
+  const progressDescription = [
+    progressLabel,
+    getSetupStepAccessibleLabel({ label: "Create team", state: createState }),
+    getSetupStepAccessibleLabel({
+      label: "Invite members",
+      state: inviteState,
+    }),
+  ].join(", ");
+
+  return (
+    <nav
+      aria-label={`Workspace setup progress: ${progressDescription}`}
+      className="mt-1 flex w-full max-w-sm items-center gap-4 text-xs/5"
+    >
+      <span className="shrink-0 font-medium text-muted-foreground">
+        {progressLabel}
+      </span>
+      <div className="flex min-w-0 flex-1 items-center">
+        <WorkspaceSetupStep label="Create team" state={createState} />
+        <span
+          aria-hidden="true"
+          className={cn(
+            "h-px min-w-8 flex-1 rounded-full transition-[background-color,opacity] duration-200 motion-reduce:transition-none",
+            getSetupConnectorClassName(createState)
+          )}
+        />
+        <WorkspaceSetupStep label="Invite members" state={inviteState} />
+      </div>
+    </nav>
+  );
+}
+
+function WorkspaceSetupStep({
+  label,
+  state,
+}: {
+  readonly label: string;
+  readonly state: SetupStepState;
+}) {
+  const accessibleLabel = getSetupStepAccessibleLabel({
+    label,
+    state,
+  });
+  const tooltipText = getSetupStepTooltipText({
+    label,
+    state,
+  });
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-hidden="true"
+            aria-label={accessibleLabel}
+            title={tooltipText}
+            className={cn(
+              "relative z-10 flex size-4 shrink-0 cursor-help items-center justify-center rounded-full ring-1 transition-[background-color,color,box-shadow,transform] duration-200 motion-reduce:transition-none",
+              getSetupStepMarkerClassName(state)
+            )}
+          />
+        }
+      >
+        {state === "complete" ? (
+          <HugeiconsIcon
+            icon={CheckmarkCircle02Icon}
+            size={12}
+            strokeWidth={2}
+          />
+        ) : (
+          <span
+            className={cn(
+              "rounded-full",
+              state === "active"
+                ? "size-2 bg-info"
+                : "size-1.5 bg-muted-foreground/45"
+            )}
+          />
+        )}
+      </TooltipTrigger>
+
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function getInviteSubmitLabel({
+  hasSentInvite,
+  isSubmitting,
+}: {
+  readonly hasSentInvite: boolean;
+  readonly isSubmitting: boolean;
+}) {
+  if (isSubmitting) {
+    return "Sending invite...";
+  }
+
+  if (hasSentInvite) {
+    return "Send another invite";
+  }
+
+  return "Send invite";
+}
+
+function getSetupStepAccessibleLabel({
+  label,
+  state,
+}: {
+  readonly label: string;
+  readonly state: SetupStepState;
+}) {
+  if (state === "complete") {
+    return `${label} complete`;
+  }
+
+  if (state === "active") {
+    return `${label} current`;
+  }
+
+  return label === "Invite members" ? `${label} optional` : `${label} next`;
+}
+
+function getSetupStepTooltipText({
+  label,
+  state,
+}: {
+  readonly label: string;
+  readonly state: SetupStepState;
+}) {
+  if (state === "complete") {
+    return `Complete: ${label}`;
+  }
+
+  if (state === "active") {
+    return `Current: ${label}`;
+  }
+
+  if (label === "Invite members") {
+    return `Optional: ${label}`;
+  }
+
+  return `Next: ${label}`;
+}
+
+function getSetupStepMarkerClassName(state: SetupStepState) {
+  if (state === "complete") {
+    return "bg-success/10 text-success ring-success/25 shadow-[0_0_0_3px_color-mix(in_oklab,var(--success)_10%,transparent)] motion-safe:animate-in motion-safe:zoom-in-95";
+  }
+
+  if (state === "active") {
+    return "size-5 bg-info/15 text-info ring-info/35 shadow-[0_0_0_4px_color-mix(in_oklab,var(--info)_14%,transparent)] after:absolute after:inset-[-5px] after:rounded-full after:border after:border-info/35 after:content-[''] motion-safe:after:animate-ping";
+  }
+
+  return "bg-background text-muted-foreground ring-border/70";
+}
+
+function getSetupConnectorClassName(createState: SetupStepState) {
+  if (createState === "complete") {
+    return "bg-success/45";
+  }
+
+  if (createState === "active") {
+    return "[background:linear-gradient(90deg,color-mix(in_oklab,var(--info)_58%,var(--border))_0_48%,var(--border)_52%_100%)]";
+  }
+
+  return "bg-border";
 }

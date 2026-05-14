@@ -1,4 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type { authClient as AuthClient } from "#/lib/auth-client";
@@ -9,29 +16,35 @@ type InviteMemberInput = Parameters<
   typeof AuthClient.organization.inviteMember
 >[0];
 
-const { mockedCreateOrganization, mockedInviteMember, mockedNavigate } =
-  vi.hoisted(() => ({
-    mockedCreateOrganization: vi.fn<
-      (input: { data: { name: string } }) => Promise<{
+const {
+  mockedCreateOrganization,
+  mockedInviteMember,
+  mockedNavigate,
+  mockedToastSuccess,
+} = vi.hoisted(() => ({
+  mockedCreateOrganization: vi.fn<
+    (input: { data: { name: string } }) => Promise<{
+      id: string;
+      name: string;
+      slug: string;
+    }>
+  >(),
+  mockedInviteMember: vi.fn<
+    (input: InviteMemberInput) => Promise<{
+      data: {
         id: string;
-        name: string;
-        slug: string;
-      }>
-    >(),
-    mockedInviteMember: vi.fn<
-      (input: InviteMemberInput) => Promise<{
-        data: {
-          id: string;
-        } | null;
-        error: {
-          message: string;
-          status: number;
-          statusText: string;
-        } | null;
-      }>
-    >(),
-    mockedNavigate: vi.fn<(options: { to: string }) => Promise<void>>(),
-  }));
+      } | null;
+      error: {
+        message: string;
+        status: number;
+        statusText: string;
+      } | null;
+    }>
+  >(),
+  mockedNavigate: vi.fn<(options: { to: string }) => Promise<void>>(),
+  mockedToastSuccess:
+    vi.fn<(title: string, options: { description: string }) => void>(),
+}));
 
 vi.mock(import("@tanstack/react-router"), async (importActual) => {
   const actual = await importActual();
@@ -60,6 +73,17 @@ vi.mock(import("#/lib/auth-client"), () => ({
   } as unknown as typeof AuthClient,
 }));
 
+vi.mock(import("sonner"), async (importActual) => {
+  const actual = await importActual();
+
+  return {
+    ...actual,
+    toast: Object.assign(vi.fn(), actual.toast, {
+      success: mockedToastSuccess,
+    }),
+  };
+});
+
 describe("organization onboarding page", () => {
   beforeEach(() => {
     mockedNavigate.mockResolvedValue();
@@ -74,10 +98,12 @@ describe("organization onboarding page", () => {
       },
       error: null,
     });
+    mockedToastSuccess.mockClear();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it("creates the team and continues to the invite step", async () => {
@@ -99,11 +125,23 @@ describe("organization onboarding page", () => {
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
+    const initialProgress = screen.getByRole("navigation", {
+      name: /Workspace setup progress/,
+    });
+    expect(
+      within(initialProgress).getByText("Step 1 of 2")
+    ).toBeInTheDocument();
+    expect(
+      within(initialProgress).getByTitle("Current: Create team")
+    ).toBeInTheDocument();
+    expect(
+      within(initialProgress).getByTitle("Optional: Invite members")
+    ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Organization slug")
     ).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Team name"), "Acme Field Ops");
-    await user.click(screen.getByRole("button", { name: /create team/i }));
+    await user.click(screen.getByRole("button", { name: "Create team" }));
 
     await waitFor(() => {
       expect(mockedCreateOrganization).toHaveBeenCalledWith({
@@ -117,6 +155,16 @@ describe("organization onboarding page", () => {
         screen.getByRole("heading", { name: "Invite members" })
       ).toBeInTheDocument();
     });
+    const inviteProgress = screen.getByRole("navigation", {
+      name: /Workspace setup progress/,
+    });
+    expect(within(inviteProgress).getByText("Step 2 of 2")).toBeInTheDocument();
+    expect(
+      within(inviteProgress).getByTitle("Complete: Create team")
+    ).toBeInTheDocument();
+    expect(
+      within(inviteProgress).getByTitle("Current: Invite members")
+    ).toBeInTheDocument();
     expect(mockedNavigate).not.toHaveBeenCalled();
   }, 10_000);
 
@@ -129,7 +177,7 @@ describe("organization onboarding page", () => {
     expect(
       screen.queryByLabelText("Organization slug")
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /create team/i }));
+    await user.click(screen.getByRole("button", { name: "Create team" }));
 
     await waitFor(() => {
       expect(mockedCreateOrganization).toHaveBeenCalledWith({
@@ -146,7 +194,7 @@ describe("organization onboarding page", () => {
     render(<OrganizationOnboardingPage />);
 
     await user.type(screen.getByLabelText("Team name"), "Acme Field Ops");
-    await user.click(screen.getByRole("button", { name: /create team/i }));
+    await user.click(screen.getByRole("button", { name: "Create team" }));
     await screen.findByRole("heading", { name: "Invite members" });
 
     await user.type(screen.getByLabelText("Email"), "foreman@example.com");
@@ -159,9 +207,31 @@ describe("organization onboarding page", () => {
         role: "member",
       });
     });
-    await expect(
-      screen.findByText("Invitation sent to foreman@example.com.")
-    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockedToastSuccess).toHaveBeenCalledWith("Invite sent", {
+        description: "foreman@example.com will receive an email shortly.",
+      });
+    });
+    expect(
+      screen.queryByText("Invitation sent to foreman@example.com.")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Workspace ready")).not.toBeInTheDocument();
+    const inviteProgress = screen.getByRole("navigation", {
+      name: /Workspace setup progress/,
+    });
+    expect(within(inviteProgress).getByText("Step 2 of 2")).toBeInTheDocument();
+    expect(
+      within(inviteProgress).getByTitle("Complete: Create team")
+    ).toBeInTheDocument();
+    expect(
+      within(inviteProgress).getByTitle("Current: Invite members")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Send another invite" })
+    ).toHaveClass("bg-secondary");
+    expect(
+      screen.getByRole("button", { name: "Continue to Ceird" })
+    ).toHaveClass("bg-primary");
 
     await user.click(screen.getByRole("button", { name: "Continue to Ceird" }));
     await waitFor(() => {
@@ -171,13 +241,53 @@ describe("organization onboarding page", () => {
     });
   }, 10_000);
 
+  it("keeps the successful invite sending state visible for a short beat", async () => {
+    const user = userEvent.setup();
+
+    render(<OrganizationOnboardingPage />);
+
+    await user.type(screen.getByLabelText("Team name"), "Acme Field Ops");
+    await user.click(screen.getByRole("button", { name: "Create team" }));
+    await screen.findByRole("heading", { name: "Invite members" });
+
+    await user.type(screen.getByLabelText("Email"), "foreman@example.com");
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Send invite" }));
+
+    expect(
+      screen.getByRole("button", { name: "Sending invite..." })
+    ).toBeInTheDocument();
+    expect(mockedToastSuccess).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Sending invite..." })
+    ).toBeInTheDocument();
+    expect(mockedToastSuccess).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.resolve();
+    });
+
+    expect(mockedToastSuccess).toHaveBeenCalledWith("Invite sent", {
+      description: "foreman@example.com will receive an email shortly.",
+    });
+    expect(
+      screen.getByRole("button", { name: "Send another invite" })
+    ).toBeInTheDocument();
+  }, 10_000);
+
   it("allows skipping invites after the team is created", async () => {
     const user = userEvent.setup();
 
     render(<OrganizationOnboardingPage />);
 
     await user.type(screen.getByLabelText("Team name"), "Acme Field Ops");
-    await user.click(screen.getByRole("button", { name: /create team/i }));
+    await user.click(screen.getByRole("button", { name: "Create team" }));
     await screen.findByRole("heading", { name: "Invite members" });
     expect(screen.getByRole("button", { name: "Skip for now" })).toHaveClass(
       "min-h-11"
@@ -206,17 +316,22 @@ describe("organization onboarding page", () => {
     render(<OrganizationOnboardingPage />);
 
     await user.type(screen.getByLabelText("Team name"), "Acme Field Ops");
-    await user.click(screen.getByRole("button", { name: /create team/i }));
+    await user.click(screen.getByRole("button", { name: "Create team" }));
     await screen.findByRole("heading", { name: "Invite members" });
 
     await user.type(screen.getByLabelText("Email"), "foreman@example.com");
-    await user.click(screen.getByRole("button", { name: /send invite/i }));
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-    await expect(
-      screen.findByText(
+    expect(
+      screen.getByText(
         "We couldn't send that invitation. Please check the email and try again."
       )
-    ).resolves.toBeInTheDocument();
+    ).toBeInTheDocument();
   }, 10_000);
 
   it("shows an inline error when org creation fails", async () => {
@@ -227,7 +342,7 @@ describe("organization onboarding page", () => {
     render(<OrganizationOnboardingPage />);
 
     await user.type(screen.getByLabelText("Team name"), "Acme Field Ops");
-    await user.click(screen.getByRole("button", { name: /create team/i }));
+    await user.click(screen.getByRole("button", { name: "Create team" }));
 
     await expect(
       screen.findByText("We couldn't create your team. Please try again.")

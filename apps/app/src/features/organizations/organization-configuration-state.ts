@@ -23,6 +23,7 @@ import { Effect } from "effect";
 
 import { runBrowserAppApiRequest } from "#/features/api/app-api-client";
 import type { AppApiError } from "#/features/api/app-api-errors";
+import { withMinimumMutationPendingDurationEffect } from "#/lib/mutation-feedback-effect";
 
 export const organizationServiceAreasStateAtom =
   Atom.make<ServiceAreaListResponse>({
@@ -54,7 +55,9 @@ export const createServiceAreaMutationAtom = Atom.fn<
   CreateServiceAreaResponse,
   CreateServiceAreaInput
 >((input, get) =>
-  createBrowserServiceArea(input).pipe(
+  withMinimumMutationPendingDurationEffect(
+    createBrowserServiceArea(input)
+  ).pipe(
     Effect.tap((serviceArea) =>
       Effect.sync(() => {
         get.set(
@@ -70,7 +73,9 @@ export const updateServiceAreaMutationAtomFamily = Atom.family(
   (serviceAreaId: ServiceAreaIdType) =>
     Atom.fn<AppApiError, UpdateServiceAreaResponse, UpdateServiceAreaInput>(
       (input, get) =>
-        updateBrowserServiceArea(serviceAreaId, input).pipe(
+        withMinimumMutationPendingDurationEffect(
+          updateBrowserServiceArea(serviceAreaId, input)
+        ).pipe(
           Effect.tap((serviceArea) =>
             Effect.sync(() => {
               get.set(
@@ -105,7 +110,7 @@ export const createRateCardMutationAtom = Atom.fn<
   CreateRateCardResponse,
   CreateRateCardInput
 >((input, get) =>
-  createBrowserRateCard(input).pipe(
+  withMinimumMutationPendingDurationEffect(createBrowserRateCard(input)).pipe(
     Effect.tap((rateCard) =>
       Effect.sync(() => {
         get.set(
@@ -121,7 +126,9 @@ export const updateRateCardMutationAtomFamily = Atom.family(
   (rateCardId: RateCardIdType) =>
     Atom.fn<AppApiError, UpdateRateCardResponse, UpdateRateCardInput>(
       (input, get) =>
-        updateBrowserRateCard(rateCardId, input).pipe(
+        withMinimumMutationPendingDurationEffect(
+          updateBrowserRateCard(rateCardId, input)
+        ).pipe(
           Effect.tap((rateCard) =>
             Effect.sync(() => {
               get.set(

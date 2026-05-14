@@ -18,6 +18,7 @@ import { activeElementIsInside } from "#/hotkeys/focus";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 import { authClient, buildEmailChangeRedirectTo } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
+import { beginMutationFeedback } from "#/lib/mutation-feedback";
 
 import {
   changeEmailSchema,
@@ -106,6 +107,7 @@ export function UserSettingsPage({
         return;
       }
 
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.updateUser({
         name: input.name,
         image: input.image,
@@ -121,6 +123,7 @@ export function UserSettingsPage({
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       setProfileMessage("Profile updated.");
       await router.invalidate();
     },
@@ -149,6 +152,7 @@ export function UserSettingsPage({
         return;
       }
 
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.changeEmail({
         newEmail: input.email,
         callbackURL: buildEmailChangeRedirectTo(window.location.origin),
@@ -164,6 +168,7 @@ export function UserSettingsPage({
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       formApi.reset();
       setEmailMessage("Check the new email address to confirm this change.");
     },
@@ -183,6 +188,7 @@ export function UserSettingsPage({
       setPasswordMessage(null);
 
       const input = decodeChangePasswordInput(value);
+      const mutationFeedback = beginMutationFeedback();
       const result = await authClient.changePassword({
         currentPassword: input.currentPassword,
         newPassword: input.newPassword,
@@ -199,6 +205,7 @@ export function UserSettingsPage({
         return;
       }
 
+      await mutationFeedback.waitForSuccess();
       formApi.reset();
       setPasswordMessage("Password updated.");
     },
