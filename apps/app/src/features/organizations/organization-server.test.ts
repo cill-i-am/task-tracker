@@ -2,10 +2,10 @@ import { decodeOrganizationId } from "@ceird/identity-core";
 
 import {
   createCurrentServerOrganizationDirect,
-  getCurrentServerOrganizationSession,
-  getCurrentServerOrganizations,
-  setCurrentServerActiveOrganization,
-} from "./organization-server";
+  getCurrentServerOrganizationSessionDirect as getCurrentServerOrganizationSession,
+  getCurrentServerOrganizationsDirect as getCurrentServerOrganizations,
+  setCurrentServerActiveOrganizationDirect as setCurrentServerActiveOrganization,
+} from "./organization-server-impl.server";
 
 interface Organization {
   id: string;
