@@ -62,6 +62,11 @@ describe("email verification page", () => {
     expect(
       screen.getByRole("heading", { name: "Email verified" })
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Your email address is verified. You can continue safely."
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText("Verified")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Auth context column")

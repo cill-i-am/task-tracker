@@ -339,13 +339,16 @@ describe("organization members page", () => {
 
     expect(screen.getByRole("heading", { name: "Members" })).toBeVisible();
     expect(screen.queryByText("Organization access")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Member access overview" })
+    ).toBeVisible();
     await expect(
       screen.findByRole("heading", { name: "Pending invitations" })
     ).resolves.toBeVisible();
     await expect(screen.findByTitle(longEmail)).resolves.toBeVisible();
     expect(screen.getByText("Expires 12 Apr 2026")).toBeVisible();
     expect(screen.queryByText("accepted@example.com")).not.toBeInTheDocument();
-    expect(screen.getAllByText("1 open")).toHaveLength(1);
+    expect(screen.getAllByText("1 open")).toHaveLength(2);
     expect(mockedListInvitations).toHaveBeenCalledWith({
       query: {
         organizationId: "org_123",
@@ -386,7 +389,7 @@ describe("organization members page", () => {
     expect(within(members).getByText("owner@example.com")).toBeVisible();
     expect(within(members).getByText("Foreperson Example")).toBeVisible();
     expect(within(members).getByText("foreperson@example.com")).toBeVisible();
-    expect(screen.getByText("2 active")).toBeVisible();
+    expect(screen.getAllByText("2 active")).toHaveLength(2);
     expect(mockedListMembers).toHaveBeenCalledWith({
       query: {
         limit: 100,
@@ -411,13 +414,14 @@ describe("organization members page", () => {
     const dialog = await openInviteDialog(user);
 
     expect(within(dialog).getByLabelText("Email")).toBeVisible();
+    expect(within(dialog).getByLabelText("Email")).toHaveFocus();
     expect(within(dialog).getByLabelText("Role")).toBeVisible();
     expect(
       within(dialog).getByRole("button", { name: "Send invite" })
     ).toBeVisible();
   }, 10_000);
 
-  it("shows an empty state when the current user is the only active member", async () => {
+  it("keeps the current owner visible when they are the only active member", async () => {
     mockedListMembers.mockResolvedValue(
       createMemberList([
         createMember({
@@ -445,15 +449,14 @@ describe("organization members page", () => {
       />
     );
 
-    await expect(screen.findByText("No teammates yet.")).resolves.toBeVisible();
-    expect(
-      screen.getByText("Invite someone so they can help run work from Ceird.")
-    ).toBeVisible();
-    expect(screen.queryByText("1 active")).not.toBeInTheDocument();
-    expect(screen.queryByText("Owner Example")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("list", { name: "Current members" })
-    ).not.toBeInTheDocument();
+    const members = await screen.findByRole("list", {
+      name: "Current members",
+    });
+
+    expect(within(members).getByText("Owner Example")).toBeVisible();
+    expect(within(members).getByText("owner@example.com")).toBeVisible();
+    expect(screen.getAllByText("1 active")).toHaveLength(2);
+    expect(screen.queryByText("No teammates yet.")).not.toBeInTheDocument();
   }, 10_000);
 
   it("does not render a fallback current-member row before members load", async () => {
@@ -505,7 +508,11 @@ describe("organization members page", () => {
       await membersResult.promise;
     });
 
-    await expect(screen.findByText("No teammates yet.")).resolves.toBeVisible();
+    const members = await screen.findByRole("list", {
+      name: "Current members",
+    });
+
+    expect(within(members).getByText("Owner Example")).toBeVisible();
     expect(screen.queryByText("Fallback Person")).not.toBeInTheDocument();
   }, 10_000);
 
@@ -579,7 +586,7 @@ describe("organization members page", () => {
     );
 
     await expect(screen.findByText("Member 100")).resolves.toBeVisible();
-    expect(screen.getByText("101 active")).toBeVisible();
+    expect(screen.getAllByText("101 active")).toHaveLength(2);
     expect(mockedListMembers).toHaveBeenNthCalledWith(1, {
       query: {
         limit: 100,
@@ -1275,7 +1282,7 @@ describe("organization members page", () => {
     );
 
     await expect(screen.findByText("ops@example.com")).resolves.toBeVisible();
-    expect(screen.getAllByText("1 open")).toHaveLength(1);
+    expect(screen.getAllByText("1 open")).toHaveLength(2);
 
     const dialog = await openInviteDialog(user);
 
@@ -1314,7 +1321,7 @@ describe("organization members page", () => {
     await expect(
       screen.findByTitle("member@example.com")
     ).resolves.toBeVisible();
-    expect(screen.getAllByText("2 open")).toHaveLength(1);
+    expect(screen.getAllByText("2 open")).toHaveLength(2);
   }, 10_000);
 
   it("submits the invite form with the submit hotkey", async () => {
@@ -1355,6 +1362,7 @@ describe("organization members page", () => {
     );
 
     await openInviteDialog(user);
+    await user.tab();
     await user.keyboard("r");
 
     expect(screen.getByRole("listbox", { name: "Suggestions" })).toBeVisible();
@@ -1744,6 +1752,6 @@ describe("organization members page", () => {
         "Send the first invite when you're ready to add someone."
       )
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("0 open")).not.toBeInTheDocument();
+    expect(screen.getByText("0 open")).toBeVisible();
   }, 10_000);
 });

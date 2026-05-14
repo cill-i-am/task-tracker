@@ -210,14 +210,12 @@ function formatMemberCount(count: number) {
 }
 
 function getCurrentMembersDisplayState({
-  currentUserId,
   hasCurrentMemberState,
   hasLoadedMembers,
   memberLoadErrorMessage,
   memberTotal,
   members,
 }: {
-  readonly currentUserId?: UserId | undefined;
   readonly hasCurrentMemberState: boolean;
   readonly hasLoadedMembers: boolean;
   readonly memberLoadErrorMessage: string | null;
@@ -241,12 +239,7 @@ function getCurrentMembersDisplayState({
     };
   }
 
-  const hasNoTeammates =
-    members.length === 0 ||
-    (members.length === 1 &&
-      isCurrentOrganizationMember(members[0], currentUserId));
-
-  if (hasNoTeammates) {
+  if (members.length === 0) {
     return { kind: "empty" };
   }
 
@@ -323,6 +316,7 @@ export function OrganizationMembersPage({
   );
   const formRef = React.useRef<HTMLFormElement | null>(null);
   const inviteDialogContentRef = React.useRef<HTMLDivElement | null>(null);
+  const inviteEmailInputRef = React.useRef<HTMLInputElement | null>(null);
   const latestActiveOrganizationId = React.useRef(activeOrganizationId);
   const memberRequestSequence = React.useRef(0);
   const membersOrganizationId = React.useRef(activeOrganizationId);
@@ -581,7 +575,6 @@ export function OrganizationMembersPage({
   const ownerCount = members.filter((member) => member.role === "owner").length;
   const canInviteMembers = isAdministrativeOrganizationRole(currentViewerRole);
   const currentMembersDisplayState = getCurrentMembersDisplayState({
-    currentUserId,
     hasCurrentMemberState,
     hasLoadedMembers,
     memberLoadErrorMessage,
@@ -838,9 +831,13 @@ export function OrganizationMembersPage({
     isLoadingInvitations,
     loadErrorMessage,
   });
+  const activeMemberCount =
+    currentMembersDisplayState.kind === "ready"
+      ? currentMembersDisplayState.count
+      : null;
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-3 sm:p-4 lg:p-5">
+    <div className="flex flex-1 flex-col gap-5 p-3 sm:p-4 lg:p-5">
       <MembersPageHeader
         canInviteMembers={canInviteMembers}
         isHydrated={isHydrated}
@@ -853,7 +850,15 @@ export function OrganizationMembersPage({
         </p>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.84fr)_minmax(0,1.16fr)]">
+      <AccessOverview
+        activeMemberCount={activeMemberCount}
+        currentViewerRole={currentViewerRole}
+        isLoadingInvitations={isLoadingInvitations}
+        isLoadingMembers={currentMembersDisplayState.kind === "loading"}
+        openInvitationCount={invitations.length}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.72fr)]">
         <CurrentMembersSection
           activeMemberAction={activeMemberAction}
           currentUserId={currentUserId}
@@ -893,7 +898,7 @@ export function OrganizationMembersPage({
         <ResponsiveDialogContent
           ref={inviteDialogContentRef}
           className="sm:max-w-lg"
-          initialFocus={inviteDialogContentRef}
+          initialFocus={inviteEmailInputRef}
         >
           <form
             ref={formRef}
@@ -922,6 +927,7 @@ export function OrganizationMembersPage({
                         errorText={errorText}
                       >
                         <Input
+                          ref={inviteEmailInputRef}
                           id="invite-email"
                           name={field.name}
                           type="email"
@@ -1049,6 +1055,65 @@ function MembersPageHeader({
   );
 }
 
+function AccessOverview({
+  activeMemberCount,
+  currentViewerRole,
+  isLoadingInvitations,
+  isLoadingMembers,
+  openInvitationCount,
+}: {
+  readonly activeMemberCount: number | null;
+  readonly currentViewerRole: OrganizationRoleType;
+  readonly isLoadingInvitations: boolean;
+  readonly isLoadingMembers: boolean;
+  readonly openInvitationCount: number;
+}) {
+  return (
+    <section
+      aria-label="Member access overview"
+      className="grid overflow-hidden rounded-[calc(var(--radius)*3)] border border-border/60 bg-background/78 shadow-[0_1px_0_color-mix(in_oklab,var(--border)_65%,transparent)] supports-[backdrop-filter]:bg-background/68 sm:grid-cols-3"
+    >
+      <AccessOverviewItem
+        label="Active members"
+        value={
+          isLoadingMembers
+            ? "Loading"
+            : formatMemberCount(activeMemberCount ?? 0)
+        }
+      />
+      <AccessOverviewItem
+        label="Open invitations"
+        value={
+          isLoadingInvitations
+            ? "Loading"
+            : formatInvitationCount(openInvitationCount)
+        }
+      />
+      <AccessOverviewItem
+        label="Your role"
+        value={formatRoleLabel(currentViewerRole)}
+      />
+    </section>
+  );
+}
+
+function AccessOverviewItem({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 border-b border-border/60 px-4 py-3 last:border-b-0 sm:border-r sm:border-b-0 sm:last:border-r-0">
+      <p className="text-[0.68rem] font-medium text-muted-foreground uppercase">
+        {label}
+      </p>
+      <p className="truncate text-sm font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
 function CurrentMembersSection({
   activeMemberAction,
   currentUserId,
@@ -1083,12 +1148,18 @@ function CurrentMembersSection({
     <div className="flex flex-col gap-6">
       <section aria-labelledby="current-members-heading">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <h2
-            id="current-members-heading"
-            className="font-heading text-lg font-medium"
-          >
-            Current members
-          </h2>
+          <div className="flex min-w-0 flex-col gap-1">
+            <h2
+              id="current-members-heading"
+              className="font-heading text-lg font-medium"
+            >
+              Current members
+            </h2>
+            <p className="max-w-[58ch] text-sm/6 text-muted-foreground">
+              Owners, admins, teammates, and external collaborators with active
+              access.
+            </p>
+          </div>
           {shouldShowMemberCount ? (
             <Badge variant="secondary" className="w-fit rounded-full px-3 py-1">
               {formatMemberCount(displayState.count)}
@@ -1120,9 +1191,9 @@ function CurrentMembersSection({
               <EmptyMedia variant="icon">
                 <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
               </EmptyMedia>
-              <EmptyTitle>No teammates yet.</EmptyTitle>
+              <EmptyTitle>No active members.</EmptyTitle>
               <EmptyDescription>
-                Invite someone so they can help run work from Ceird.
+                Invite an owner or admin before this workspace is used.
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
@@ -1229,12 +1300,17 @@ function PendingInvitationsSection({
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <h2
-          id="pending-invitations-heading"
-          className="font-heading text-lg font-medium"
-        >
-          Pending invitations
-        </h2>
+        <div className="flex min-w-0 flex-col gap-1">
+          <h2
+            id="pending-invitations-heading"
+            className="font-heading text-lg font-medium"
+          >
+            Pending invitations
+          </h2>
+          <p className="max-w-[44ch] text-sm/6 text-muted-foreground">
+            Invites that have not been accepted yet.
+          </p>
+        </div>
         <Badge variant="secondary" className="w-fit rounded-full px-3 py-1">
           {formatInvitationCount(invitations.length)}
         </Badge>

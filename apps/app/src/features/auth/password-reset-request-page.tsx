@@ -155,25 +155,20 @@ export function PasswordResetRequestPage({
 
             <form.Subscribe
               selector={(state) => ({
-                email: state.values.email,
                 isSubmitting: state.isSubmitting,
               })}
             >
-              {({ email, isSubmitting }) => {
-                const isEmailEmpty = email.trim().length === 0;
-
-                return (
-                  <Button
-                    type="submit"
-                    size="lg"
-                    className="w-full [view-transition-name:auth-card-action]"
-                    loading={isSubmitting}
-                    disabled={isEmailEmpty || !isHydrated}
-                  >
-                    {isSubmitting ? "Sending reset link..." : "Send reset link"}
-                  </Button>
-                );
-              }}
+              {({ isSubmitting }) => (
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full [view-transition-name:auth-card-action]"
+                  loading={isSubmitting}
+                  disabled={!isHydrated}
+                >
+                  {isSubmitting ? "Sending reset link..." : "Send reset link"}
+                </Button>
+              )}
             </form.Subscribe>
           </form>
         )}

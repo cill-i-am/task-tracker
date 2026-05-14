@@ -173,6 +173,19 @@ describe("password reset request page", () => {
     expect(mockedRequestPasswordReset).not.toHaveBeenCalled();
   }, 10_000);
 
+  it("shows required email validation when the empty form is submitted", async () => {
+    const user = userEvent.setup();
+
+    render(<PasswordResetRequestPage />);
+
+    await user.click(screen.getByRole("button", { name: /send reset link/i }));
+
+    await expect(
+      screen.findByText("This field is required.")
+    ).resolves.toBeInTheDocument();
+    expect(mockedRequestPasswordReset).not.toHaveBeenCalled();
+  }, 10_000);
+
   it("uses the new status-oriented heading before submit", () => {
     render(<PasswordResetRequestPage />);
 

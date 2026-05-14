@@ -179,6 +179,9 @@ describe("organization onboarding page", () => {
     await user.type(screen.getByLabelText("Team name"), "Acme Field Ops");
     await user.click(screen.getByRole("button", { name: /create team/i }));
     await screen.findByRole("heading", { name: "Invite members" });
+    expect(screen.getByRole("button", { name: "Skip for now" })).toHaveClass(
+      "min-h-11"
+    );
     await user.click(screen.getByRole("button", { name: "Skip for now" }));
 
     await waitFor(() => {

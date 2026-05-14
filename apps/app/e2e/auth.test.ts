@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
@@ -6,7 +7,33 @@ import type { Page } from "@playwright/test";
 import { CreateOrganizationPage } from "./pages/create-organization-page";
 import { LoginPage } from "./pages/login-page";
 import { SignupPage } from "./pages/signup-page";
-import { API_ORIGIN } from "./test-urls";
+import { waitForSubmitHydration } from "./pages/wait-for-submit-hydration";
+import { API_ORIGIN, DATABASE_URL } from "./test-urls";
+
+const apiRequire = createRequire(
+  new URL("../../api/package.json", import.meta.url)
+);
+
+interface PgQueryResult<T> {
+  readonly rows: T[];
+}
+
+interface PgClient {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+  query<T>(
+    text: string,
+    values?: readonly unknown[]
+  ): Promise<PgQueryResult<T>>;
+}
+
+type PgClientConstructor = new (options: {
+  readonly connectionString: string;
+}) => PgClient;
+
+const { Client: PgClient } = apiRequire("pg") as {
+  readonly Client: PgClientConstructor;
+};
 
 function createTestEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.com`;
@@ -24,6 +51,32 @@ async function expectAuthenticatedHome(page: Page) {
   await expect(
     workspaceHome.getByText("Invite the first teammate")
   ).toBeVisible();
+}
+
+async function findPasswordResetToken(email: string): Promise<string | null> {
+  const client = new PgClient({ connectionString: DATABASE_URL });
+
+  await client.connect();
+
+  try {
+    const result = await client.query<{ readonly identifier: string }>(
+      `select verification.identifier
+       from verification
+       inner join "user" on "user".id = verification.value
+       where "user".email = $1
+         and verification.identifier like 'reset-password:%'
+       order by verification.created_at desc
+       limit 1`,
+      [email]
+    );
+    const identifier = result.rows[0]?.identifier;
+
+    return identifier?.startsWith("reset-password:")
+      ? identifier.slice("reset-password:".length)
+      : null;
+  } finally {
+    await client.end();
+  }
 }
 
 async function signUpAndCreateOrganization(
@@ -250,6 +303,79 @@ test.describe("auth pages", () => {
     await expect(page).not.toHaveURL(/\/create-organization$/);
   });
 
+  test("password reset request and completion updates credentials", async ({
+    page,
+    request,
+  }) => {
+    const email = createTestEmail("password-reset");
+    const oldPassword = "password123";
+    const newPassword = "new-password-123";
+    const loginPage = new LoginPage(page);
+    const createOrganizationPage = new CreateOrganizationPage(page);
+    const response = await request.post(
+      `${API_ORIGIN}/api/auth/sign-up/email`,
+      {
+        data: {
+          email,
+          name: "Taylor Example",
+          password: oldPassword,
+        },
+      }
+    );
+
+    expect(response.ok()).toBeTruthy();
+
+    await page.goto("/forgot-password");
+    await waitForSubmitHydration(page);
+    await page.getByLabel("Email", { exact: true }).fill(email);
+    await page.getByRole("button", { name: "Send reset link" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Check your email" })
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "If an account exists for that email, the newest reset link is on its way."
+      )
+    ).toBeVisible();
+
+    let resetToken: string | null = null;
+
+    await expect
+      .poll(
+        async () => {
+          resetToken = await findPasswordResetToken(email);
+
+          return resetToken;
+        },
+        {
+          timeout: 10_000,
+        }
+      )
+      .not.toBeNull();
+
+    if (!resetToken) {
+      throw new Error("Expected password reset token to be persisted");
+    }
+
+    await page.goto(`/reset-password?token=${resetToken}`);
+    await waitForSubmitHydration(page);
+    await page.getByLabel("New password", { exact: true }).fill(newPassword);
+    await page.getByRole("button", { name: "Reset password" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+
+    await loginPage.email.fill(email);
+    await loginPage.password.fill(oldPassword);
+    await loginPage.submit.click();
+    await expect(loginPage.alerts).toContainText(
+      "We couldn't sign you in. Check your email and password and try again."
+    );
+
+    await loginPage.email.fill(email);
+    await loginPage.password.fill(newPassword);
+    await loginPage.submit.click();
+    await createOrganizationPage.expectLoaded();
+  });
+
   test("verify-email shows the success state when status=success", async ({
     page,
   }) => {
@@ -260,10 +386,10 @@ test.describe("auth pages", () => {
       page.locator('[data-slot="card-title"]', { hasText: "Email verified" })
     ).toBeVisible();
     await expect(
-      page.getByText("Your email address is verified.", { exact: true })
-    ).toBeVisible();
-    await expect(
-      page.getByText("You can continue safely", { exact: true })
+      page.getByText(
+        "Your email address is verified. You can continue safely.",
+        { exact: true }
+      )
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Go to the app" })
@@ -291,16 +417,14 @@ test.describe("auth pages", () => {
       });
     await expect(
       page.locator('[data-slot="card-title"]', {
-        hasText: "Verification link invalid",
+        hasText: "Verification link expired",
       })
     ).toBeVisible();
     await expect(
-      page.getByText("This verification link is invalid or has expired.", {
-        exact: true,
-      })
-    ).toBeVisible();
-    await expect(
-      page.getByText("Request a fresh verification email", { exact: true })
+      page.getByText(
+        "Use the newest email verification link, or return to sign in and request a fresh one.",
+        { exact: true }
+      )
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Back to login" })

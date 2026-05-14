@@ -18,6 +18,9 @@ interface EmailVerificationPageProps {
 export function EmailVerificationPage({ search }: EmailVerificationPageProps) {
   const isInvalidToken = search?.status !== "success";
   const title = isInvalidToken ? "Verification link expired" : "Email verified";
+  const description = isInvalidToken
+    ? "Use the newest email verification link, or return to sign in and request a fresh one."
+    : "Your email address is verified. You can continue safely.";
 
   return (
     <AuthSplitShell>
@@ -25,11 +28,7 @@ export function EmailVerificationPage({ search }: EmailVerificationPageProps) {
         className="max-w-lg"
         title={title}
         titleLevel={1}
-        description={
-          isInvalidToken
-            ? "Use the newest email verification link, or return to sign in and request a fresh one."
-            : undefined
-        }
+        description={description}
         footer={
           <div className="flex flex-col gap-3">
             <Link

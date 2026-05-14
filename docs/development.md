@@ -116,6 +116,7 @@ pnpm sandbox:up -- --name $SANDBOX_NAME
 PLAYWRIGHT_USE_EXTERNAL_SERVER=1 \
 PLAYWRIGHT_BASE_URL=https://$SANDBOX_NAME.app.ceird.localhost:1355 \
 PLAYWRIGHT_API_URL=https://$SANDBOX_NAME.api.ceird.localhost:1355 \
+PLAYWRIGHT_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:<sandbox-postgres-port>/ceird \
 pnpm --filter app e2e
 ```
 
@@ -124,6 +125,8 @@ automation so repeated auth tests do not lock themselves out while still using
 the real Better Auth browser workflow. Prefer the canonical sandbox HTTPS app
 and API URLs for E2E; loopback fallback URLs are useful for manual debugging but
 can fail auth cookie and origin checks.
+Some auth E2E tests also read Better Auth verification tokens from Postgres via
+`PLAYWRIGHT_DATABASE_URL`; use the database URL printed by `pnpm sandbox:url`.
 
 ## Type Checking, Linting, And Formatting
 

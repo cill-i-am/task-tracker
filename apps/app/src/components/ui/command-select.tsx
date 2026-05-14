@@ -1,5 +1,5 @@
 "use client";
-import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as React from "react";
 
@@ -320,9 +320,24 @@ function CommandSelectOptions({
   readonly showGroupHeadings: boolean;
   readonly visibleGroups: readonly CommandSelectGroup[];
 }) {
+  if (!searchable) {
+    return (
+      <StaticCommandSelectOptions
+        className={className}
+        emptyText={emptyText}
+        listClassName={listClassName}
+        onOpenChange={onOpenChange}
+        onValueChange={onValueChange}
+        selectedValue={selectedValue}
+        showGroupHeadings={showGroupHeadings}
+        visibleGroups={visibleGroups}
+      />
+    );
+  }
+
   return (
     <Command className={className}>
-      {searchable ? <CommandInput placeholder={searchPlaceholder} /> : null}
+      <CommandInput placeholder={searchPlaceholder} />
       <CommandList className={listClassName}>
         <CommandEmpty>{emptyText}</CommandEmpty>
         {visibleGroups.map((group, groupIndex) => (
@@ -381,6 +396,126 @@ function CommandSelectOptions({
         ))}
       </CommandList>
     </Command>
+  );
+}
+
+function StaticCommandSelectOptions({
+  className,
+  emptyText,
+  listClassName,
+  onOpenChange,
+  onValueChange,
+  selectedValue,
+  showGroupHeadings,
+  visibleGroups,
+}: {
+  readonly className?: string;
+  readonly emptyText: string;
+  readonly listClassName?: string;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onValueChange: (value: string) => void;
+  readonly selectedValue?: string;
+  readonly showGroupHeadings: boolean;
+  readonly visibleGroups: readonly CommandSelectGroup[];
+}) {
+  if (visibleGroups.length === 0) {
+    return (
+      <div
+        className={cn(
+          "rounded-4xl bg-popover py-6 text-center text-sm text-muted-foreground",
+          className
+        )}
+      >
+        {emptyText}
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("rounded-4xl bg-popover", className)}>
+      <div
+        aria-label="Suggestions"
+        className={cn(
+          "no-scrollbar max-h-72 overflow-x-hidden overflow-y-auto p-2 outline-none",
+          listClassName
+        )}
+        role="listbox"
+      >
+        {visibleGroups.map((group, groupIndex) => (
+          <React.Fragment key={group.label}>
+            {showGroupHeadings ? (
+              <p className="px-3 py-2 text-xs font-medium text-muted-foreground">
+                {group.label}
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-1">
+              {group.options.map((option) => {
+                const isSelected = option.value === selectedValue;
+
+                return (
+                  <button
+                    key={option.value}
+                    aria-label={
+                      option.description
+                        ? `${option.label}. ${option.description}`
+                        : option.label
+                    }
+                    aria-selected={isSelected}
+                    className={cn(
+                      "flex w-full cursor-default items-center gap-2 rounded-2xl px-3 py-2 text-left text-sm font-medium outline-hidden transition-colors select-none hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring/30",
+                      isSelected
+                        ? "bg-muted text-foreground"
+                        : "text-foreground"
+                    )}
+                    role="option"
+                    type="button"
+                    onClick={() => {
+                      onValueChange(option.value);
+                      onOpenChange(false);
+                    }}
+                  >
+                    {option.icon ? (
+                      <HugeiconsIcon
+                        icon={option.icon}
+                        strokeWidth={2}
+                        className="text-muted-foreground"
+                      />
+                    ) : null}
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate">{option.label}</span>
+                      {option.description ? (
+                        <span className="line-clamp-2 text-xs/5 font-normal text-muted-foreground">
+                          {option.description}
+                        </span>
+                      ) : null}
+                    </span>
+                    {option.shortcut ? (
+                      <ShortcutHint
+                        className="shrink-0 tabular-nums"
+                        hotkey={option.shortcut}
+                        label={option.label}
+                      />
+                    ) : null}
+                    <HugeiconsIcon
+                      icon={Tick02Icon}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                      className={cn(
+                        "ml-auto shrink-0",
+                        isSelected ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+            {groupIndex < visibleGroups.length - 1 ? (
+              <div className="my-1.5 h-px bg-border/50" />
+            ) : null}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
   );
 }
 

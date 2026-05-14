@@ -29,7 +29,8 @@ const DevelopmentDevtools = import.meta.env.DEV
       renderDevelopmentDevtools = () => (
         <TanStackDevtools
           config={{
-            position: "bottom-left",
+            position: "top-right",
+            triggerHidden: true,
           }}
           plugins={[
             {

@@ -13,12 +13,10 @@ import {
   getFormErrorText,
 } from "#/features/auth/auth-form-errors";
 import { AuthFormField } from "#/features/auth/auth-form-field";
-import { authQuietLinkClassName } from "#/features/auth/auth-link-styles";
 import { EntryShell, EntrySurfaceCard } from "#/features/auth/entry-shell";
 import { useIsHydrated } from "#/hooks/use-is-hydrated";
 import { authClient } from "#/lib/auth-client";
 import { submitClientForm } from "#/lib/client-form-submit";
-import { cn } from "#/lib/utils";
 
 import {
   INVITE_ROLE_SELECTION_GROUPS,
@@ -213,14 +211,15 @@ function InviteMembersStep({
       titleLevel={1}
       description="Add the people who need access to jobs, sites, and invites."
       footer={
-        <div className="flex flex-col items-start gap-2 text-sm/6 text-muted-foreground">
-          <button
+        <div className="flex flex-col items-stretch gap-2 sm:items-start">
+          <Button
             type="button"
-            className={cn(authQuietLinkClassName, "cursor-pointer")}
+            variant="ghost"
+            className="min-h-11 justify-center px-3 text-muted-foreground sm:min-h-9"
             onClick={() => void onContinue()}
           >
             {statusMessage ? "Continue to Ceird" : "Skip for now"}
-          </button>
+          </Button>
         </div>
       }
     >

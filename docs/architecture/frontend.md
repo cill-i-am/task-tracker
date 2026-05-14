@@ -209,6 +209,9 @@ workflow-specific layouts over decorative landing-page patterns.
 - Playwright config lives in `playwright.config.ts`.
 - E2E tests live in `apps/app/e2e`.
 - Page objects for E2E tests live in `apps/app/e2e/pages`.
+- Auth E2E tests may read Better Auth verification tokens directly from the
+  sandbox database using `PLAYWRIGHT_DATABASE_URL` so password-reset browser
+  flows can cover the email-token handoff without depending on a mailbox.
 
 Run app tests:
 
