@@ -439,7 +439,7 @@ function WorkspaceSetupStep({
             className={cn(
               "rounded-full",
               state === "active"
-                ? "size-2 bg-info"
+                ? "size-2 bg-primary"
                 : "size-1.5 bg-muted-foreground/45"
             )}
           />
@@ -515,7 +515,7 @@ function getSetupStepMarkerClassName(state: SetupStepState) {
   }
 
   if (state === "active") {
-    return "size-5 bg-info/15 text-info ring-info/35 shadow-[0_0_0_4px_color-mix(in_oklab,var(--info)_14%,transparent)] after:absolute after:inset-[-5px] after:rounded-full after:border after:border-info/35 after:content-[''] motion-safe:after:animate-ping";
+    return "size-5 bg-primary/15 text-primary ring-primary/35 shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_14%,transparent)] after:absolute after:inset-[-5px] after:rounded-full after:border after:border-primary/35 after:content-[''] motion-safe:after:animate-ping";
   }
 
   return "bg-background text-muted-foreground ring-border/70";
@@ -527,7 +527,7 @@ function getSetupConnectorClassName(createState: SetupStepState) {
   }
 
   if (createState === "active") {
-    return "[background:linear-gradient(90deg,color-mix(in_oklab,var(--info)_58%,var(--border))_0_48%,var(--border)_52%_100%)]";
+    return "[background:linear-gradient(90deg,color-mix(in_oklab,var(--primary)_58%,var(--border))_0_48%,var(--border)_52%_100%)]";
   }
 
   return "bg-border";
