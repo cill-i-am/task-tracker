@@ -18,6 +18,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node .codex/hooks/stop_review_prompt.mjs",
+            "statusMessage": "Checking review coverage"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
             "command": "node .codex/hooks/stop_workspace_hygiene.mjs",
             "statusMessage": "Checking workspace hygiene"
           }
