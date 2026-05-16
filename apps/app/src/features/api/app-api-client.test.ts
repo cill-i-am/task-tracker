@@ -9,7 +9,7 @@ import {
   LABEL_NOT_FOUND_ERROR_TAG,
   LabelNotFoundError,
 } from "@ceird/labels-core";
-import type { LabelIdType } from "@ceird/labels-core";
+import type { Label, LabelIdType } from "@ceird/labels-core";
 import type {
   CreateSiteResponse,
   SiteIdType,
@@ -84,6 +84,20 @@ const createSiteResponse: CreateSiteResponse = {
   longitude: -6.2603,
   name: "Docklands Campus",
   town: "Dublin",
+};
+
+const siteLabelId = "44444444-4444-4444-8444-444444444444" as LabelIdType;
+
+const siteLabel: Label = {
+  createdAt: "2026-04-27T10:00:00.000Z",
+  id: siteLabelId,
+  name: "Urgent",
+  updatedAt: "2026-04-27T10:00:00.000Z",
+};
+
+const siteWithLabelResponse: CreateSiteResponse = {
+  ...createSiteResponse,
+  labels: [siteLabel],
 };
 
 const siteOptionsResponse: SitesOptionsResponse = {
@@ -240,6 +254,59 @@ describe("app API client", () => {
 
     expect(String(url)).toBe("http://127.0.0.1:3001/sites?limit=25");
     expect(requestInit?.method).toBe("GET");
+  }, 1000);
+
+  it("assigns labels to standalone sites through the shared Ceird API client", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json(siteWithLabelResponse));
+
+    await expect(
+      runAppApiClient(
+        {
+          requestOrigin: "http://127.0.0.1:3000",
+        },
+        "SitesServer.test.assignSiteLabel",
+        (client) =>
+          client.sites.assignSiteLabel({
+            path: { siteId: createSiteResponse.id },
+            payload: { labelId: siteLabelId },
+          })
+      )
+    ).resolves.toStrictEqual(siteWithLabelResponse);
+
+    const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
+
+    expect(String(url)).toBe(
+      "http://127.0.0.1:3001/sites/33333333-3333-4333-8333-333333333333/labels"
+    );
+    expect(requestInit?.method).toBe("POST");
+  }, 1000);
+
+  it("removes labels from standalone sites through the shared Ceird API client", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json(createSiteResponse));
+
+    await expect(
+      runAppApiClient(
+        {
+          requestOrigin: "http://127.0.0.1:3000",
+        },
+        "SitesServer.test.removeSiteLabel",
+        (client) =>
+          client.sites.removeSiteLabel({
+            path: { labelId: siteLabelId, siteId: createSiteResponse.id },
+          })
+      )
+    ).resolves.toStrictEqual(createSiteResponse);
+
+    const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
+
+    expect(String(url)).toBe(
+      "http://127.0.0.1:3001/sites/33333333-3333-4333-8333-333333333333/labels/44444444-4444-4444-8444-444444444444"
+    );
+    expect(requestInit?.method).toBe("DELETE");
   }, 1000);
 
   it("does not invoke fetch when the Ceird API origin cannot be resolved", async () => {

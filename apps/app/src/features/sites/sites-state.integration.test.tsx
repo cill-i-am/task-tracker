@@ -1,4 +1,5 @@
 import { decodeOrganizationId } from "@ceird/identity-core";
+import type { Label, LabelIdType } from "@ceird/labels-core";
 import { SiteCommentSchema } from "@ceird/sites-core";
 import type {
   AddSiteCommentInput,
@@ -23,9 +24,17 @@ import type * as EffectPackage from "effect";
 import { useState } from "react";
 
 import {
+  organizationLabelsStateAtom,
+  seedOrganizationLabelsState,
+} from "#/features/labels/labels-state";
+
+import {
   addSiteCommentMutationAtomFamily,
+  assignSiteLabelMutationAtomFamily,
   createSiteMutationAtom,
+  createAndAssignSiteLabelMutationAtomFamily,
   refreshSiteCommentsAtomFamily,
+  removeSiteLabelMutationAtomFamily,
   seedSitesOptionsState,
   siteCommentsStateAtomFamily,
   sitesNoticeAtom,
@@ -38,18 +47,27 @@ type EffectClientMock = (...args: unknown[]) => unknown;
 const organizationId = decodeOrganizationId("org_123");
 const existingSiteId = "11111111-1111-4111-8111-111111111111" as SiteIdType;
 const createdSiteId = "22222222-2222-4222-8222-222222222222" as SiteIdType;
+const urgentLabelId = "33333333-3333-4333-8333-333333333333" as LabelIdType;
+const warrantyLabelId =
+  "44444444-4444-4444-8444-444444444444" as LabelIdType;
 
 const {
   mockedAddSiteComment,
+  mockedAssignSiteLabel,
   mockedCreateSite,
+  mockedCreateLabel,
   mockedListSiteComments,
   mockedMakeBrowserAppApiClient,
+  mockedRemoveSiteLabel,
   mockedUpdateSite,
 } = vi.hoisted(() => ({
   mockedAddSiteComment: vi.fn<EffectClientMock>(),
+  mockedAssignSiteLabel: vi.fn<EffectClientMock>(),
+  mockedCreateLabel: vi.fn<EffectClientMock>(),
   mockedCreateSite: vi.fn<EffectClientMock>(),
   mockedListSiteComments: vi.fn<EffectClientMock>(),
   mockedMakeBrowserAppApiClient: vi.fn<EffectClientMock>(),
+  mockedRemoveSiteLabel: vi.fn<EffectClientMock>(),
   mockedUpdateSite: vi.fn<EffectClientMock>(),
 }));
 
@@ -75,17 +93,25 @@ vi.mock("#/features/api/app-api-client", async () => {
 describe("sites state integration", () => {
   beforeEach(() => {
     mockedAddSiteComment.mockReset();
+    mockedAssignSiteLabel.mockReset();
+    mockedCreateLabel.mockReset();
     mockedCreateSite.mockReset();
     mockedListSiteComments.mockReset();
     mockedMakeBrowserAppApiClient.mockReset();
+    mockedRemoveSiteLabel.mockReset();
     mockedUpdateSite.mockReset();
 
     mockedMakeBrowserAppApiClient.mockImplementation(() =>
       Effect.succeed({
+        labels: {
+          createLabel: mockedCreateLabel,
+        },
         sites: {
           addSiteComment: mockedAddSiteComment,
+          assignSiteLabel: mockedAssignSiteLabel,
           createSite: mockedCreateSite,
           listSiteComments: mockedListSiteComments,
+          removeSiteLabel: mockedRemoveSiteLabel,
           updateSite: mockedUpdateSite,
         },
       })
@@ -145,6 +171,128 @@ describe("sites state integration", () => {
       expect(screen.getByTestId("notice")).toHaveTextContent(
         "updated:Updated Site"
       );
+    }
+  );
+
+  it(
+    "assigns a label and syncs the returned site detail into options",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedAssignSiteLabel.mockReturnValue(
+        Effect.succeed(
+          buildSite(existingSiteId, "Existing Site", [
+            buildLabel(urgentLabelId, "Urgent"),
+          ])
+        )
+      );
+
+      const user = userEvent.setup();
+      renderSitesStateProbe();
+
+      await user.click(screen.getByRole("button", { name: "Assign label" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("site-labels")).toHaveTextContent("Urgent");
+      });
+      expect(mockedAssignSiteLabel).toHaveBeenCalledWith({
+        path: { siteId: existingSiteId },
+        payload: { labelId: urgentLabelId },
+      });
+    }
+  );
+
+  it(
+    "creates and assigns a label to the site",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const warrantyLabel = buildLabel(warrantyLabelId, "Warranty");
+      mockedCreateLabel.mockReturnValue(Effect.succeed(warrantyLabel));
+      mockedAssignSiteLabel.mockReturnValue(
+        Effect.succeed(
+          buildSite(existingSiteId, "Existing Site", [warrantyLabel])
+        )
+      );
+
+      const user = userEvent.setup();
+      renderSitesStateProbe();
+
+      await user.click(
+        screen.getByRole("button", { name: "Create and assign label" })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("site-labels")).toHaveTextContent("Warranty");
+      });
+      expect(mockedCreateLabel).toHaveBeenCalledWith({
+        payload: { name: "Warranty" },
+      });
+      expect(mockedAssignSiteLabel).toHaveBeenCalledWith({
+        path: { siteId: existingSiteId },
+        payload: { labelId: warrantyLabelId },
+      });
+      expect(screen.getByTestId("organization-labels")).toHaveTextContent(
+        "Warranty"
+      );
+    }
+  );
+
+  it(
+    "keeps a created organization label when the follow-up site assignment fails",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      const warrantyLabel = buildLabel(warrantyLabelId, "Warranty");
+      mockedCreateLabel.mockReturnValue(Effect.succeed(warrantyLabel));
+      mockedAssignSiteLabel.mockReturnValue(
+        Effect.fail(new Error("assign failed"))
+      );
+
+      const user = userEvent.setup();
+      renderSitesStateProbe();
+
+      await user.click(
+        screen.getByRole("button", { name: "Create and assign label" })
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("organization-labels")).toHaveTextContent(
+          "Warranty"
+        );
+      });
+      expect(screen.getByTestId("site-labels")).toHaveTextContent("none");
+    }
+  );
+
+  it(
+    "removes a label and syncs the returned site detail into options",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedRemoveSiteLabel.mockReturnValue(
+        Effect.succeed(buildSite(existingSiteId, "Existing Site"))
+      );
+
+      const user = userEvent.setup();
+      renderSitesStateProbe({
+        site: buildSite(existingSiteId, "Existing Site", [
+          buildLabel(urgentLabelId, "Urgent"),
+        ]),
+      });
+
+      await user.click(screen.getByRole("button", { name: "Remove label" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("site-labels")).toHaveTextContent("none");
+      });
+      expect(mockedRemoveSiteLabel).toHaveBeenCalledWith({
+        path: { labelId: urgentLabelId, siteId: existingSiteId },
+      });
     }
   );
 
@@ -422,8 +570,10 @@ describe("sites state integration", () => {
 
 function renderSitesStateProbe({
   comments = [],
+  site = buildSite(existingSiteId, "Existing Site"),
 }: {
   readonly comments?: readonly SiteComment[];
+  readonly site?: CreateSiteResponse & UpdateSiteResponse;
 } = {}) {
   return render(
     <RegistryProvider
@@ -432,10 +582,14 @@ function renderSitesStateProbe({
           sitesOptionsStateAtom,
           seedSitesOptionsState(organizationId, {
             serviceAreas: [],
-            sites: [buildSite(existingSiteId, "Existing Site")],
+            sites: [site],
           }),
         ],
         [siteCommentsStateAtomFamily(existingSiteId), comments],
+        [
+          organizationLabelsStateAtom,
+          seedOrganizationLabelsState(organizationId, []),
+        ],
       ]}
     >
       <SitesStateProbe />
@@ -445,9 +599,27 @@ function renderSitesStateProbe({
 
 function SitesStateProbe() {
   const [lastExit, setLastExit] = useState("");
+  const assignSiteLabel = useAtomSet(
+    assignSiteLabelMutationAtomFamily(existingSiteId),
+    {
+      mode: "promiseExit",
+    }
+  );
   const createSite = useAtomSet(createSiteMutationAtom, {
     mode: "promiseExit",
   });
+  const createAndAssignSiteLabel = useAtomSet(
+    createAndAssignSiteLabelMutationAtomFamily(existingSiteId),
+    {
+      mode: "promiseExit",
+    }
+  );
+  const removeSiteLabel = useAtomSet(
+    removeSiteLabelMutationAtomFamily(existingSiteId),
+    {
+      mode: "promiseExit",
+    }
+  );
   const updateSite = useAtomSet(updateSiteMutationAtomFamily(existingSiteId), {
     mode: "promiseExit",
   });
@@ -466,6 +638,7 @@ function SitesStateProbe() {
   const options = useAtomValue(sitesOptionsStateAtom).data;
   const comments = useAtomValue(siteCommentsStateAtomFamily(existingSiteId));
   const notice = useAtomValue(sitesNoticeAtom);
+  const organizationLabels = useAtomValue(organizationLabelsStateAtom).labels;
 
   return (
     <div>
@@ -484,6 +657,30 @@ function SitesStateProbe() {
         }}
       >
         Update site
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void assignSiteLabel({ labelId: urgentLabelId });
+        }}
+      >
+        Assign label
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void createAndAssignSiteLabel({ name: "Warranty" });
+        }}
+      >
+        Create and assign label
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void removeSiteLabel(urgentLabelId);
+        }}
+      >
+        Remove label
       </button>
       <button
         type="button"
@@ -507,6 +704,14 @@ function SitesStateProbe() {
       </button>
       <output data-testid="site-names">
         {options.sites.map((site) => site.name).join(" | ")}
+      </output>
+      <output data-testid="site-labels">
+        {options.sites
+          .flatMap((site) => site.labels.map((label) => label.name))
+          .join(" | ") || "none"}
+      </output>
+      <output data-testid="organization-labels">
+        {organizationLabels.map((label) => label.name).join(" | ") || "none"}
       </output>
       <output data-testid="comment-bodies">
         {comments.map((comment) => comment.body).join(" | ")}
@@ -562,7 +767,8 @@ function buildSiteComment(
 
 function buildSite(
   id: SiteIdType,
-  name: string
+  name: string,
+  labels: readonly Label[] = []
 ): CreateSiteResponse & UpdateSiteResponse {
   return {
     addressLine1: "1 Custom House Quay",
@@ -572,9 +778,18 @@ function buildSite(
     geocodedAt: "2026-04-27T10:00:00.000Z",
     geocodingProvider: "stub",
     id,
-    labels: [],
+    labels,
     latitude: 53.3498,
     longitude: -6.2603,
     name,
+  };
+}
+
+function buildLabel(id: LabelIdType, name: string): Label {
+  return {
+    createdAt: "2026-04-27T10:00:00.000Z",
+    id,
+    name,
+    updatedAt: "2026-04-27T10:00:00.000Z",
   };
 }
