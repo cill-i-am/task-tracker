@@ -1,17 +1,21 @@
+import { LabelId, LabelNotFoundError } from "@ceird/labels-core";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "@effect/platform";
 import { Schema } from "effect";
 
 import {
   AddSiteCommentInputSchema,
   AddSiteCommentResponseSchema,
+  AssignSiteLabelInputSchema,
   CreateServiceAreaInputSchema,
   CreateServiceAreaResponseSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
   ServiceAreaListResponseSchema,
   SiteCommentsResponseSchema,
+  SiteDetailSchema,
   SiteListQuerySchema,
   SiteListResponseSchema,
+  SitesOptionsResponseSchema,
   UpdateServiceAreaInputSchema,
   UpdateServiceAreaResponseSchema,
   UpdateSiteInputSchema,
@@ -29,6 +33,12 @@ import {
 import { ServiceAreaId, SiteId } from "./ids.js";
 
 const sitesGroup = HttpApiGroup.make("sites")
+  .add(
+    HttpApiEndpoint.get("getSiteOptions", "/sites/options")
+      .addSuccess(SitesOptionsResponseSchema)
+      .addError(SiteAccessDeniedError)
+      .addError(SiteStorageError)
+  )
   .add(
     HttpApiEndpoint.get("listSites", "/sites")
       .setUrlParams(SiteListQuerySchema)
@@ -74,6 +84,25 @@ const sitesGroup = HttpApiGroup.make("sites")
       .addSuccess(AddSiteCommentResponseSchema, { status: 201 })
       .addError(SiteAccessDeniedError)
       .addError(SiteNotFoundError)
+      .addError(SiteStorageError)
+  )
+  .add(
+    HttpApiEndpoint.post("assignSiteLabel", "/sites/:siteId/labels")
+      .setPath(Schema.Struct({ siteId: SiteId }))
+      .setPayload(AssignSiteLabelInputSchema)
+      .addSuccess(SiteDetailSchema)
+      .addError(SiteAccessDeniedError)
+      .addError(SiteNotFoundError)
+      .addError(LabelNotFoundError)
+      .addError(SiteStorageError)
+  )
+  .add(
+    HttpApiEndpoint.del("removeSiteLabel", "/sites/:siteId/labels/:labelId")
+      .setPath(Schema.Struct({ siteId: SiteId, labelId: LabelId }))
+      .addSuccess(SiteDetailSchema)
+      .addError(SiteAccessDeniedError)
+      .addError(SiteNotFoundError)
+      .addError(LabelNotFoundError)
       .addError(SiteStorageError)
   );
 

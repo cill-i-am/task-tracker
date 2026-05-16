@@ -13,6 +13,7 @@
   "dependencies": {
     "@ceird/comments-core": "workspace:*",
     "@ceird/identity-core": "workspace:*",
+    "@ceird/labels-core": "workspace:*",
     "@effect/platform": "^0.96.1",
     "effect": "^3.21.2"
   },

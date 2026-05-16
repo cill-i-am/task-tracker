@@ -1,6 +1,7 @@
 /* oxlint-disable eslint/max-classes-per-file */
 
 import { OrganizationId } from "@ceird/identity-core";
+import type { LabelNotFoundError } from "@ceird/labels-core";
 import { HttpApiSchema } from "@effect/platform";
 import { Schema } from "effect";
 
@@ -99,4 +100,5 @@ export type SitesError =
   | SiteListCursorInvalidError
   | SiteGeocodingFailedError
   | SiteGeocodingProviderError
+  | LabelNotFoundError
   | ServiceAreaNotFoundError;

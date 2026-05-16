@@ -24,6 +24,7 @@ export type {
 export {
   AddSiteCommentInputSchema,
   AddSiteCommentResponseSchema,
+  AssignSiteLabelInputSchema,
   CreateServiceAreaInputSchema,
   CreateServiceAreaResponseSchema,
   CreateSiteInputSchema,
@@ -47,6 +48,7 @@ export {
 export type {
   AddSiteCommentInput,
   AddSiteCommentResponse,
+  AssignSiteLabelInput,
   CreateServiceAreaInput,
   CreateServiceAreaResponse,
   CreateSiteInput,

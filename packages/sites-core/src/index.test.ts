@@ -1,10 +1,12 @@
+import { LabelNotFoundError } from "@ceird/labels-core";
 import { OpenApi } from "@effect/platform";
 import { describe, expect, it } from "@effect/vitest";
 import { ParseResult, Schema } from "effect";
 
-import type { SiteId } from "./index.js";
+import type { SiteId, SitesError } from "./index.js";
 import {
   AddSiteCommentInputSchema,
+  AssignSiteLabelInputSchema,
   CreateServiceAreaInputSchema,
   CreateSiteInputSchema,
   CreateSiteResponseSchema,
@@ -91,6 +93,14 @@ describe("sites-core", () => {
       geocodedAt: "2026-04-22T10:00:00.000Z",
       geocodingProvider: "google",
       id: "550e8400-e29b-41d4-a716-446655440010",
+      labels: [
+        {
+          createdAt: "2026-05-16T10:00:00.000Z",
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "Fire safety",
+          updatedAt: "2026-05-16T10:05:00.000Z",
+        },
+      ],
       latitude: 53.3498,
       longitude: -6.2603,
       name: "Docklands Campus",
@@ -166,6 +176,27 @@ describe("sites-core", () => {
     expect(siteComments?.post?.responses["404"]).toBeDefined();
   });
 
+  it("decodes site label assignment DTOs", () => {
+    expect(
+      ParseResult.decodeUnknownSync(AssignSiteLabelInputSchema)({
+        labelId: "11111111-1111-4111-8111-111111111111",
+      })
+    ).toStrictEqual({
+      labelId: "11111111-1111-4111-8111-111111111111",
+    });
+  });
+
+  it("documents site label assignment operations", () => {
+    const spec = OpenApi.fromApi(SitesApi);
+
+    expect(spec.paths["/sites/{siteId}/labels"]?.post?.operationId).toBe(
+      "sites.assignSiteLabel"
+    );
+    expect(
+      spec.paths["/sites/{siteId}/labels/{labelId}"]?.delete?.operationId
+    ).toBe("sites.removeSiteLabel");
+  });
+
   it("exports site API groups and typed errors", () => {
     expect(SitesApi).toBeDefined();
     expect(SitesApiGroup).toBeDefined();
@@ -203,6 +234,10 @@ describe("sites-core", () => {
     expect(new SiteStorageError({ message: "Storage failed" })._tag).toBe(
       "@ceird/sites-core/SiteStorageError"
     );
+    const labelError: SitesError = new LabelNotFoundError({
+      message: "Label does not exist",
+    });
+    expect(labelError._tag).toBe("@ceird/labels-core/LabelNotFoundError");
   });
 
   it("decodes cursor-paginated site list requests and responses", () => {
