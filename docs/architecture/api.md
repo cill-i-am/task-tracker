@@ -203,7 +203,7 @@ Core files:
 | File                       | Responsibility                                                                          |
 | -------------------------- | --------------------------------------------------------------------------------------- |
 | `http.ts`                  | Binds sites and service-area contract endpoints to Effect services and configures CORS. |
-| `service.ts`               | Site list, create, update, internal option, and internal comment use cases.             |
+| `service.ts`               | Site list, create, update, options, internal comments, and site-label assignment use cases. |
 | `service-areas-service.ts` | Service-area list, create, and update use cases.                                        |
 | `repositories.ts`          | SQL repository layer for sites, service areas, and site-label assignment methods.       |
 | `schema.ts`                | Sites, service-area, and site-label assignment rows and relations.                      |
