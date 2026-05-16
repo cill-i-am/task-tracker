@@ -572,6 +572,7 @@ function buildSite(
     geocodedAt: "2026-04-27T10:00:00.000Z",
     geocodingProvider: "stub",
     id,
+    labels: [],
     latitude: 53.3498,
     longitude: -6.2603,
     name,

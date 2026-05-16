@@ -475,6 +475,7 @@ function buildExternalDetail(): JobDetailResponse {
       geocodedAt: "2026-04-27T10:00:00.000Z",
       geocodingProvider: "stub",
       id: siteId,
+      labels: [],
       latitude: 52.6638,
       longitude: -8.6267,
       name: "King Street Library",

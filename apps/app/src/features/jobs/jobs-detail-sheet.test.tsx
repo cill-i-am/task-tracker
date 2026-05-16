@@ -1656,6 +1656,7 @@ function buildSiteOption(): SiteOption {
     geocodedAt: "2026-04-23T09:00:00.000Z",
     geocodingProvider: "google",
     id: siteId,
+    labels: [],
     latitude: 53.3498,
     longitude: -6.2603,
     name: "Docklands Campus",
