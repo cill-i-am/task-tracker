@@ -1,4 +1,5 @@
 "use client";
+import type { OrganizationId } from "@ceird/identity-core";
 import type {
   AddJobCommentInput,
   AddJobCommentResponse,
@@ -26,6 +27,10 @@ import { Effect, Option } from "effect";
 
 import { runBrowserAppApiRequest } from "#/features/api/app-api-client";
 import type { AppApiError } from "#/features/api/app-api-errors";
+import {
+  createBrowserLabel,
+  upsertOrganizationLabel,
+} from "#/features/labels/labels-state";
 import { withMinimumMutationPendingDurationEffect } from "#/lib/mutation-feedback-effect";
 
 import {
@@ -228,11 +233,20 @@ export const detachJobCollaboratorMutationAtomFamily = Atom.family(
 
 export const createAndAssignJobLabelMutationAtomFamily = Atom.family(
   (workItemId: WorkItemIdType) =>
-    Atom.fn<AppApiError, JobDetailResponse, CreateLabelInput>((input, get) =>
-      withMinimumMutationPendingDurationEffect(
+    Atom.fn<AppApiError, JobDetailResponse, CreateLabelInput>((input, get) => {
+      const expectedJobsOptionsOrganizationId =
+        get(jobsOptionsStateAtom).organizationId;
+
+      return withMinimumMutationPendingDurationEffect(
         createBrowserLabel(input).pipe(
           Effect.tap((label) =>
-            Effect.sync(() => upsertJobOptionLabel(get, label))
+            Effect.sync(() => {
+              upsertJobOptionLabel(
+                get,
+                label,
+                expectedJobsOptionsOrganizationId
+              );
+            })
           ),
           Effect.flatMap((label) =>
             assignBrowserJobLabel(workItemId, { labelId: label.id })
@@ -242,8 +256,8 @@ export const createAndAssignJobLabelMutationAtomFamily = Atom.family(
         Effect.tap((detail) =>
           Effect.sync(() => syncChangedJobDetail(get, workItemId, detail))
         )
-      )
-    )
+      );
+    })
 );
 
 export const removeJobLabelMutationAtomFamily = Atom.family(
@@ -394,14 +408,6 @@ function detachBrowserJobCollaborator(
   );
 }
 
-function createBrowserLabel(input: CreateLabelInput) {
-  return runBrowserAppApiRequest("LabelsBrowser.createLabel", (client) =>
-    client.labels.createLabel({
-      payload: input,
-    })
-  );
-}
-
 function removeBrowserJobLabel(
   workItemId: WorkItemIdType,
   labelId: LabelIdType
@@ -470,19 +476,24 @@ function syncChangedJobDetail(
   updateJobsListJob(get, detail.job);
 }
 
-function upsertJobOptionLabel(get: Atom.FnContext, label: Label) {
+function upsertJobOptionLabel(
+  get: Atom.FnContext,
+  label: Label,
+  expectedOrganizationId?: OrganizationId | null
+) {
   const currentOptionsState = get(jobsOptionsStateAtom);
-  const labels = [
-    label,
-    ...currentOptionsState.data.labels.filter(
-      (current) => current.id !== label.id
-    ),
-  ].sort(compareLabels);
+
+  if (
+    expectedOrganizationId !== undefined &&
+    currentOptionsState.organizationId !== expectedOrganizationId
+  ) {
+    return;
+  }
 
   get.set(jobsOptionsStateAtom, {
     data: {
       ...currentOptionsState.data,
-      labels,
+      labels: upsertOrganizationLabel(currentOptionsState.data.labels, label),
     },
     organizationId: currentOptionsState.organizationId,
   });
@@ -502,12 +513,6 @@ function upsertJobCollaborator(
       ...current.filter((item) => item.id !== collaborator.id),
     ].sort((left, right) => left.roleLabel.localeCompare(right.roleLabel))
   );
-}
-
-function compareLabels(left: Label, right: Label) {
-  const nameOrder = left.name.localeCompare(right.name);
-
-  return nameOrder === 0 ? left.id.localeCompare(right.id) : nameOrder;
 }
 
 function refreshJobDetailIfPossible(

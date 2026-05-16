@@ -75,6 +75,8 @@ Exports the shared sites and service-area contract:
 - site create/update inputs, rich site option/detail DTOs, site options response,
   and cursor-paginated site list request/response DTOs
 - site comment DTOs extended from `@ceird/comments-core`
+- site label assignment inputs and endpoints; this package depends on
+  `@ceird/labels-core` for label IDs and schemas
 - service-area create/update/list DTOs
 - typed site, service-area, access-denied, storage, and geocoding errors
 - `SitesApi`, `SitesApiGroup`, and `ServiceAreasApiGroup`
@@ -94,8 +96,9 @@ Exports the shared organization-label contract:
 - typed label access-denied, storage, not-found, and name-conflict errors
 - `LabelsApi` and `LabelsApiGroup`
 
-Labels are organization-level labels. Jobs may assign labels, but the label
-definitions themselves are not job-owned.
+Labels are organization-level labels. Jobs and sites may assign labels through
+their owning-domain assignment endpoints, but the label definitions themselves
+are not job- or site-owned.
 
 ## `@ceird/sandbox-core`
 
@@ -191,6 +194,7 @@ packages/jobs-core
 packages/sites-core
   -> @ceird/comments-core
   -> @ceird/identity-core
+  -> @ceird/labels-core
 
 packages/comments-core
   -> @ceird/identity-core

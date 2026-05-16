@@ -26,6 +26,9 @@ const SitesHandlersLive = HttpApiBuilder.group(AppApi, "sites", (handlers) =>
     const sitesService = yield* SitesService;
 
     return handlers
+      .handle("getSiteOptions", () =>
+        sitesService.getOptions().pipe(observeSitesOperation("getSiteOptions"))
+      )
       .handle("listSites", ({ urlParams }) =>
         sitesService.list(urlParams).pipe(observeSitesOperation("listSites"))
       )
@@ -46,6 +49,16 @@ const SitesHandlersLive = HttpApiBuilder.group(AppApi, "sites", (handlers) =>
         sitesService
           .addComment(path.siteId, payload)
           .pipe(observeSitesOperation("addSiteComment"))
+      )
+      .handle("assignSiteLabel", ({ path, payload }) =>
+        sitesService
+          .assignLabel(path.siteId, payload)
+          .pipe(observeSitesOperation("assignSiteLabel"))
+      )
+      .handle("removeSiteLabel", ({ path }) =>
+        sitesService
+          .removeLabel(path.siteId, path.labelId)
+          .pipe(observeSitesOperation("removeSiteLabel"))
       );
   })
 );

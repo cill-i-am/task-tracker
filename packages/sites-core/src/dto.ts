@@ -1,4 +1,5 @@
 import { AddCommentInputSchema, CommentSchema } from "@ceird/comments-core";
+import { LabelId, LabelSchema } from "@ceird/labels-core";
 import { Schema } from "effect";
 
 import {
@@ -110,6 +111,7 @@ export const SiteOptionSchema = Schema.Struct({
   longitude: SiteLongitudeSchema,
   geocodingProvider: SiteGeocodingProviderSchema,
   geocodedAt: IsoDateTimeString,
+  labels: Schema.Array(LabelSchema),
 });
 export type SiteOption = Schema.Schema.Type<typeof SiteOptionSchema>;
 
@@ -179,6 +181,15 @@ export type UpdateSiteInput = Schema.Schema.Type<typeof UpdateSiteInputSchema>;
 export const UpdateSiteResponseSchema = SiteOptionSchema;
 export type UpdateSiteResponse = Schema.Schema.Type<
   typeof UpdateSiteResponseSchema
+>;
+
+export const AssignSiteLabelInputSchema = Schema.Struct({
+  labelId: LabelId,
+}).annotations({
+  parseOptions: { onExcessProperty: "error" },
+});
+export type AssignSiteLabelInput = Schema.Schema.Type<
+  typeof AssignSiteLabelInputSchema
 >;
 
 export const SitesOptionsResponseSchema = Schema.Struct({

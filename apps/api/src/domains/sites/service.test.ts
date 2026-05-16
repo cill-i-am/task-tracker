@@ -1,4 +1,6 @@
 import type { OrganizationId, UserId } from "@ceird/identity-core";
+import { LabelNotFoundError } from "@ceird/labels-core";
+import type { Label, LabelIdType as LabelId } from "@ceird/labels-core";
 import {
   SiteAccessDeniedError,
   ServiceAreaNotFoundError,
@@ -24,10 +26,15 @@ import { OrganizationAuthorization } from "../organizations/authorization.js";
 import { CurrentOrganizationActor } from "../organizations/current-actor.js";
 import type { OrganizationActor } from "../organizations/current-actor.js";
 import { SiteGeocoder } from "./geocoder.js";
-import { ServiceAreasRepository, SitesRepository } from "./repositories.js";
+import {
+  ServiceAreasRepository,
+  SiteLabelAssignmentsRepository,
+  SitesRepository,
+} from "./repositories.js";
 import { SitesService } from "./service.js";
 
 const siteId = "22222222-2222-4222-8222-222222222222" as SiteId;
+const labelId = "11111111-1111-4111-8111-111111111111" as LabelId;
 const serviceAreaId = "33333333-3333-4333-8333-333333333333" as NonNullable<
   JobSiteOption["serviceAreaId"]
 >;
@@ -59,6 +66,7 @@ function makeActor(
 
 interface SitesServiceHarness {
   readonly calls: {
+    assignLabel: number;
     createSite: number;
     addComment: number;
     findById: number;
@@ -68,6 +76,7 @@ interface SitesServiceHarness {
     listComments: number;
     listOptions: number;
     listServiceAreas: number;
+    removeLabel: number;
     withTransaction: number;
   };
   readonly layer: Layer.Layer<
@@ -78,7 +87,15 @@ interface SitesServiceHarness {
 function makeHarness(
   options: {
     readonly actor?: OrganizationActor;
+    readonly assignLabelFailure?:
+      | LabelNotFoundError
+      | SiteNotFoundError
+      | SqlError;
     readonly geocodingFailure?: SiteGeocodingFailedError;
+    readonly removeLabelFailure?:
+      | LabelNotFoundError
+      | SiteNotFoundError
+      | SqlError;
     readonly serviceAreaFailure?: ServiceAreaNotFoundError;
     readonly serviceAreaStorageFailure?: SqlError;
     readonly siteExists?: boolean;
@@ -86,6 +103,7 @@ function makeHarness(
 ): SitesServiceHarness {
   const actor = options.actor ?? makeActor("owner");
   const calls = {
+    assignLabel: 0,
     createSite: 0,
     addComment: 0,
     findById: 0,
@@ -95,7 +113,15 @@ function makeHarness(
     listComments: 0,
     listOptions: 0,
     listServiceAreas: 0,
+    removeLabel: 0,
     withTransaction: 0,
+  };
+  let siteHasLabel = false;
+  const organizationLabel: Label = {
+    createdAt: "2026-04-20T10:00:00.000Z",
+    id: labelId,
+    name: "Waiting on PO",
+    updatedAt: "2026-04-20T10:00:00.000Z",
   };
   const siteExists = options.siteExists ?? true;
   const createdSiteOption: JobSiteOption = {
@@ -107,6 +133,7 @@ function makeHarness(
     geocodingProvider: "stub",
     id: siteId,
     latitude: 53.3498,
+    labels: [],
     longitude: -6.2603,
     name: "Docklands Campus",
     serviceAreaId,
@@ -199,7 +226,10 @@ function makeHarness(
         expect(organizationId).toBe(actor.organizationId);
         expect(requestedSiteId).toBe(siteId);
 
-        return Option.some(createdSiteOption);
+        return Option.some({
+          ...createdSiteOption,
+          labels: siteHasLabel ? [organizationLabel] : [],
+        });
       }),
     list: (organizationId: OrganizationId, _query: unknown) =>
       Effect.sync(() => {
@@ -279,6 +309,57 @@ function makeHarness(
     ) => effect,
   });
 
+  const siteLabelAssignmentsRepository = SiteLabelAssignmentsRepository.make({
+    assignToSite: (input: {
+      readonly labelId: Label["id"];
+      readonly organizationId: OrganizationId;
+      readonly siteId: SiteId;
+    }) =>
+      Effect.gen(function* () {
+        calls.assignLabel += 1;
+        expect(input).toStrictEqual({
+          labelId,
+          organizationId: actor.organizationId,
+          siteId,
+        });
+
+        if (options.assignLabelFailure !== undefined) {
+          return yield* Effect.fail(options.assignLabelFailure);
+        }
+
+        siteHasLabel = true;
+
+        return {
+          changed: true,
+          label: organizationLabel,
+        };
+      }),
+    removeFromSite: (input: {
+      readonly labelId: Label["id"];
+      readonly organizationId: OrganizationId;
+      readonly siteId: SiteId;
+    }) =>
+      Effect.gen(function* () {
+        calls.removeLabel += 1;
+        expect(input).toStrictEqual({
+          labelId,
+          organizationId: actor.organizationId,
+          siteId,
+        });
+
+        if (options.removeLabelFailure !== undefined) {
+          return yield* Effect.fail(options.removeLabelFailure);
+        }
+
+        siteHasLabel = false;
+
+        return {
+          changed: true,
+          label: organizationLabel,
+        };
+      }),
+  });
+
   const serviceAreasRepository = ServiceAreasRepository.make({
     create: (_input: unknown) => unexpected("configuration.createServiceArea"),
     list: (_organizationId: OrganizationId) =>
@@ -327,6 +408,10 @@ function makeHarness(
       ),
       Layer.succeed(CommentsRepository, commentsRepository),
       Layer.succeed(SitesRepository, sitesRepository),
+      Layer.succeed(
+        SiteLabelAssignmentsRepository,
+        siteLabelAssignmentsRepository
+      ),
       Layer.succeed(ServiceAreasRepository, serviceAreasRepository),
       Layer.succeed(SiteGeocoder, siteGeocoder),
       OrganizationAuthorization.Default
@@ -374,6 +459,194 @@ function getFailure<Value, Error>(exit: Exit.Exit<Value, Error>) {
 }
 
 describe("sites service", () => {
+  it.each(["owner", "admin"] as const)(
+    "lets %s assign and remove labels from sites",
+    async (role) => {
+      const harness = makeHarness({ actor: makeActor(role) });
+
+      await expect(
+        runSitesService(
+          Effect.gen(function* () {
+            const sites = yield* SitesService;
+
+            const assigned = yield* sites.assignLabel(siteId, { labelId });
+            const removed = yield* sites.removeLabel(siteId, labelId);
+
+            return { assigned, removed };
+          }),
+          harness
+        )
+      ).resolves.toStrictEqual({
+        assigned: expect.objectContaining({
+          id: siteId,
+          labels: [
+            expect.objectContaining({ id: labelId, name: "Waiting on PO" }),
+          ],
+        }),
+        removed: expect.objectContaining({
+          id: siteId,
+          labels: [],
+        }),
+      });
+
+      expect(harness.calls.assignLabel).toBe(1);
+      expect(harness.calls.removeLabel).toBe(1);
+      expect(harness.calls.getOptionById).toBe(2);
+    },
+    10_000
+  );
+
+  it("blocks external collaborators from assigning and removing site labels", async () => {
+    const harness = makeHarness({ actor: makeActor("external") });
+
+    const assignExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.assignLabel(siteId, { labelId });
+      }),
+      harness
+    );
+
+    const removeExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.removeLabel(siteId, labelId);
+      }),
+      harness
+    );
+
+    expect(getFailure(assignExit)).toBeInstanceOf(SiteAccessDeniedError);
+    expect(getFailure(assignExit)).toMatchObject({
+      message: "Only organization owners and admins can manage labels",
+    });
+    expect(getFailure(removeExit)).toBeInstanceOf(SiteAccessDeniedError);
+    expect(getFailure(removeExit)).toMatchObject({
+      message: "Only organization owners and admins can manage labels",
+    });
+    expect(harness.calls.assignLabel).toBe(0);
+    expect(harness.calls.removeLabel).toBe(0);
+    expect(harness.calls.getOptionById).toBe(0);
+  }, 10_000);
+
+  it("propagates typed site label assignment failures without reloading the site", async () => {
+    const missingLabel = new LabelNotFoundError({
+      labelId,
+      message: "Label does not exist in the organization",
+    });
+    const missingSite = new SiteNotFoundError({
+      message: "Site does not exist in the organization",
+      siteId,
+    });
+
+    const assignMissingLabelHarness = makeHarness({
+      assignLabelFailure: missingLabel,
+    });
+    const assignMissingLabelExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.assignLabel(siteId, { labelId });
+      }),
+      assignMissingLabelHarness
+    );
+    expect(getFailure(assignMissingLabelExit)).toStrictEqual(missingLabel);
+    expect(assignMissingLabelHarness.calls.assignLabel).toBe(1);
+    expect(assignMissingLabelHarness.calls.getOptionById).toBe(0);
+
+    const assignMissingSiteHarness = makeHarness({
+      assignLabelFailure: missingSite,
+    });
+    const assignMissingSiteExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.assignLabel(siteId, { labelId });
+      }),
+      assignMissingSiteHarness
+    );
+    expect(getFailure(assignMissingSiteExit)).toStrictEqual(missingSite);
+    expect(assignMissingSiteHarness.calls.assignLabel).toBe(1);
+    expect(assignMissingSiteHarness.calls.getOptionById).toBe(0);
+
+    const removeMissingLabelHarness = makeHarness({
+      removeLabelFailure: missingLabel,
+    });
+    const removeMissingLabelExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.removeLabel(siteId, labelId);
+      }),
+      removeMissingLabelHarness
+    );
+    expect(getFailure(removeMissingLabelExit)).toStrictEqual(missingLabel);
+    expect(removeMissingLabelHarness.calls.removeLabel).toBe(1);
+    expect(removeMissingLabelHarness.calls.getOptionById).toBe(0);
+
+    const removeMissingSiteHarness = makeHarness({
+      removeLabelFailure: missingSite,
+    });
+    const removeMissingSiteExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.removeLabel(siteId, labelId);
+      }),
+      removeMissingSiteHarness
+    );
+    expect(getFailure(removeMissingSiteExit)).toStrictEqual(missingSite);
+    expect(removeMissingSiteHarness.calls.removeLabel).toBe(1);
+    expect(removeMissingSiteHarness.calls.getOptionById).toBe(0);
+  }, 10_000);
+
+  it("maps site label assignment SQL failures without reloading the site", async () => {
+    const assignHarness = makeHarness({
+      assignLabelFailure: new SqlError({
+        message: "database unavailable",
+      }),
+    });
+
+    const assignExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.assignLabel(siteId, { labelId });
+      }),
+      assignHarness
+    );
+    expect(getFailure(assignExit)).toBeInstanceOf(SiteStorageError);
+    expect(getFailure(assignExit)).toMatchObject({
+      cause: "database unavailable",
+      message: "Sites storage operation failed",
+    });
+    expect(assignHarness.calls.assignLabel).toBe(1);
+    expect(assignHarness.calls.getOptionById).toBe(0);
+
+    const removeHarness = makeHarness({
+      removeLabelFailure: new SqlError({
+        message: "database unavailable",
+      }),
+    });
+
+    const removeExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.removeLabel(siteId, labelId);
+      }),
+      removeHarness
+    );
+    expect(getFailure(removeExit)).toBeInstanceOf(SiteStorageError);
+    expect(getFailure(removeExit)).toMatchObject({
+      cause: "database unavailable",
+      message: "Sites storage operation failed",
+    });
+    expect(removeHarness.calls.removeLabel).toBe(1);
+    expect(removeHarness.calls.getOptionById).toBe(0);
+  }, 10_000);
+
   it("creates a standalone site and returns the created site option", async () => {
     const harness = makeHarness();
 

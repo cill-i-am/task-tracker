@@ -314,6 +314,7 @@ const siteOptions: SitesOptionsResponse = {
       geocodedAt: "2026-04-27T10:00:00.000Z",
       geocodingProvider: "stub",
       id: siteId,
+      labels: [],
       latitude: 53.3498,
       longitude: -6.2603,
       name: "Docklands Campus",

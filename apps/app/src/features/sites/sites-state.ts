@@ -1,11 +1,14 @@
 "use client";
 import type { OrganizationId } from "@ceird/identity-core";
+import type { CreateLabelInput, LabelIdType } from "@ceird/labels-core";
 import type {
   AddSiteCommentInput,
   AddSiteCommentResponse,
+  AssignSiteLabelInput,
   CreateSiteInput,
   CreateSiteResponse,
   SiteComment,
+  SiteDetail,
   SiteIdType,
   SiteOption,
   SitesOptionsResponse,
@@ -17,6 +20,7 @@ import { Effect, Option } from "effect";
 
 import { runBrowserAppApiRequest } from "#/features/api/app-api-client";
 import type { AppApiError } from "#/features/api/app-api-errors";
+import { createBrowserLabel } from "#/features/labels/labels-state";
 import { withMinimumMutationPendingDurationEffect } from "#/lib/mutation-feedback-effect";
 
 export interface SitesNotice {
@@ -198,6 +202,63 @@ export const addSiteCommentMutationAtomFamily = Atom.family(
     )
 );
 
+export const assignSiteLabelMutationAtomFamily = Atom.family(
+  (siteId: SiteIdType) =>
+    Atom.fn<AppApiError, SiteDetail, AssignSiteLabelInput>((input, get) => {
+      const expectedOrganizationId = get(sitesOptionsStateAtom).organizationId;
+
+      return withMinimumMutationPendingDurationEffect(
+        assignBrowserSiteLabel(siteId, input)
+      ).pipe(
+        Effect.tap((site) =>
+          Effect.sync(() =>
+            syncChangedSiteDetail(get, site, expectedOrganizationId)
+          )
+        )
+      );
+    })
+);
+
+export const createAndAssignSiteLabelMutationAtomFamily = Atom.family(
+  (siteId: SiteIdType) =>
+    Atom.fn<AppApiError, SiteDetail, CreateLabelInput>((input, get) => {
+      const expectedSitesOrganizationId = get(
+        sitesOptionsStateAtom
+      ).organizationId;
+
+      return withMinimumMutationPendingDurationEffect(
+        createBrowserLabel(input).pipe(
+          Effect.flatMap((label) =>
+            assignBrowserSiteLabel(siteId, { labelId: label.id })
+          )
+        )
+      ).pipe(
+        Effect.tap((site) =>
+          Effect.sync(() =>
+            syncChangedSiteDetail(get, site, expectedSitesOrganizationId)
+          )
+        )
+      );
+    })
+);
+
+export const removeSiteLabelMutationAtomFamily = Atom.family(
+  (siteId: SiteIdType) =>
+    Atom.fn<AppApiError, SiteDetail, LabelIdType>((labelId, get) => {
+      const expectedOrganizationId = get(sitesOptionsStateAtom).organizationId;
+
+      return withMinimumMutationPendingDurationEffect(
+        removeBrowserSiteLabel(siteId, labelId)
+      ).pipe(
+        Effect.tap((site) =>
+          Effect.sync(() =>
+            syncChangedSiteDetail(get, site, expectedOrganizationId)
+          )
+        )
+      );
+    })
+);
+
 function upsertSiteOption(
   options: SitesOptionsResponse,
   site: SiteOption
@@ -241,6 +302,46 @@ function addBrowserSiteComment(siteId: SiteIdType, input: AddSiteCommentInput) {
       payload: input,
     })
   );
+}
+
+function assignBrowserSiteLabel(
+  siteId: SiteIdType,
+  input: AssignSiteLabelInput
+) {
+  return runBrowserAppApiRequest("SitesBrowser.assignSiteLabel", (client) =>
+    client.sites.assignSiteLabel({
+      path: { siteId },
+      payload: input,
+    })
+  );
+}
+
+function removeBrowserSiteLabel(siteId: SiteIdType, labelId: LabelIdType) {
+  return runBrowserAppApiRequest("SitesBrowser.removeSiteLabel", (client) =>
+    client.sites.removeSiteLabel({
+      path: { labelId, siteId },
+    })
+  );
+}
+
+function syncChangedSiteDetail(
+  get: Atom.FnContext,
+  site: SiteDetail,
+  expectedOrganizationId?: OrganizationId | null
+) {
+  const currentOptionsState = get(sitesOptionsStateAtom);
+
+  if (
+    expectedOrganizationId !== undefined &&
+    currentOptionsState.organizationId !== expectedOrganizationId
+  ) {
+    return;
+  }
+
+  get.set(sitesOptionsStateAtom, {
+    data: upsertSiteOption(currentOptionsState.data, site),
+    organizationId: currentOptionsState.organizationId,
+  });
 }
 
 function refreshSiteOptionsOrUpsert(get: Atom.FnContext, site: SiteOption) {

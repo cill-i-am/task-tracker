@@ -94,6 +94,7 @@ import { Config, Effect, Layer, Option, Schema } from "effect";
 
 import { CommentsRepository } from "../comments/repository.js";
 import { decodeJsonCursor, encodeJsonCursor } from "../json-cursor.js";
+import { listSiteLabelsForSites } from "../sites/site-label-queries.js";
 import { WorkItemOrganizationMismatchError } from "./errors.js";
 import {
   generateActivityId,
@@ -797,7 +798,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
         workItemIds: readonly WorkItemId[]
       ) {
         if (workItemIds.length === 0) {
-          return new Map<string, readonly Label[]>();
+          return new Map<WorkItemId, Label[]>();
         }
 
         const rows = yield* sql<WorkItemLabelRow>`
@@ -817,10 +818,11 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           order by labels.name asc, labels.id asc
         `;
 
-        const labelsByWorkItemId = new Map<string, Label[]>();
+        const labelsByWorkItemId = new Map<WorkItemId, Label[]>();
 
         for (const row of rows) {
-          const labels = labelsByWorkItemId.get(row.work_item_id) ?? [];
+          const workItemId = decodeWorkItemId(row.work_item_id);
+          const labels = labelsByWorkItemId.get(workItemId) ?? [];
           labels.push(
             decodeLabel({
               createdAt: row.created_at.toISOString(),
@@ -829,7 +831,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
               updatedAt: row.updated_at.toISOString(),
             })
           );
-          labelsByWorkItemId.set(row.work_item_id, labels);
+          labelsByWorkItemId.set(workItemId, labels);
         }
 
         return labelsByWorkItemId;
@@ -966,7 +968,10 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
         const items = rows
           .slice(0, limit)
           .map((row) =>
-            mapJobListItemRow(row, labelsByWorkItemId.get(row.id) ?? [])
+            mapJobListItemRow(
+              row,
+              labelsByWorkItemId.get(decodeWorkItemId(row.id)) ?? []
+            )
           );
         const nextCursorRow = rows.length > limit ? rows[limit - 1] : undefined;
         const nextCursor =
@@ -1341,50 +1346,71 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           return Option.none<JobDetail>();
         }
 
-        const [comments, labelsByWorkItemId] = yield* Effect.all([
-          commentsRepository.listForWorkItem(organizationId, workItemId),
-          listLabelsForWorkItems(organizationId, [workItemId]),
-        ]);
-        const [activity, visits, costLines] =
+        const activityEffect =
           resolvedAccess.visibility === "external"
-            ? [
-                [] as WorkItemActivityRow[],
-                [] as WorkItemVisitRow[],
-                [] as WorkItemCostLineRow[],
-              ]
-            : yield* Effect.all([
-                sql<WorkItemActivityRow>`
-            select *
-            from work_item_activity
-            where work_item_id = ${workItemId}
-              and organization_id = ${organizationId}
-            order by created_at desc, id desc
-          `,
-                sql<WorkItemVisitRow>`
-            select *
-            from work_item_visits
-            where work_item_id = ${workItemId}
-              and organization_id = ${organizationId}
-            order by visit_date desc, id desc
-          `,
-                sql<WorkItemCostLineRow>`
-            select *
-            from work_item_cost_lines
-            where work_item_id = ${workItemId}
-              and organization_id = ${organizationId}
-            order by created_at desc, id desc
-          `,
-              ]);
-        const contact =
+            ? Effect.succeed<WorkItemActivityRow[]>([])
+            : sql<WorkItemActivityRow>`
+                select *
+                from work_item_activity
+                where work_item_id = ${workItemId}
+                  and organization_id = ${organizationId}
+                order by created_at desc, id desc
+              `;
+        const visitsEffect =
+          resolvedAccess.visibility === "external"
+            ? Effect.succeed<WorkItemVisitRow[]>([])
+            : sql<WorkItemVisitRow>`
+                select *
+                from work_item_visits
+                where work_item_id = ${workItemId}
+                  and organization_id = ${organizationId}
+                order by visit_date desc, id desc
+              `;
+        const costLinesEffect =
+          resolvedAccess.visibility === "external"
+            ? Effect.succeed<WorkItemCostLineRow[]>([])
+            : sql<WorkItemCostLineRow>`
+                select *
+                from work_item_cost_lines
+                where work_item_id = ${workItemId}
+                  and organization_id = ${organizationId}
+                order by created_at desc, id desc
+              `;
+        const contactEffect =
           job.contactId === undefined
-            ? undefined
-            : yield* findContactDetailById(organizationId, job.contactId);
-        const site =
-          job.siteId === undefined
-            ? undefined
-            : yield* findSiteDetailById(organizationId, job.siteId).pipe(
-                Effect.map(Option.getOrUndefined)
+            ? Effect.succeed(Option.none<JobContactDetail>())
+            : findContactDetailById(organizationId, job.contactId).pipe(
+                Effect.map(Option.fromNullable)
               );
+        const siteEffect =
+          job.siteId === undefined
+            ? Effect.succeed(Option.none<SiteOption>())
+            : findSiteDetailById(
+                organizationId,
+                job.siteId,
+                resolvedAccess.visibility !== "external"
+              );
+
+        const [
+          comments,
+          labelsByWorkItemId,
+          activity,
+          visits,
+          costLines,
+          contactOption,
+          siteOption,
+        ] = yield* Effect.all(
+          [
+            commentsRepository.listForWorkItem(organizationId, workItemId),
+            listLabelsForWorkItems(organizationId, [workItemId]),
+            activityEffect,
+            visitsEffect,
+            costLinesEffect,
+            contactEffect,
+            siteEffect,
+          ],
+          { concurrency: 3 }
+        );
 
         const mappedCostLines =
           resolvedAccess.visibility === "external"
@@ -1398,8 +1424,8 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
                 ? []
                 : activity.map(mapJobActivityRow),
             comments,
-            contact,
-            site,
+            contact: Option.getOrUndefined(contactOption),
+            site: Option.getOrUndefined(siteOption),
             costs:
               resolvedAccess.visibility === "external"
                 ? undefined
@@ -1427,7 +1453,11 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
       });
 
       const findSiteDetailById = Effect.fn("JobsRepository.findSiteDetailById")(
-        function* (organizationId: OrganizationId, siteId: SiteId) {
+        function* (
+          organizationId: OrganizationId,
+          siteId: SiteId,
+          includeLabels = true
+        ) {
           const rows = yield* sql<SiteOptionRow>`
           select
             sites.access_notes,
@@ -1453,8 +1483,18 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           limit 1
         `;
 
-          return Option.fromNullable(rows[0]).pipe(
-            Option.map(mapSiteOptionRow)
+          const [row] = rows;
+
+          if (row === undefined) {
+            return Option.none<SiteOption>();
+          }
+
+          const labelsBySiteId = includeLabels
+            ? yield* listSiteLabelsForSites(sql, organizationId, [siteId])
+            : new Map<SiteId, Label[]>();
+
+          return Option.some(
+            mapSiteOptionRow(row, labelsBySiteId.get(siteId) ?? [])
           );
         }
       );
@@ -2458,7 +2498,10 @@ function groupRateCardLinesByRateCardId(lines: readonly RateCardLineRow[]) {
   return linesByRateCardId;
 }
 
-function mapSiteOptionRow(row: SiteOptionRow): SiteOption {
+function mapSiteOptionRow(
+  row: SiteOptionRow,
+  labels: readonly Label[] = []
+): SiteOption {
   return decodeSiteOption({
     accessNotes: nullableToUndefined(row.access_notes),
     addressLine1: row.address_line_1,
@@ -2469,6 +2512,7 @@ function mapSiteOptionRow(row: SiteOptionRow): SiteOption {
     geocodedAt: dateToIsoString(row.geocoded_at),
     geocodingProvider: row.geocoding_provider,
     id: row.id,
+    labels,
     name: row.name,
     latitude: row.latitude,
     longitude: row.longitude,

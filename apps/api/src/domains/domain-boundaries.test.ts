@@ -44,6 +44,26 @@ describe("api domain boundaries", () => {
     expect(jobsSources).not.toMatch(/pgTable\(\s*"service_areas"/);
   });
 
+  it("keeps sites code free of organization label CRUD ownership", async () => {
+    const sitesSources = await readDomainSources("sites");
+
+    expect(sitesSources).not.toContain("../labels/repositories");
+    expect(sitesSources).not.toMatch(/\bLabelsRepository\b/);
+    expect(sitesSources).not.toMatch(/\bcreateSiteLabel\b/);
+    expect(sitesSources).not.toMatch(/\blistSiteLabels\b/);
+    expect(sitesSources).not.toMatch(/\bupdateSiteLabel\b/);
+    expect(sitesSources).not.toMatch(/\barchiveSiteLabel\b/);
+    expect(sitesSources).not.toMatch(/\bcreateLabel\b/);
+    expect(sitesSources).not.toMatch(/\blistLabels\b/);
+    expect(sitesSources).not.toMatch(/\bupdateLabel\b/);
+    expect(sitesSources).not.toMatch(/\bdeleteLabel\b/);
+    expect(sitesSources).not.toMatch(/\barchiveLabel\b/);
+    expect(sitesSources).not.toMatch(/insert\s+into\s+labels/);
+    expect(sitesSources).not.toMatch(/update\s+labels/);
+    expect(sitesSources).not.toMatch(/delete\s+from\s+labels/);
+    expect(sitesSources).not.toMatch(/pgTable\(\s*"labels"/);
+  });
+
   it("keeps sites independent from jobs-owned contacts", async () => {
     const sitesSources = await readDomainSources("sites");
 
@@ -57,6 +77,8 @@ describe("api domain boundaries", () => {
     const source = await readApiSources();
 
     expect(source).toContain('"labels"');
+    expect(source).toContain('"site_labels"');
+    expect(source).toContain('"work_item_labels"');
     expect(source).not.toContain('"job_labels"');
   });
 });

@@ -39,7 +39,7 @@ function lines(output) {
 }
 
 function unique(items) {
-  return [...new Set(items)].sort();
+  return [...new Set(items)].toSorted();
 }
 
 function firstExistingRef(refs) {
@@ -196,7 +196,7 @@ function pruneMarkers(markerDir) {
       const fullPath = path.join(markerDir, entry.name);
       return { name: entry.name, fullPath, mtimeMs: readMarkerMtime(fullPath) };
     })
-    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    .toSorted((a, b) => b.mtimeMs - a.mtimeMs);
 
   for (const marker of markers.slice(MARKER_LIMIT)) {
     rmSync(marker.fullPath, { force: true });

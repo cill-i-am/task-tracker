@@ -1,5 +1,13 @@
+/* oxlint-disable eslint/max-classes-per-file */
+
 import { OrganizationId as OrganizationIdSchema } from "@ceird/identity-core";
 import type { OrganizationId } from "@ceird/identity-core";
+import {
+  LabelId as LabelIdSchema,
+  LabelNotFoundError,
+  LabelSchema,
+} from "@ceird/labels-core";
+import type { Label, LabelIdType as LabelId } from "@ceird/labels-core";
 import {
   IsoDateTimeString as IsoDateTimeStringSchema,
   ServiceAreaId as ServiceAreaIdSchema,
@@ -8,6 +16,7 @@ import {
   SiteListCursor as SiteListCursorSchema,
   SiteListCursorInvalidError,
   SiteListResponseSchema,
+  SiteNotFoundError,
   SiteOptionSchema,
 } from "@ceird/sites-core";
 import type {
@@ -25,6 +34,10 @@ import { Effect, Option, Schema } from "effect";
 
 import { decodeJsonCursor, encodeJsonCursor } from "../json-cursor.js";
 import { generateSiteId } from "./id-generation.js";
+import {
+  listSiteLabelsForOrganization,
+  listSiteLabelsForSites,
+} from "./site-label-queries.js";
 export { ServiceAreasRepository } from "./service-areas-repository.js";
 
 interface IdRow {
@@ -54,6 +67,26 @@ interface SiteCursorState {
   readonly name: string;
   readonly organizationId: OrganizationId;
   readonly serviceAreaId?: ServiceAreaId | undefined;
+}
+
+interface LabelRow {
+  readonly archived_at: Date | null;
+  readonly created_at: Date;
+  readonly id: string;
+  readonly name: string;
+  readonly normalized_name: string;
+  readonly organization_id: string;
+  readonly updated_at: Date;
+}
+
+interface LabelAssignmentRow extends LabelRow {
+  readonly inserted_count: number;
+  readonly site_id: string | null;
+}
+
+interface LabelRemovalRow extends LabelRow {
+  readonly deleted_count: number;
+  readonly site_id: string | null;
 }
 
 export interface CreateSiteRecordInput {
@@ -89,6 +122,17 @@ export interface UpdateSiteRecordInput {
   readonly town?: string;
 }
 
+export interface AssignSiteLabelRecordInput {
+  readonly labelId: LabelId;
+  readonly organizationId: OrganizationId;
+  readonly siteId: SiteId;
+}
+
+export interface SiteLabelAssignmentResult {
+  readonly changed: boolean;
+  readonly label: Label;
+}
+
 const decodeSiteId = Schema.decodeUnknownSync(SiteIdSchema);
 const decodeSiteListCursor = Schema.decodeUnknownSync(SiteListCursorSchema);
 const decodeSiteListResponse = Schema.decodeUnknownSync(SiteListResponseSchema);
@@ -101,6 +145,8 @@ const decodeSiteCursorState = Schema.decodeUnknownSync(
     serviceAreaId: Schema.optional(ServiceAreaIdSchema),
   })
 );
+const decodeLabel = Schema.decodeUnknownSync(LabelSchema);
+const decodeLabelId = Schema.decodeUnknownSync(LabelIdSchema);
 const decodeIsoDateTimeString = Schema.decodeUnknownSync(
   IsoDateTimeStringSchema
 );
@@ -220,31 +266,41 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
       const listOptions = Effect.fn("SitesRepository.listOptions")(function* (
         organizationId: OrganizationId
       ) {
-        const rows = yield* sql<SiteOptionRow>`
-          select
-            sites.access_notes,
-            sites.address_line_1,
-            sites.address_line_2,
-            sites.country,
-            sites.county,
-            sites.eircode,
-            sites.geocoded_at,
-            sites.geocoding_provider,
-            sites.id,
-            sites.latitude,
-            sites.longitude,
-            sites.name,
-            service_areas.id as service_area_id,
-            service_areas.name as service_area_name,
-            sites.town
-          from sites
-          left join service_areas on service_areas.id = sites.service_area_id
-          where sites.organization_id = ${organizationId}
-            and sites.archived_at is null
-          order by sites.name asc nulls last, sites.id asc
-        `;
+        const [rows, labelsBySiteId] = yield* Effect.all(
+          [
+            sql<SiteOptionRow>`
+              select
+                sites.access_notes,
+                sites.address_line_1,
+                sites.address_line_2,
+                sites.country,
+                sites.county,
+                sites.eircode,
+                sites.geocoded_at,
+                sites.geocoding_provider,
+                sites.id,
+                sites.latitude,
+                sites.longitude,
+                sites.name,
+                service_areas.id as service_area_id,
+                service_areas.name as service_area_name,
+                sites.town
+              from sites
+              left join service_areas on service_areas.id = sites.service_area_id
+              where sites.organization_id = ${organizationId}
+                and sites.archived_at is null
+              order by sites.name asc nulls last, sites.id asc
+            `,
+            listSiteLabelsForOrganization(sql, organizationId),
+          ],
+          { concurrency: 2 }
+        );
 
-        return rows.map(mapSiteOptionRow);
+        return rows.map((row) => {
+          const siteId = decodeSiteId(row.id);
+
+          return mapSiteOptionRow(row, labelsBySiteId.get(siteId) ?? []);
+        });
       });
 
       const list = Effect.fn("SitesRepository.list")(function* (
@@ -319,7 +375,17 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           limit ${limit + 1}
         `;
 
-        const items = rows.slice(0, limit).map(mapSiteOptionRow);
+        const pageRows = rows.slice(0, limit);
+        const labelsBySiteId = yield* listSiteLabelsForSites(
+          sql,
+          organizationId,
+          pageRows.map((row) => decodeSiteId(row.id))
+        );
+        const items = pageRows.map((row) => {
+          const siteId = decodeSiteId(row.id);
+
+          return mapSiteOptionRow(row, labelsBySiteId.get(siteId) ?? []);
+        });
         const nextCursorRow = rows.length > limit ? rows[limit - 1] : undefined;
         const nextCursor =
           nextCursorRow === undefined
@@ -359,8 +425,20 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
             limit 1
           `;
 
-          return Option.fromNullable(rows[0]).pipe(
-            Option.map(mapSiteOptionRow)
+          const [row] = rows;
+
+          if (row === undefined) {
+            return Option.none<SiteOption>();
+          }
+
+          const labelsBySiteId = yield* listSiteLabelsForSites(
+            sql,
+            organizationId,
+            [siteId]
+          );
+
+          return Option.some(
+            mapSiteOptionRow(row, labelsBySiteId.get(siteId) ?? [])
           );
         }
       );
@@ -374,6 +452,180 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
         listOptions,
         update,
         withTransaction,
+      };
+    }),
+  }
+) {}
+
+export class SiteLabelAssignmentsRepository extends Effect.Service<SiteLabelAssignmentsRepository>()(
+  "@ceird/domains/sites/SiteLabelAssignmentsRepository",
+  {
+    accessors: true,
+    effect: Effect.gen(function* SiteLabelAssignmentsRepositoryLive() {
+      const sql = yield* SqlClient.SqlClient;
+
+      const ensureSiteInOrganization = Effect.fn(
+        "SiteLabelAssignmentsRepository.ensureSiteInOrganization"
+      )(function* (organizationId: OrganizationId, siteId: SiteId) {
+        const rows = yield* sql<IdRow>`
+          select id
+          from sites
+          where organization_id = ${organizationId}
+            and id = ${siteId}
+            and archived_at is null
+          limit 1
+        `;
+
+        if (rows[0] === undefined) {
+          return yield* Effect.fail(
+            new SiteNotFoundError({
+              message: "Site does not exist in the organization",
+              siteId,
+            })
+          );
+        }
+
+        return siteId;
+      });
+
+      const assignToSite = Effect.fn(
+        "SiteLabelAssignmentsRepository.assignToSite"
+      )(function* (input: AssignSiteLabelRecordInput) {
+        yield* Effect.annotateCurrentSpan(
+          "organizationId",
+          input.organizationId
+        );
+        yield* Effect.annotateCurrentSpan("siteId", input.siteId);
+        yield* Effect.annotateCurrentSpan("labelId", input.labelId);
+
+        const rows = yield* sql<LabelAssignmentRow>`
+          with active_label as (
+            select *
+            from labels
+            where organization_id = ${input.organizationId}
+              and id = ${input.labelId}
+              and archived_at is null
+            for share
+          ),
+          organization_site as (
+            select id
+            from sites
+            where organization_id = ${input.organizationId}
+              and id = ${input.siteId}
+              and archived_at is null
+          ),
+          inserted_label as (
+            insert into site_labels (
+              site_id,
+              label_id,
+              organization_id
+            )
+            select
+              organization_site.id,
+              active_label.id,
+              active_label.organization_id
+            from active_label
+            join organization_site on true
+            on conflict do nothing
+            returning label_id
+          )
+          select
+            active_label.*,
+            organization_site.id as site_id,
+            (select count(*) from inserted_label)::integer as inserted_count
+          from active_label
+          left join organization_site on true
+          limit 1
+        `;
+
+        const [row] = rows;
+
+        if (row === undefined) {
+          return yield* Effect.fail(
+            new LabelNotFoundError({
+              labelId: input.labelId,
+              message: "Label does not exist in the organization",
+            })
+          );
+        }
+
+        if (row.site_id === null) {
+          yield* ensureSiteInOrganization(input.organizationId, input.siteId);
+        }
+
+        return {
+          changed: row.inserted_count > 0,
+          label: mapLabelRow(row),
+        };
+      });
+
+      const removeFromSite = Effect.fn(
+        "SiteLabelAssignmentsRepository.removeFromSite"
+      )(function* (input: AssignSiteLabelRecordInput) {
+        yield* Effect.annotateCurrentSpan(
+          "organizationId",
+          input.organizationId
+        );
+        yield* Effect.annotateCurrentSpan("siteId", input.siteId);
+        yield* Effect.annotateCurrentSpan("labelId", input.labelId);
+
+        const rows = yield* sql<LabelRemovalRow>`
+          with active_label as (
+            select *
+            from labels
+            where organization_id = ${input.organizationId}
+              and id = ${input.labelId}
+              and archived_at is null
+            for share
+          ),
+          organization_site as (
+            select id
+            from sites
+            where organization_id = ${input.organizationId}
+              and id = ${input.siteId}
+              and archived_at is null
+          ),
+          deleted_label as (
+            delete from site_labels
+            using active_label, organization_site
+            where site_labels.organization_id = ${input.organizationId}
+              and site_labels.label_id = active_label.id
+              and site_labels.site_id = organization_site.id
+            returning site_labels.label_id
+          )
+          select
+            active_label.*,
+            organization_site.id as site_id,
+            (select count(*) from deleted_label)::integer as deleted_count
+          from active_label
+          left join organization_site on true
+          limit 1
+        `;
+
+        const [row] = rows;
+
+        if (row === undefined) {
+          return yield* Effect.fail(
+            new LabelNotFoundError({
+              labelId: input.labelId,
+              message: "Label does not exist in the organization",
+            })
+          );
+        }
+
+        if (row.site_id === null) {
+          yield* ensureSiteInOrganization(input.organizationId, input.siteId);
+        }
+
+        return {
+          changed: row.deleted_count > 0,
+          label: mapLabelRow(row),
+        };
+      });
+
+      return {
+        assignToSite,
+        removeFromSite,
       };
     }),
   }
@@ -401,7 +653,10 @@ function makeSiteValues(
   };
 }
 
-function mapSiteOptionRow(row: SiteOptionRow): SiteOption {
+function mapSiteOptionRow(
+  row: SiteOptionRow,
+  labels: readonly Label[] = []
+): SiteOption {
   return decodeSiteOption({
     accessNotes: nullableToUndefined(row.access_notes),
     addressLine1: row.address_line_1,
@@ -414,6 +669,7 @@ function mapSiteOptionRow(row: SiteOptionRow): SiteOption {
     id: row.id,
     latitude: row.latitude,
     longitude: row.longitude,
+    labels,
     name: row.name,
     serviceAreaId: nullableToUndefined(row.service_area_id),
     serviceAreaName: nullableToUndefined(row.service_area_name),
@@ -450,6 +706,15 @@ function decodeSiteCursor(cursor: SiteListCursor): {
     organizationId: value.organizationId,
     serviceAreaId: value.serviceAreaId,
   };
+}
+
+function mapLabelRow(row: LabelRow): Label {
+  return decodeLabel({
+    createdAt: row.created_at.toISOString(),
+    id: decodeLabelId(row.id),
+    name: row.name,
+    updatedAt: row.updated_at.toISOString(),
+  });
 }
 
 function isoDateTimeStringToDate(value: IsoDateTimeString): Date {
