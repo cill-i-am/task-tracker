@@ -25,13 +25,13 @@ apps/app server-side helpers
 
 apps/api Cloudflare Worker
   -> Hyperdrive
-  -> PlanetScale Postgres
+  -> Neon Postgres
   -> Cloudflare Queues for auth email
 ```
 
 Local sandbox development runs the app, API, and Postgres through Docker
 Compose. Production deployment uses Alchemy to provision Cloudflare and
-PlanetScale resources.
+connect to Neon Postgres.
 
 ## Monorepo Ownership
 
