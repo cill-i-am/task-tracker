@@ -23,6 +23,7 @@ Authentication currently supports only:
 - session lookup
 - route protection for the authenticated app shell
 - redirecting authenticated users away from guest-only auth pages
+- OAuth/OIDC authorization-server configuration for future MCP clients
 
 Authentication explicitly does not currently support:
 
@@ -32,6 +33,7 @@ Authentication explicitly does not currently support:
 - roles, permissions, or authorization rules
 - custom app-owned auth endpoints such as `/me` or `/viewer`
 - a custom app-owned auth service layer that wraps Better Auth behavior
+- MCP tools or MCP resource-server request handling
 
 ## Architectural Summary
 
@@ -82,11 +84,44 @@ Current config decisions:
 - `basePath` is always `/api/auth`
 - `appName` is `"Ceird"`
 - email/password auth is enabled
+- Better Auth's JWT plugin is enabled so the OAuth Provider can issue and
+  verify JWT-backed tokens, with session JWT response headers disabled so the
+  existing cookie-backed app session surface is preserved
+- the JWT plugin's direct `/api/auth/token` session-token endpoint is disabled;
+  OAuth clients must use the OAuth Provider token endpoint
+- Better Auth's OAuth Provider plugin is configured for MCP client
+  authorization with the scopes `openid`, `profile`, `email`,
+  `offline_access`, `ceird:read`, `ceird:write`, and `ceird:admin`
+- unauthenticated dynamic OAuth client registration is enabled for MCP clients,
+  defaulting newly registered clients to the identity scopes plus `ceird:read`
+  while allowing the full Ceird MCP scope set
+- OAuth grants are limited to authorization-code and refresh-token flows;
+  client-credentials tokens are intentionally not enabled for Ceird scopes
+- the OAuth Provider points clients at the existing app login and consent pages
+  through app-owned absolute URLs for `/login` and `/oauth/consent`
 - Better Auth remains the native owner of
   `/api/auth/request-password-reset` and `/api/auth/reset-password`
 - rate limiting is enabled and stored in the database
 - `BETTER_AUTH_BASE_URL` is required
+- `MCP_RESOURCE_URL` is optional; when omitted the valid MCP resource audience
+  defaults to the configured app origin plus `/mcp`
+- `OAUTH_ISSUER_URL` is optional; when omitted OAuth/OIDC issuer metadata
+  defaults to `BETTER_AUTH_BASE_URL`; explicit issuer URLs are canonicalized to
+  match Better Auth discovery metadata before token signing uses them
 - trusted origins are restricted to known local and sandbox app origins
+
+Current OAuth/OIDC discovery endpoints provided by Better Auth under the auth
+base path:
+
+- `/api/auth/.well-known/oauth-authorization-server`
+- `/api/auth/.well-known/openid-configuration`
+
+Root `/.well-known/*` forwarding is intentionally not part of the current auth
+runtime.
+
+Ceird does not use the packaged `@xmcp-dev/better-auth` adapter. MCP auth uses
+Ceird's Better Auth runtime and will be consumed by custom xmcp middleware in
+the MCP API slice.
 
 Current rate-limit rules:
 
@@ -241,6 +276,11 @@ Current tables:
 - `account`
 - `verification`
 - `rate_limit`
+- `jwks`
+- `oauth_client`
+- `oauth_refresh_token`
+- `oauth_access_token`
+- `oauth_consent`
 
 The database is the source of truth for:
 
@@ -249,6 +289,8 @@ The database is the source of truth for:
 - accounts
 - verifications
 - rate limiting state
+- JWT signing keys for OAuth/OIDC token issuance
+- OAuth client registrations, tokens, and consent records
 
 The API does not maintain a parallel app-specific session store.
 

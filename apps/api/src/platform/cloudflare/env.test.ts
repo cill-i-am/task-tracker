@@ -28,4 +28,17 @@ describe("Cloudflare Worker environment config", () => {
 
     expect(config.get("GOOGLE_MAPS_API_KEY")).toBe("google-key");
   });
+
+  it("propagates optional OAuth MCP URL overrides", () => {
+    const config = apiWorkerEnvConfigMap({
+      ...makeWorkerEnv(),
+      MCP_RESOURCE_URL: "https://mcp.example.com/mcp",
+      OAUTH_ISSUER_URL: "https://auth.example.com/api/auth",
+    });
+
+    expect(config.get("MCP_RESOURCE_URL")).toBe("https://mcp.example.com/mcp");
+    expect(config.get("OAUTH_ISSUER_URL")).toBe(
+      "https://auth.example.com/api/auth"
+    );
+  });
 });

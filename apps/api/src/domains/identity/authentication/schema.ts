@@ -179,6 +179,14 @@ export const rateLimit = pgTable(
   (table) => [uniqueIndex("rate_limit_key_idx").on(table.key)]
 );
 
+export const jwks = pgTable("jwks", {
+  id: text("id").primaryKey(),
+  publicKey: text("public_key").notNull(),
+  privateKey: text("private_key").notNull(),
+  createdAt: timestamp("created_at").notNull(),
+  expiresAt: timestamp("expires_at"),
+});
+
 export const oauthClient = pgTable(
   "oauth_client",
   {
@@ -351,6 +359,7 @@ export const authSchema = {
   account,
   verification,
   rateLimit,
+  jwks,
   oauthClient,
   oauthRefreshToken,
   oauthAccessToken,

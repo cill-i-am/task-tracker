@@ -19,6 +19,7 @@ export {
   authSchema,
   invitation,
   invitationRelations,
+  jwks,
   member,
   memberRelations,
   oauthAccessToken,

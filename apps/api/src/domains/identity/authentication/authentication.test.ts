@@ -20,6 +20,7 @@ import {
   matchesTrustedOrigin,
 } from "./auth.js";
 import {
+  CEIRD_OAUTH_SCOPES,
   DEFAULT_AUTH_DATABASE_URL,
   loadAuthenticationConfig,
   makeAuthenticationConfig,
@@ -31,6 +32,7 @@ import {
   authSchema,
   account,
   invitation,
+  jwks,
   member,
   organization,
   rateLimit,
@@ -40,6 +42,18 @@ import {
 } from "./schema.js";
 
 describe("makeAuthenticationConfig()", () => {
+  it("defines the Ceird OAuth scopes exposed to MCP clients", () => {
+    expect(CEIRD_OAUTH_SCOPES).toStrictEqual([
+      "openid",
+      "profile",
+      "email",
+      "offline_access",
+      "ceird:read",
+      "ceird:write",
+      "ceird:admin",
+    ]);
+  }, 10_000);
+
   it("builds the minimal Better Auth configuration for email/password auth", () => {
     const config = makeAuthenticationConfig({
       baseUrl: "http://127.0.0.1:3001",
@@ -101,9 +115,70 @@ describe("makeAuthenticationConfig()", () => {
           enabled: true,
         },
       },
+      mcpResourceUrl: "http://127.0.0.1:3001/mcp",
+      oauthIssuerUrl: "http://127.0.0.1:3001",
+      oauthConsentPath: "/oauth/consent",
+      oauthScopes: CEIRD_OAUTH_SCOPES,
+      oauthClientRegistrationDefaultScopes: [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "ceird:read",
+      ],
     });
 
     expect(config).not.toHaveProperty("socialProviders");
+  }, 10_000);
+
+  it("allows the MCP resource URL and OAuth issuer to be configured explicitly", async () => {
+    await withEnvironment(
+      {
+        MCP_RESOURCE_URL: "https://mcp.ceird.example/mcp",
+        OAUTH_ISSUER_URL: "https://auth.ceird.example/api/auth",
+        BETTER_AUTH_BASE_URL: "https://api.ceird.example/api/auth",
+        BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
+        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
+      },
+      async () => {
+        const config = await Effect.runPromise(loadAuthenticationConfig);
+
+        expect(config.mcpResourceUrl).toBe("https://mcp.ceird.example/mcp");
+        expect(config.oauthIssuerUrl).toBe(
+          "https://auth.ceird.example/api/auth"
+        );
+      }
+    );
+  }, 10_000);
+
+  it("normalizes the OAuth issuer to match Better Auth discovery metadata", async () => {
+    await withEnvironment(
+      {
+        OAUTH_ISSUER_URL:
+          "http://auth.ceird.example/api/auth/?debug=1#fragment",
+        BETTER_AUTH_BASE_URL: "https://api.ceird.example/api/auth",
+        BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
+        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
+      },
+      async () => {
+        const config = await Effect.runPromise(loadAuthenticationConfig);
+
+        expect(config.oauthIssuerUrl).toBe(
+          "https://auth.ceird.example/api/auth"
+        );
+      }
+    );
+  }, 10_000);
+
+  it("defaults the MCP resource URL to the app origin when configured", () => {
+    const config = makeAuthenticationConfig({
+      appOrigin: "https://app.ceird.example",
+      baseUrl: "https://api.ceird.example/api/auth",
+      secret: "super-secret-value",
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
+    });
+
+    expect(config.mcpResourceUrl).toBe("https://app.ceird.example/mcp");
   }, 10_000);
 
   it("applies a dedicated resend verification email rate limit", () => {
@@ -277,6 +352,7 @@ describe("auth schema", () => {
     expect(getTableName(account)).toBe("account");
     expect(getTableName(verification)).toBe("verification");
     expect(getTableName(rateLimit)).toBe("rate_limit");
+    expect(getTableName(jwks)).toBe("jwks");
 
     expect(authSchema).toMatchObject({
       user,
@@ -284,6 +360,7 @@ describe("auth schema", () => {
       account,
       verification,
       rateLimit,
+      jwks,
     });
   }, 10_000);
 
@@ -479,6 +556,165 @@ describe("createAuthentication()", () => {
       ]);
     } finally {
       await pool.end();
+    }
+  }, 10_000);
+
+  it("configures JWT-backed Better Auth OAuth Provider for MCP clients", async () => {
+    const { auth, cleanup } = createAuthenticationForPluginInspection();
+
+    try {
+      const pluginIds = auth.options.plugins.map((plugin) => plugin.id);
+      expect(pluginIds).toStrictEqual(
+        expect.arrayContaining(["jwt", "oauth-provider", "organization"])
+      );
+      expect(pluginIds.indexOf("jwt")).toBeLessThan(
+        pluginIds.indexOf("oauth-provider")
+      );
+
+      const oauthPlugin = auth.options.plugins.find(
+        (plugin) => plugin.id === "oauth-provider"
+      ) as
+        | {
+            readonly options?: {
+              readonly advertisedMetadata?: {
+                readonly scopes_supported?: readonly string[];
+              };
+              readonly allowDynamicClientRegistration?: boolean;
+              readonly allowUnauthenticatedClientRegistration?: boolean;
+              readonly clientRegistrationAllowedScopes?: readonly string[];
+              readonly clientRegistrationDefaultScopes?: readonly string[];
+              readonly consentPage?: string;
+              readonly disableJwtPlugin?: boolean;
+              readonly grantTypes?: readonly string[];
+              readonly loginPage?: string;
+              readonly scopes?: readonly string[];
+              readonly silenceWarnings?: {
+                readonly oauthAuthServerConfig?: boolean;
+                readonly openidConfig?: boolean;
+              };
+              readonly validAudiences?: readonly string[];
+            };
+          }
+        | undefined;
+
+      expect(oauthPlugin?.options).toMatchObject({
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
+        clientRegistrationDefaultScopes: [
+          "openid",
+          "profile",
+          "email",
+          "offline_access",
+          "ceird:read",
+        ],
+        clientRegistrationAllowedScopes: CEIRD_OAUTH_SCOPES,
+        consentPage: "http://127.0.0.1:4173/oauth/consent",
+        disableJwtPlugin: false,
+        grantTypes: ["authorization_code", "refresh_token"],
+        loginPage: "http://127.0.0.1:4173/login",
+        scopes: CEIRD_OAUTH_SCOPES,
+        silenceWarnings: {
+          oauthAuthServerConfig: true,
+          openidConfig: true,
+        },
+        validAudiences: ["http://127.0.0.1:3000", "http://127.0.0.1:4173/mcp"],
+      });
+      expect(
+        oauthPlugin?.options?.advertisedMetadata?.scopes_supported
+      ).toStrictEqual(CEIRD_OAUTH_SCOPES);
+      expect(oauthPlugin?.options?.grantTypes).not.toContain(
+        "client_credentials"
+      );
+    } finally {
+      await cleanup();
+    }
+  }, 10_000);
+
+  it("keeps the JWT plugin from changing session response headers", async () => {
+    const { auth, cleanup } = createAuthenticationForPluginInspection();
+
+    try {
+      const jwtPlugin = auth.options.plugins.find(
+        (plugin) => plugin.id === "jwt"
+      ) as
+        | {
+            readonly options?: {
+              readonly disableSettingJwtHeader?: boolean;
+            };
+          }
+        | undefined;
+
+      expect(jwtPlugin?.options).toMatchObject({
+        disableSettingJwtHeader: true,
+      });
+    } finally {
+      await cleanup();
+    }
+  }, 10_000);
+
+  it("disables direct session JWT minting while keeping OAuth token metadata", async () => {
+    const { auth, cleanup } = createAuthenticationForPluginInspection();
+
+    try {
+      expect(auth.options.disabledPaths).toStrictEqual(["/token"]);
+
+      const sessionJwtResponse = await auth.handler(
+        new Request("http://127.0.0.1:3000/api/auth/token")
+      );
+      expect(sessionJwtResponse.status).toBe(404);
+
+      const getOAuthServerConfig = auth.api
+        .getOAuthServerConfig as unknown as (options: {
+        readonly asResponse: false;
+        readonly request: Request;
+      }) => Promise<Record<string, unknown>>;
+      const metadata = await getOAuthServerConfig({
+        asResponse: false,
+        request: new Request(
+          "http://127.0.0.1:3000/api/auth/.well-known/oauth-authorization-server"
+        ),
+      });
+
+      expect(metadata).toMatchObject({
+        jwks_uri: "http://127.0.0.1:3000/api/auth/jwks",
+        token_endpoint: "http://127.0.0.1:3000/api/auth/oauth2/token",
+      });
+    } finally {
+      await cleanup();
+    }
+  }, 10_000);
+
+  it("exposes OAuth authorization metadata for MCP clients", async () => {
+    const { auth, cleanup } = createAuthenticationForPluginInspection();
+
+    try {
+      const getOAuthServerConfig = auth.api
+        .getOAuthServerConfig as unknown as (options: {
+        readonly asResponse: false;
+        readonly request: Request;
+      }) => Promise<Record<string, unknown>>;
+      const metadata = await getOAuthServerConfig({
+        asResponse: false,
+        request: new Request(
+          "http://127.0.0.1:3000/api/auth/.well-known/oauth-authorization-server"
+        ),
+      });
+
+      expect(metadata).toMatchObject({
+        issuer: "http://127.0.0.1:3000",
+        authorization_endpoint:
+          "http://127.0.0.1:3000/api/auth/oauth2/authorize",
+        token_endpoint: "http://127.0.0.1:3000/api/auth/oauth2/token",
+        registration_endpoint: "http://127.0.0.1:3000/api/auth/oauth2/register",
+        grant_types_supported: ["authorization_code", "refresh_token"],
+        scopes_supported: expect.arrayContaining([
+          "ceird:read",
+          "ceird:write",
+          "ceird:admin",
+        ]),
+      });
+    } finally {
+      await cleanup();
     }
   }, 10_000);
 
@@ -822,7 +1058,9 @@ function createAuthenticationForPluginInspection() {
     appOrigin: "http://127.0.0.1:4173",
     backgroundTaskHandler: () => {},
     config: makeAuthenticationConfig({
+      appOrigin: "http://127.0.0.1:4173",
       baseUrl: "http://127.0.0.1:3000",
+      rateLimitEnabled: false,
       secret: "0123456789abcdef0123456789abcdef",
       databaseUrl: DEFAULT_AUTH_DATABASE_URL,
     }),
@@ -893,6 +1131,8 @@ async function withEnvironment(
   delete process.env.BETTER_AUTH_BASE_URL;
   delete process.env.BETTER_AUTH_SECRET;
   delete process.env.DATABASE_URL;
+  delete process.env.MCP_RESOURCE_URL;
+  delete process.env.OAUTH_ISSUER_URL;
   delete process.env.PORTLESS_URL;
 
   Object.assign(process.env, nextEnvironment);
