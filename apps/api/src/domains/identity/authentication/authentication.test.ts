@@ -305,6 +305,29 @@ describe("auth schema", () => {
     });
   }, 10_000);
 
+  it("exposes the OAuth Provider tables for MCP authorization", () => {
+    expect(schemaModule.oauthClient).toBeDefined();
+    expect(schemaModule.oauthRefreshToken).toBeDefined();
+    expect(schemaModule.oauthAccessToken).toBeDefined();
+    expect(schemaModule.oauthConsent).toBeDefined();
+
+    expect(getTableName(schemaModule.oauthClient)).toBe("oauth_client");
+    expect(getTableName(schemaModule.oauthRefreshToken)).toBe(
+      "oauth_refresh_token"
+    );
+    expect(getTableName(schemaModule.oauthAccessToken)).toBe(
+      "oauth_access_token"
+    );
+    expect(getTableName(schemaModule.oauthConsent)).toBe("oauth_consent");
+
+    expect(authSchema).toMatchObject({
+      oauthClient: schemaModule.oauthClient,
+      oauthRefreshToken: schemaModule.oauthRefreshToken,
+      oauthAccessToken: schemaModule.oauthAccessToken,
+      oauthConsent: schemaModule.oauthConsent,
+    });
+  }, 10_000);
+
   it("stores a database-level slug format check in the organization migration", async () => {
     const migrationPath = path.resolve(
       process.cwd(),
