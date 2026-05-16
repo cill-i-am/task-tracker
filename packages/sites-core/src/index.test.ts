@@ -224,7 +224,9 @@ describe("sites-core", () => {
 
     const spec = OpenApi.fromApi(SitesApi);
     expect(spec.paths["/sites"]?.get?.operationId).toBe("sites.listSites");
-    expect(spec.paths["/sites/options"]).toBeUndefined();
+    expect(spec.paths["/sites/options"]?.get?.operationId).toBe(
+      "sites.getSiteOptions"
+    );
 
     expect(
       new SiteNotFoundError({
@@ -293,6 +295,7 @@ describe("sites-core", () => {
             geocodedAt: "2026-04-22T10:00:00.000Z",
             geocodingProvider: "google",
             id: "550e8400-e29b-41d4-a716-446655440010",
+            labels: [],
             latitude: 53.3498,
             longitude: -6.2603,
             name: "Docklands Campus",

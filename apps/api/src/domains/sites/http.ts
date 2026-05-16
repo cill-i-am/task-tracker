@@ -26,6 +26,9 @@ const SitesHandlersLive = HttpApiBuilder.group(AppApi, "sites", (handlers) =>
     const sitesService = yield* SitesService;
 
     return handlers
+      .handle("getSiteOptions", () =>
+        sitesService.getOptions().pipe(observeSitesOperation("getSiteOptions"))
+      )
       .handle("listSites", ({ urlParams }) =>
         sitesService.list(urlParams).pipe(observeSitesOperation("listSites"))
       )

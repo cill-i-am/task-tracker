@@ -200,15 +200,15 @@ itself for operational access instructions.
 
 Core files:
 
-| File                       | Responsibility                                                                          |
-| -------------------------- | --------------------------------------------------------------------------------------- |
-| `http.ts`                  | Binds sites and service-area contract endpoints to Effect services and configures CORS. |
+| File                       | Responsibility                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| `http.ts`                  | Binds sites and service-area contract endpoints to Effect services and configures CORS.     |
 | `service.ts`               | Site list, create, update, options, internal comments, and site-label assignment use cases. |
-| `service-areas-service.ts` | Service-area list, create, and update use cases.                                        |
-| `repositories.ts`          | SQL repository layer for sites, service areas, and site-label assignment methods.       |
-| `schema.ts`                | Sites, service-area, and site-label assignment rows and relations.                      |
-| `geocoder.ts`              | Site geocoding capability plus development and Google provider layers.                  |
-| `id-generation.ts`         | Site and service-area ID generation.                                                    |
+| `service-areas-service.ts` | Service-area list, create, and update use cases.                                            |
+| `repositories.ts`          | SQL repository layer for sites, service areas, and site-label assignment methods.           |
+| `schema.ts`                | Sites, service-area, and site-label assignment rows and relations.                          |
+| `geocoder.ts`              | Site geocoding capability plus development and Google provider layers.                      |
+| `id-generation.ts`         | Site and service-area ID generation.                                                        |
 
 Site and job services depend on the `SiteGeocoder` capability, not on a
 provider-specific implementation. Runtime entrypoints choose the provider layer:
