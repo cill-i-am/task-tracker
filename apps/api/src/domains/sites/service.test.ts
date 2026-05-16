@@ -1,4 +1,5 @@
 import type { OrganizationId, UserId } from "@ceird/identity-core";
+import { LabelNotFoundError } from "@ceird/labels-core";
 import type { Label, LabelIdType as LabelId } from "@ceird/labels-core";
 import {
   SiteAccessDeniedError,
@@ -86,7 +87,15 @@ interface SitesServiceHarness {
 function makeHarness(
   options: {
     readonly actor?: OrganizationActor;
+    readonly assignLabelFailure?:
+      | LabelNotFoundError
+      | SiteNotFoundError
+      | SqlError;
     readonly geocodingFailure?: SiteGeocodingFailedError;
+    readonly removeLabelFailure?:
+      | LabelNotFoundError
+      | SiteNotFoundError
+      | SqlError;
     readonly serviceAreaFailure?: ServiceAreaNotFoundError;
     readonly serviceAreaStorageFailure?: SqlError;
     readonly siteExists?: boolean;
@@ -306,13 +315,17 @@ function makeHarness(
       readonly organizationId: OrganizationId;
       readonly siteId: SiteId;
     }) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         calls.assignLabel += 1;
         expect(input).toStrictEqual({
           labelId,
           organizationId: actor.organizationId,
           siteId,
         });
+
+        if (options.assignLabelFailure !== undefined) {
+          return yield* Effect.fail(options.assignLabelFailure);
+        }
 
         siteHasLabel = true;
 
@@ -326,13 +339,17 @@ function makeHarness(
       readonly organizationId: OrganizationId;
       readonly siteId: SiteId;
     }) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         calls.removeLabel += 1;
         expect(input).toStrictEqual({
           labelId,
           organizationId: actor.organizationId,
           siteId,
         });
+
+        if (options.removeLabelFailure !== undefined) {
+          return yield* Effect.fail(options.removeLabelFailure);
+        }
 
         siteHasLabel = false;
 
@@ -511,6 +528,123 @@ describe("sites service", () => {
     expect(harness.calls.assignLabel).toBe(0);
     expect(harness.calls.removeLabel).toBe(0);
     expect(harness.calls.getOptionById).toBe(0);
+  }, 10_000);
+
+  it("propagates typed site label assignment failures without reloading the site", async () => {
+    const missingLabel = new LabelNotFoundError({
+      labelId,
+      message: "Label does not exist in the organization",
+    });
+    const missingSite = new SiteNotFoundError({
+      message: "Site does not exist in the organization",
+      siteId,
+    });
+
+    const assignMissingLabelHarness = makeHarness({
+      assignLabelFailure: missingLabel,
+    });
+    const assignMissingLabelExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.assignLabel(siteId, { labelId });
+      }),
+      assignMissingLabelHarness
+    );
+    expect(getFailure(assignMissingLabelExit)).toStrictEqual(missingLabel);
+    expect(assignMissingLabelHarness.calls.assignLabel).toBe(1);
+    expect(assignMissingLabelHarness.calls.getOptionById).toBe(0);
+
+    const assignMissingSiteHarness = makeHarness({
+      assignLabelFailure: missingSite,
+    });
+    const assignMissingSiteExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.assignLabel(siteId, { labelId });
+      }),
+      assignMissingSiteHarness
+    );
+    expect(getFailure(assignMissingSiteExit)).toStrictEqual(missingSite);
+    expect(assignMissingSiteHarness.calls.assignLabel).toBe(1);
+    expect(assignMissingSiteHarness.calls.getOptionById).toBe(0);
+
+    const removeMissingLabelHarness = makeHarness({
+      removeLabelFailure: missingLabel,
+    });
+    const removeMissingLabelExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.removeLabel(siteId, labelId);
+      }),
+      removeMissingLabelHarness
+    );
+    expect(getFailure(removeMissingLabelExit)).toStrictEqual(missingLabel);
+    expect(removeMissingLabelHarness.calls.removeLabel).toBe(1);
+    expect(removeMissingLabelHarness.calls.getOptionById).toBe(0);
+
+    const removeMissingSiteHarness = makeHarness({
+      removeLabelFailure: missingSite,
+    });
+    const removeMissingSiteExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.removeLabel(siteId, labelId);
+      }),
+      removeMissingSiteHarness
+    );
+    expect(getFailure(removeMissingSiteExit)).toStrictEqual(missingSite);
+    expect(removeMissingSiteHarness.calls.removeLabel).toBe(1);
+    expect(removeMissingSiteHarness.calls.getOptionById).toBe(0);
+  }, 10_000);
+
+  it("maps site label assignment SQL failures without reloading the site", async () => {
+    const assignHarness = makeHarness({
+      assignLabelFailure: new SqlError({
+        message: "database unavailable",
+      }),
+    });
+
+    const assignExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.assignLabel(siteId, { labelId });
+      }),
+      assignHarness
+    );
+    expect(getFailure(assignExit)).toBeInstanceOf(SiteStorageError);
+    expect(getFailure(assignExit)).toMatchObject({
+      cause: "database unavailable",
+      message: "Sites storage operation failed",
+    });
+    expect(assignHarness.calls.assignLabel).toBe(1);
+    expect(assignHarness.calls.getOptionById).toBe(0);
+
+    const removeHarness = makeHarness({
+      removeLabelFailure: new SqlError({
+        message: "database unavailable",
+      }),
+    });
+
+    const removeExit = await runSitesServiceExit(
+      Effect.gen(function* () {
+        const sites = yield* SitesService;
+
+        return yield* sites.removeLabel(siteId, labelId);
+      }),
+      removeHarness
+    );
+    expect(getFailure(removeExit)).toBeInstanceOf(SiteStorageError);
+    expect(getFailure(removeExit)).toMatchObject({
+      cause: "database unavailable",
+      message: "Sites storage operation failed",
+    });
+    expect(removeHarness.calls.removeLabel).toBe(1);
+    expect(removeHarness.calls.getOptionById).toBe(0);
   }, 10_000);
 
   it("creates a standalone site and returns the created site option", async () => {

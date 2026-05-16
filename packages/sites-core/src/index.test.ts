@@ -188,13 +188,33 @@ describe("sites-core", () => {
 
   it("documents site label assignment operations", () => {
     const spec = OpenApi.fromApi(SitesApi);
+    const assignOperation = spec.paths["/sites/{siteId}/labels"]?.post;
+    const removeOperation =
+      spec.paths["/sites/{siteId}/labels/{labelId}"]?.delete;
 
-    expect(spec.paths["/sites/{siteId}/labels"]?.post?.operationId).toBe(
-      "sites.assignSiteLabel"
-    );
+    expect(assignOperation?.operationId).toBe("sites.assignSiteLabel");
     expect(
-      spec.paths["/sites/{siteId}/labels/{labelId}"]?.delete?.operationId
-    ).toBe("sites.removeSiteLabel");
+      assignOperation?.parameters?.map((parameter) => parameter.name)
+    ).toContain("siteId");
+    expect(assignOperation?.requestBody).toMatchObject({ required: true });
+    expect(JSON.stringify(assignOperation?.requestBody)).toContain("labelId");
+    expect(JSON.stringify(assignOperation?.responses["404"])).toContain(
+      "@ceird~1sites-core~1SiteNotFoundError"
+    );
+    expect(JSON.stringify(assignOperation?.responses["404"])).toContain(
+      "@ceird~1labels-core~1LabelNotFoundError"
+    );
+
+    expect(removeOperation?.operationId).toBe("sites.removeSiteLabel");
+    expect(
+      removeOperation?.parameters?.map((parameter) => parameter.name)
+    ).toStrictEqual(["siteId", "labelId"]);
+    expect(JSON.stringify(removeOperation?.responses["404"])).toContain(
+      "@ceird~1sites-core~1SiteNotFoundError"
+    );
+    expect(JSON.stringify(removeOperation?.responses["404"])).toContain(
+      "@ceird~1labels-core~1LabelNotFoundError"
+    );
   });
 
   it("exports site API groups and typed errors", () => {

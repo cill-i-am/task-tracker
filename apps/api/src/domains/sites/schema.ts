@@ -152,6 +152,11 @@ export const siteLabel = pgTable(
       table.labelId,
       table.siteId
     ),
+    index("site_labels_site_label_idx").on(
+      table.organizationId,
+      table.siteId,
+      table.labelId
+    ),
   ]
 );
 

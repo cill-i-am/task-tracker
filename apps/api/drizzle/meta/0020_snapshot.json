@@ -1,5 +1,5 @@
 {
-  "id": "a63f6352-b052-4290-a575-3bcec9aed7b4",
+  "id": "2cfb1110-4ae3-4fd7-98d8-f350748ebc1c",
   "prevId": "67665152-3944-431d-ab5b-6ce23034591e",
   "version": "7",
   "dialect": "postgresql",
@@ -2077,6 +2077,33 @@
             },
             {
               "expression": "site_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "site_labels_site_label_idx": {
+          "name": "site_labels_site_label_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "site_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "label_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -858,7 +858,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
       const listLabelsForSites = Effect.fn("JobsRepository.listLabelsForSites")(
         function* (organizationId: OrganizationId, siteIds: readonly SiteId[]) {
           if (siteIds.length === 0) {
-            return new Map<string, Label[]>();
+            return new Map<SiteId, Label[]>();
           }
 
           const rows = yield* sql<SiteLabelRow>`
@@ -879,22 +879,7 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
           order by labels.name asc, labels.id asc
         `;
 
-          const labelsBySiteId = new Map<string, Label[]>();
-
-          for (const row of rows) {
-            const labels = labelsBySiteId.get(row.site_id) ?? [];
-            labels.push(
-              decodeLabel({
-                createdAt: row.created_at.toISOString(),
-                id: decodeLabelId(row.label_id),
-                name: row.name,
-                updatedAt: row.updated_at.toISOString(),
-              })
-            );
-            labelsBySiteId.set(row.site_id, labels);
-          }
-
-          return labelsBySiteId;
+          return groupSiteLabelsBySiteId(rows);
         }
       );
 
@@ -1433,9 +1418,11 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
         const site =
           job.siteId === undefined
             ? undefined
-            : yield* findSiteDetailById(organizationId, job.siteId).pipe(
-                Effect.map(Option.getOrUndefined)
-              );
+            : yield* findSiteDetailById(
+                organizationId,
+                job.siteId,
+                resolvedAccess.visibility !== "external"
+              ).pipe(Effect.map(Option.getOrUndefined));
 
         const mappedCostLines =
           resolvedAccess.visibility === "external"
@@ -1478,7 +1465,11 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
       });
 
       const findSiteDetailById = Effect.fn("JobsRepository.findSiteDetailById")(
-        function* (organizationId: OrganizationId, siteId: SiteId) {
+        function* (
+          organizationId: OrganizationId,
+          siteId: SiteId,
+          includeLabels = true
+        ) {
           const rows = yield* sql<SiteOptionRow>`
           select
             sites.access_notes,
@@ -1510,9 +1501,9 @@ export class JobsRepository extends Effect.Service<JobsRepository>()(
             return Option.none<SiteOption>();
           }
 
-          const labelsBySiteId = yield* listLabelsForSites(organizationId, [
-            siteId,
-          ]);
+          const labelsBySiteId = includeLabels
+            ? yield* listLabelsForSites(organizationId, [siteId])
+            : new Map<SiteId, Label[]>();
 
           return Option.some(
             mapSiteOptionRow(row, labelsBySiteId.get(siteId) ?? [])
@@ -2541,6 +2532,26 @@ function mapSiteOptionRow(
     serviceAreaName: nullableToUndefined(row.service_area_name),
     town: nullableToUndefined(row.town),
   });
+}
+
+function groupSiteLabelsBySiteId(rows: readonly SiteLabelRow[]) {
+  const labelsBySiteId = new Map<SiteId, Label[]>();
+
+  for (const row of rows) {
+    const siteId = decodeSiteId(row.site_id);
+    const labels = labelsBySiteId.get(siteId) ?? [];
+    labels.push(
+      decodeLabel({
+        createdAt: row.created_at.toISOString(),
+        id: decodeLabelId(row.label_id),
+        name: row.name,
+        updatedAt: row.updated_at.toISOString(),
+      })
+    );
+    labelsBySiteId.set(siteId, labels);
+  }
+
+  return labelsBySiteId;
 }
 
 function mapJobContactOptions(

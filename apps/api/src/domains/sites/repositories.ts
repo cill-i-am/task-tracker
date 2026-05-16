@@ -211,7 +211,7 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
         "SitesRepository.listLabelsForSites"
       )(function* (organizationId: OrganizationId, siteIds: readonly SiteId[]) {
         if (siteIds.length === 0) {
-          return new Map<string, Label[]>();
+          return new Map<SiteId, Label[]>();
         }
 
         const rows = yield* sql<SiteLabelRow>`
@@ -232,22 +232,31 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           order by labels.name asc, labels.id asc
         `;
 
-        const labelsBySiteId = new Map<string, Label[]>();
+        return groupSiteLabelsBySiteId(rows);
+      });
 
-        for (const row of rows) {
-          const labels = labelsBySiteId.get(row.site_id) ?? [];
-          labels.push(
-            decodeLabel({
-              createdAt: row.created_at.toISOString(),
-              id: decodeLabelId(row.label_id),
-              name: row.name,
-              updatedAt: row.updated_at.toISOString(),
-            })
-          );
-          labelsBySiteId.set(row.site_id, labels);
-        }
+      const listLabelsForOrganization = Effect.fn(
+        "SitesRepository.listLabelsForOrganization"
+      )(function* (organizationId: OrganizationId) {
+        const rows = yield* sql<SiteLabelRow>`
+          select
+            site_labels.site_id,
+            site_labels.label_id,
+            labels.created_at,
+            labels.name,
+            labels.updated_at
+          from site_labels
+          join labels on labels.id = site_labels.label_id
+          join sites on sites.id = site_labels.site_id
+          where site_labels.organization_id = ${organizationId}
+            and labels.organization_id = ${organizationId}
+            and sites.organization_id = ${organizationId}
+            and sites.archived_at is null
+            and labels.archived_at is null
+          order by site_labels.site_id asc, labels.name asc, labels.id asc
+        `;
 
-        return labelsBySiteId;
+        return groupSiteLabelsBySiteId(rows);
       });
 
       const create = Effect.fn("SitesRepository.create")(function* (
@@ -332,14 +341,13 @@ export class SitesRepository extends Effect.Service<SitesRepository>()(
           order by sites.name asc nulls last, sites.id asc
         `;
 
-        const labelsBySiteId = yield* listLabelsForSites(
-          organizationId,
-          rows.map((row) => decodeSiteId(row.id))
-        );
+        const labelsBySiteId = yield* listLabelsForOrganization(organizationId);
 
-        return rows.map((row) =>
-          mapSiteOptionRow(row, labelsBySiteId.get(row.id) ?? [])
-        );
+        return rows.map((row) => {
+          const siteId = decodeSiteId(row.id);
+
+          return mapSiteOptionRow(row, labelsBySiteId.get(siteId) ?? []);
+        });
       });
 
       const list = Effect.fn("SitesRepository.list")(function* (
@@ -559,6 +567,13 @@ export class SiteLabelAssignmentsRepository extends Effect.Service<SiteLabelAssi
       const assignToSite = Effect.fn(
         "SiteLabelAssignmentsRepository.assignToSite"
       )(function* (input: AssignSiteLabelRecordInput) {
+        yield* Effect.annotateCurrentSpan(
+          "organizationId",
+          input.organizationId
+        );
+        yield* Effect.annotateCurrentSpan("siteId", input.siteId);
+        yield* Effect.annotateCurrentSpan("labelId", input.labelId);
+
         const rows = yield* sql<LabelAssignmentRow>`
           with active_label as (
             select *
@@ -623,6 +638,13 @@ export class SiteLabelAssignmentsRepository extends Effect.Service<SiteLabelAssi
       const removeFromSite = Effect.fn(
         "SiteLabelAssignmentsRepository.removeFromSite"
       )(function* (input: AssignSiteLabelRecordInput) {
+        yield* Effect.annotateCurrentSpan(
+          "organizationId",
+          input.organizationId
+        );
+        yield* Effect.annotateCurrentSpan("siteId", input.siteId);
+        yield* Effect.annotateCurrentSpan("labelId", input.labelId);
+
         const label = yield* getActiveLabelOrFail(
           input.organizationId,
           input.labelId
@@ -731,6 +753,26 @@ function decodeSiteCursor(cursor: SiteListCursor): {
     organizationId: value.organizationId,
     serviceAreaId: value.serviceAreaId,
   };
+}
+
+function groupSiteLabelsBySiteId(rows: readonly SiteLabelRow[]) {
+  const labelsBySiteId = new Map<SiteId, Label[]>();
+
+  for (const row of rows) {
+    const siteId = decodeSiteId(row.site_id);
+    const labels = labelsBySiteId.get(siteId) ?? [];
+    labels.push(
+      decodeLabel({
+        createdAt: row.created_at.toISOString(),
+        id: decodeLabelId(row.label_id),
+        name: row.name,
+        updatedAt: row.updated_at.toISOString(),
+      })
+    );
+    labelsBySiteId.set(siteId, labels);
+  }
+
+  return labelsBySiteId;
 }
 
 function mapLabelRow(row: LabelRow): Label {

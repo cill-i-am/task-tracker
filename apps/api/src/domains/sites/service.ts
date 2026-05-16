@@ -4,7 +4,6 @@ import type {
   AssignSiteLabelInput,
   CreateSiteInput,
   ServiceAreaOption,
-  SiteDetail,
   SiteIdType as SiteId,
   SiteListQuery,
   UpdateSiteInput,
@@ -434,12 +433,15 @@ export class SitesService extends Effect.Service<SitesService>()(
   }
 ) {}
 
-function loadSiteDetailOrFail(
-  organizationId: OrganizationActor["organizationId"],
-  siteId: SiteId,
-  sitesRepository: SitesRepository
-): Effect.Effect<SiteDetail, SiteNotFoundError | SiteStorageError> {
-  return Effect.gen(function* () {
+const loadSiteDetailOrFail = Effect.fn("SitesService.loadSiteDetailOrFail")(
+  function* (
+    organizationId: OrganizationActor["organizationId"],
+    siteId: SiteId,
+    sitesRepository: SitesRepository
+  ) {
+    yield* Effect.annotateCurrentSpan("organizationId", organizationId);
+    yield* Effect.annotateCurrentSpan("siteId", siteId);
+
     const site = yield* sitesRepository
       .getOptionById(organizationId, siteId)
       .pipe(
@@ -457,8 +459,8 @@ function loadSiteDetailOrFail(
         siteId,
       })
     );
-  });
-}
+  }
+);
 
 function failSitesStorageError(
   error: unknown,

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  CreateJobResponseSchema,
   CreateRateCardResponseSchema,
   JOB_COST_SUMMARY_LIMIT_EXCEEDED_ERROR_TAG,
   JobCollaboratorSchema,
@@ -22,9 +23,12 @@ import {
   CreateSiteResponseSchema,
   SERVICE_AREA_NOT_FOUND_ERROR_TAG,
   SITE_LIST_CURSOR_INVALID_ERROR_TAG,
+  SITE_NOT_FOUND_ERROR_TAG,
   ServiceAreaListResponseSchema,
   SiteCommentsResponseSchema,
+  SiteDetailSchema,
   SiteListResponseSchema,
+  SitesOptionsResponseSchema,
   UpdateServiceAreaResponseSchema,
 } from "@ceird/sites-core";
 import { ParseResult } from "effect";
@@ -563,6 +567,36 @@ describe("domain http integration", () => {
         })
       );
 
+      const foreignOwnerCookieJar = new Map<string, string>();
+      await signUpUser(api, foreignOwnerCookieJar, {
+        email: `foreign-owner-${randomUUID()}@example.com`,
+        name: "Foreign Owner",
+      });
+      await createOrganization(api, foreignOwnerCookieJar, {
+        organizationName: "Foreign Organization",
+        organizationSlug: `foreign-org-${randomUUID().slice(0, 8)}`,
+      });
+      const foreignSiteResponse = await api.handler(
+        makeJsonRequest(
+          "/sites",
+          {
+            addressLine1: "99 Other Road",
+            country: "IE",
+            county: "Dublin",
+            eircode: "D99 X2X2",
+            name: "Foreign Site",
+            town: "Dublin",
+          },
+          {
+            cookieJar: foreignOwnerCookieJar,
+          }
+        )
+      );
+      expect(foreignSiteResponse.status).toBe(201);
+      const foreignSite = ParseResult.decodeUnknownSync(
+        CreateSiteResponseSchema
+      )(await foreignSiteResponse.json());
+
       const memberOptionsAfterSiteResponse = await api.handler(
         makeRequest("/jobs/options", {
           cookieJar: memberCookieJar,
@@ -891,6 +925,107 @@ describe("domain http integration", () => {
         })
       );
 
+      const assignSiteLabelResponse = await api.handler(
+        makeJsonRequest(
+          `/sites/${createdSite.id}/labels`,
+          {
+            labelId: updatedLabel.id,
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(assignSiteLabelResponse.status).toBe(200);
+      const assignedSiteDetail = ParseResult.decodeUnknownSync(
+        SiteDetailSchema
+      )(await assignSiteLabelResponse.json());
+      expect(assignedSiteDetail.labels).toContainEqual(
+        expect.objectContaining({
+          id: updatedLabel.id,
+          name: "Waiting on PO",
+        })
+      );
+
+      const siteOptionsAfterLabelResponse = await api.handler(
+        makeRequest("/sites/options", {
+          cookieJar: ownerCookieJar,
+        })
+      );
+      expect(siteOptionsAfterLabelResponse.status).toBe(200);
+      const siteOptionsAfterLabel = ParseResult.decodeUnknownSync(
+        SitesOptionsResponseSchema
+      )(await siteOptionsAfterLabelResponse.json());
+      expect(
+        siteOptionsAfterLabel.sites.find((site) => site.id === createdSite.id)
+          ?.labels
+      ).toContainEqual(
+        expect.objectContaining({
+          id: updatedLabel.id,
+          name: "Waiting on PO",
+        })
+      );
+
+      const missingSiteLabelResponse = await api.handler(
+        makeJsonRequest(
+          `/sites/${createdSite.id}/labels`,
+          {
+            labelId: "55555555-5555-4555-8555-555555555555",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(missingSiteLabelResponse.status).toBe(404);
+      await expect(missingSiteLabelResponse.json()).resolves.toMatchObject({
+        _tag: LABEL_NOT_FOUND_ERROR_TAG,
+      });
+
+      const missingSiteResponse = await api.handler(
+        makeJsonRequest(
+          "/sites/66666666-6666-4666-8666-666666666666/labels",
+          {
+            labelId: updatedLabel.id,
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(missingSiteResponse.status).toBe(404);
+      await expect(missingSiteResponse.json()).resolves.toMatchObject({
+        _tag: SITE_NOT_FOUND_ERROR_TAG,
+      });
+
+      const foreignSiteLabelResponse = await api.handler(
+        makeJsonRequest(
+          `/sites/${foreignSite.id}/labels`,
+          {
+            labelId: updatedLabel.id,
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(foreignSiteLabelResponse.status).toBe(404);
+      await expect(foreignSiteLabelResponse.json()).resolves.toMatchObject({
+        _tag: SITE_NOT_FOUND_ERROR_TAG,
+      });
+
+      const removeSiteLabelResponse = await api.handler(
+        makeRequest(`/sites/${createdSite.id}/labels/${updatedLabel.id}`, {
+          cookieJar: ownerCookieJar,
+          method: "DELETE",
+        })
+      );
+      expect(removeSiteLabelResponse.status).toBe(200);
+      const removedSiteDetail = ParseResult.decodeUnknownSync(SiteDetailSchema)(
+        await removeSiteLabelResponse.json()
+      );
+      expect(removedSiteDetail.labels).toStrictEqual([]);
+
       const assignLabelResponse = await api.handler(
         makeJsonRequest(
           `/jobs/${createdJob.id}/labels`,
@@ -1021,6 +1156,24 @@ describe("domain http integration", () => {
       );
       expect(assignArchivedLabelResponse.status).toBe(404);
       await expect(assignArchivedLabelResponse.json()).resolves.toMatchObject({
+        _tag: LABEL_NOT_FOUND_ERROR_TAG,
+      });
+
+      const assignArchivedSiteLabelResponse = await api.handler(
+        makeJsonRequest(
+          `/sites/${createdSite.id}/labels`,
+          {
+            labelId: updatedLabel.id,
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(assignArchivedSiteLabelResponse.status).toBe(404);
+      await expect(
+        assignArchivedSiteLabelResponse.json()
+      ).resolves.toMatchObject({
         _tag: LABEL_NOT_FOUND_ERROR_TAG,
       });
 
@@ -1472,12 +1625,45 @@ describe("domain http integration", () => {
       );
       expect(grantedJobResponse.status).toBe(201);
       expect(hiddenJobResponse.status).toBe(201);
-      const grantedJob = (await grantedJobResponse.json()) as {
-        readonly id: string;
-      };
+      const grantedJob = ParseResult.decodeUnknownSync(CreateJobResponseSchema)(
+        await grantedJobResponse.json()
+      );
       const hiddenJob = (await hiddenJobResponse.json()) as {
         readonly id: string;
       };
+      const grantedJobSiteId = grantedJob.siteId;
+      if (grantedJobSiteId === undefined) {
+        throw new Error("Expected granted job to have an inline-created site");
+      }
+
+      const tenantSiteLabelResponse = await api.handler(
+        makeJsonRequest(
+          "/labels",
+          {
+            name: "Tenant access note",
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(tenantSiteLabelResponse.status).toBe(201);
+      const tenantSiteLabel = ParseResult.decodeUnknownSync(
+        LabelResponseSchema
+      )(await tenantSiteLabelResponse.json());
+
+      const assignTenantSiteLabelResponse = await api.handler(
+        makeJsonRequest(
+          `/sites/${grantedJobSiteId}/labels`,
+          {
+            labelId: tenantSiteLabel.id,
+          },
+          {
+            cookieJar: ownerCookieJar,
+          }
+        )
+      );
+      expect(assignTenantSiteLabelResponse.status).toBe(200);
 
       const costLineResponse = await api.handler(
         makeJsonRequest(
@@ -1567,6 +1753,7 @@ describe("domain http integration", () => {
       expect(externalDetail.site).toMatchObject({
         name: "Tenant Site",
       });
+      expect(externalDetail.site?.labels).toStrictEqual([]);
       expect(externalDetail.contact).toMatchObject({
         email: "tenant-contact@example.com",
         name: "Tenant Contact",
@@ -1627,6 +1814,27 @@ describe("domain http integration", () => {
         })
       );
       expect(deniedJobOptionsResponse.status).toBe(403);
+
+      const deniedSiteLabelAssignResponse = await api.handler(
+        makeJsonRequest(
+          `/sites/${grantedJobSiteId}/labels`,
+          {
+            labelId: tenantSiteLabel.id,
+          },
+          {
+            cookieJar: externalCookieJar,
+          }
+        )
+      );
+      expect(deniedSiteLabelAssignResponse.status).toBe(403);
+
+      const deniedSiteLabelRemoveResponse = await api.handler(
+        makeRequest(`/sites/${grantedJobSiteId}/labels/${tenantSiteLabel.id}`, {
+          cookieJar: externalCookieJar,
+          method: "DELETE",
+        })
+      );
+      expect(deniedSiteLabelRemoveResponse.status).toBe(403);
 
       const deniedCostLineResponse = await api.handler(
         makeJsonRequest(
