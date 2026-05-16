@@ -176,18 +176,19 @@ live in `apps/api/src/domains/jobs/http.ts`.
 ## Labels Domain
 
 Labels live in `src/domains/labels` and are exposed through
-`@ceird/labels-core`. Labels are organization-level definitions; job-specific
-label behavior is limited to assigning or removing those labels on a job.
+`@ceird/labels-core`. Labels are organization-level definitions; jobs and sites
+assign those labels through join tables and assignment behavior owned by the
+jobs and sites domains.
 
 Core files:
 
-| File               | Responsibility                                                              |
-| ------------------ | --------------------------------------------------------------------------- |
-| `http.ts`          | Binds label contract endpoints to `LabelsService` and configures CORS.      |
-| `service.ts`       | Label list, create, update, and archive use cases with organization auth.   |
-| `repositories.ts`  | SQL repository layer for the `labels` table and cleanup of job assignments. |
-| `schema.ts`        | Labels Drizzle table and relations.                                         |
-| `id-generation.ts` | Label ID generation.                                                        |
+| File               | Responsibility                                                            |
+| ------------------ | ------------------------------------------------------------------------- |
+| `http.ts`          | Binds label contract endpoints to `LabelsService` and configures CORS.    |
+| `service.ts`       | Label list, create, update, and archive use cases with organization auth. |
+| `repositories.ts`  | SQL repository layer for the organization-owned `labels` table.           |
+| `schema.ts`        | Labels Drizzle table and relations.                                       |
+| `id-generation.ts` | Label ID generation.                                                      |
 
 ## Sites Domain
 
@@ -204,8 +205,8 @@ Core files:
 | `http.ts`                  | Binds sites and service-area contract endpoints to Effect services and configures CORS. |
 | `service.ts`               | Site list, create, update, internal option, and internal comment use cases.             |
 | `service-areas-service.ts` | Service-area list, create, and update use cases.                                        |
-| `repositories.ts`          | SQL repository layer for sites, service areas, and site-contact links.                  |
-| `schema.ts`                | Sites and service-area Drizzle tables and relations.                                    |
+| `repositories.ts`          | SQL repository layer for sites, service areas, and site-label assignment methods.       |
+| `schema.ts`                | Sites, service-area, and site-label assignment rows and relations.                      |
 | `geocoder.ts`              | Site geocoding capability plus development and Google provider layers.                  |
 | `id-generation.ts`         | Site and service-area ID generation.                                                    |
 
@@ -237,22 +238,25 @@ handlers live in `apps/api/src/domains/labels/http.ts`.
 Endpoint definitions live in `packages/sites-core/src/http-api.ts`; API
 handlers live in `apps/api/src/domains/sites/http.ts`.
 
-| Method  | Path                            | Handler name        |
-| ------- | ------------------------------- | ------------------- |
-| `GET`   | `/service-areas`                | `listServiceAreas`  |
-| `POST`  | `/service-areas`                | `createServiceArea` |
-| `PATCH` | `/service-areas/:serviceAreaId` | `updateServiceArea` |
-| `GET`   | `/sites`                        | `listSites`         |
-| `POST`  | `/sites`                        | `createSite`        |
-| `PATCH` | `/sites/:siteId`                | `updateSite`        |
-| `GET`   | `/sites/:siteId/comments`       | `listSiteComments`  |
-| `POST`  | `/sites/:siteId/comments`       | `addSiteComment`    |
+| Method   | Path                             | Handler name        |
+| -------- | -------------------------------- | ------------------- |
+| `GET`    | `/service-areas`                 | `listServiceAreas`  |
+| `POST`   | `/service-areas`                 | `createServiceArea` |
+| `PATCH`  | `/service-areas/:serviceAreaId`  | `updateServiceArea` |
+| `GET`    | `/sites`                         | `listSites`         |
+| `GET`    | `/sites/options`                 | `getSiteOptions`    |
+| `POST`   | `/sites`                         | `createSite`        |
+| `PATCH`  | `/sites/:siteId`                 | `updateSite`        |
+| `GET`    | `/sites/:siteId/comments`        | `listSiteComments`  |
+| `POST`   | `/sites/:siteId/comments`        | `addSiteComment`    |
+| `POST`   | `/sites/:siteId/labels`          | `assignSiteLabel`   |
+| `DELETE` | `/sites/:siteId/labels/:labelId` | `removeSiteLabel`   |
 
 `GET /sites` is cursor-paginated with `cursor`, `limit`, and
 `serviceAreaId` query parameters. Responses return `{ items, nextCursor }` and
-use the stable directory order `name asc, id asc`. Site form
-support data is composed by clients from `GET /sites` and `GET /service-areas`
-rather than a public options endpoint.
+use the stable directory order `name asc, id asc`. `GET /sites/options`
+provides bundled internal form support data for workflows that need service
+areas and sites together.
 
 ## Database
 
@@ -270,6 +274,9 @@ The API uses Drizzle with Postgres.
 `databaseSchema` merges authentication, comments, labels, sites, and jobs
 tables. Keep schema changes in the domain that owns the tables, then export
 through the schema barrel.
+
+The `site_labels` table joins `sites` to organization `labels` and enforces the
+same organization on both sides through composite organization foreign keys.
 
 ## Errors And Runtime Schemas
 
