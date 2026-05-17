@@ -172,6 +172,16 @@ UI state for API-backed feature workflows is kept in focused state modules such
 as `jobs-state.ts`, `jobs-detail-state.ts`, `sites-state.ts`, and
 `organization-configuration-state.ts`.
 
+New API-backed feature state should prefer TanStack DB collections for
+reactive client-side entity state. Collections use shared Effect schemas through
+`Schema.standardSchemaV1(...)` at the collection boundary, then call the typed
+Effect HTTP client for server reads and writes. The current pilot is
+`features/organizations/organization-configuration-state.tsx`, which keeps
+service areas and rate cards in route-scoped local collections while preserving
+pending/error mutation state for the existing UI. Existing Effect Atom state in
+jobs and sites should move to the same pattern as those slices are touched,
+rather than adding new atom surfaces.
+
 ## Hotkeys
 
 Keyboard access is part of feature work. Register shortcuts through the shared

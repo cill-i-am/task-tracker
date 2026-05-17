@@ -1,6 +1,5 @@
 import { normalizeLabelName } from "@ceird/labels-core";
 import type { Label, LabelIdType } from "@ceird/labels-core";
-import { RegistryProvider } from "@effect-atom/atom-react";
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "@tanstack/react-router";
 import { Effect, Schema } from "effect";
@@ -44,6 +43,7 @@ import { beginMutationFeedback } from "#/lib/mutation-feedback";
 import { cn } from "#/lib/utils";
 
 import type { OrganizationSummary } from "./organization-access";
+import { OrganizationConfigurationProvider } from "./organization-configuration-state";
 import { OrganizationRateCardSection } from "./organization-rate-card-section";
 import {
   decodeUpdateOrganizationInput,
@@ -436,7 +436,10 @@ export function OrganizationSettingsPage({
   const isEditLabelError = labelErrorTarget === "edit" && Boolean(labelError);
 
   return (
-    <RegistryProvider key={organization.id}>
+    <OrganizationConfigurationProvider
+      key={organization.id}
+      organizationId={organization.id}
+    >
       <div
         ref={settingsRootRef}
         className="flex flex-1 flex-col gap-5 p-4 sm:gap-6 sm:p-6 lg:p-8"
@@ -725,7 +728,7 @@ export function OrganizationSettingsPage({
           </TabsContent>
         </Tabs>
       </div>
-    </RegistryProvider>
+    </OrganizationConfigurationProvider>
   );
 }
 

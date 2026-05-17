@@ -1,6 +1,5 @@
 "use client";
 import type { ServiceArea } from "@ceird/sites-core";
-import { useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 import { Exit } from "effect";
 import { MoreHorizontal, Pencil } from "lucide-react";
 import * as React from "react";
@@ -25,10 +24,10 @@ import { submitClientForm } from "#/lib/client-form-submit";
 
 import { OrganizationAsyncResultError } from "./organization-async-result-error";
 import {
-  createServiceAreaMutationAtom,
-  listServiceAreasAtom,
-  organizationServiceAreasStateAtom,
-  updateServiceAreaMutationAtomFamily,
+  useCreateServiceAreaMutation,
+  useListServiceAreasMutation,
+  useOrganizationServiceAreas,
+  useUpdateServiceAreaMutation,
 } from "./organization-configuration-state";
 
 interface ServiceAreaFormValues {
@@ -37,15 +36,9 @@ interface ServiceAreaFormValues {
 }
 
 export function OrganizationServiceAreasSection() {
-  const serviceAreas = useAtomValue(organizationServiceAreasStateAtom).items;
-  const listResult = useAtomValue(listServiceAreasAtom);
-  const createResult = useAtomValue(createServiceAreaMutationAtom);
-  const loadServiceAreas = useAtomSet(listServiceAreasAtom, {
-    mode: "promiseExit",
-  });
-  const createServiceArea = useAtomSet(createServiceAreaMutationAtom, {
-    mode: "promiseExit",
-  });
+  const serviceAreas = useOrganizationServiceAreas();
+  const [listResult, loadServiceAreas] = useListServiceAreasMutation();
+  const [createResult, createServiceArea] = useCreateServiceAreaMutation();
   const [values, setValues] = React.useState<ServiceAreaFormValues>({
     description: "",
     name: "",
@@ -56,7 +49,7 @@ export function OrganizationServiceAreasSection() {
   const nameId = React.useId();
   const descriptionId = React.useId();
 
-  // Service areas are atom-backed remote state and load through the existing mutation atom.
+  // Service areas load through the route-scoped TanStack DB collection.
   // react-doctor-disable-next-line
   React.useEffect(() => {
     void loadServiceAreas();
@@ -227,12 +220,8 @@ function ServiceAreaRow({
 }: {
   readonly serviceArea: ServiceArea;
 }) {
-  const updateResult = useAtomValue(
-    updateServiceAreaMutationAtomFamily(serviceArea.id)
-  );
-  const updateServiceArea = useAtomSet(
-    updateServiceAreaMutationAtomFamily(serviceArea.id),
-    { mode: "promiseExit" }
+  const [updateResult, updateServiceArea] = useUpdateServiceAreaMutation(
+    serviceArea.id
   );
   const [isEditing, setIsEditing] = React.useState(false);
   const [values, setValues] = React.useState<ServiceAreaFormValues>(() => ({

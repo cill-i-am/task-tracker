@@ -6,7 +6,6 @@ import type {
   RateCardLineInput,
   RateCardLineKind,
 } from "@ceird/jobs-core";
-import { Result, useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 import { Delete02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Exit } from "effect";
@@ -29,11 +28,13 @@ import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { submitClientForm } from "#/lib/client-form-submit";
 
 import { OrganizationAsyncResultError } from "./organization-async-result-error";
+import type { OrganizationAsyncResult } from "./organization-configuration-state";
 import {
-  createRateCardMutationAtom,
-  listRateCardsAtom,
-  organizationRateCardsStateAtom,
-  updateRateCardMutationAtomFamily,
+  isOrganizationAsyncFailure,
+  useCreateRateCardMutation,
+  useListRateCardsMutation,
+  useOrganizationRateCards,
+  useUpdateRateCardMutation,
 } from "./organization-configuration-state";
 
 const STANDARD_RATE_CARD_NAME = "Standard";
@@ -69,11 +70,8 @@ interface RateCardLineErrors {
 }
 
 export function OrganizationRateCardSection() {
-  const rateCards = useAtomValue(organizationRateCardsStateAtom).items;
-  const listResult = useAtomValue(listRateCardsAtom);
-  const loadRateCards = useAtomSet(listRateCardsAtom, {
-    mode: "promiseExit",
-  });
+  const rateCards = useOrganizationRateCards();
+  const [listResult, loadRateCards] = useListRateCardsMutation();
   const [rateCardsLoaded, setRateCardsLoaded] = React.useState(false);
   const standardRateCard =
     rateCards.find((rateCard) => rateCard.name === STANDARD_RATE_CARD_NAME) ??
@@ -108,7 +106,7 @@ export function OrganizationRateCardSection() {
       <OrganizationAsyncResultError result={listResult} />
 
       <RateCardEditorSlot
-        listFailed={Result.isFailure(listResult)}
+        listFailed={isOrganizationAsyncFailure(listResult)}
         rateCardsLoaded={rateCardsLoaded}
         standardRateCard={standardRateCard}
       />
@@ -147,15 +145,7 @@ function ExistingStandardRateCardEditor({
 }: {
   readonly rateCard: RateCard;
 }) {
-  const updateResult = useAtomValue(
-    updateRateCardMutationAtomFamily(rateCard.id)
-  );
-  const updateRateCard = useAtomSet(
-    updateRateCardMutationAtomFamily(rateCard.id),
-    {
-      mode: "promiseExit",
-    }
-  );
+  const [updateResult, updateRateCard] = useUpdateRateCardMutation(rateCard.id);
 
   return (
     <RateCardForm
@@ -176,10 +166,7 @@ function ExistingStandardRateCardEditor({
 }
 
 function DraftStandardRateCardEditor() {
-  const createResult = useAtomValue(createRateCardMutationAtom);
-  const createRateCard = useAtomSet(createRateCardMutationAtom, {
-    mode: "promiseExit",
-  });
+  const [createResult, createRateCard] = useCreateRateCardMutation();
 
   return (
     <RateCardForm
@@ -201,7 +188,7 @@ function RateCardForm({
   onSave,
 }: {
   readonly initialLines: readonly RateCardLine[];
-  readonly mutationResult: Result.Result<unknown, { readonly message: string }>;
+  readonly mutationResult: OrganizationAsyncResult;
   readonly onSave: (
     lines: readonly RateCardLineInput[]
   ) => Promise<Exit.Exit<unknown, unknown>>;
