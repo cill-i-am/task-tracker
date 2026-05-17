@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, Locator, Page } from "@playwright/test";
 
 import { LoginPage } from "./pages/login-page";
 import { MembersPage } from "./pages/members-page";
@@ -40,6 +40,27 @@ async function expectAuthenticatedHome(page: Page) {
   await expect(
     workspaceHome.getByRole("link", { exact: true, name: "Invite teammate" })
   ).toBeVisible();
+}
+
+async function expectVisibleWithPageSnapshot(
+  page: Page,
+  locator: Locator,
+  description: string,
+  timeout = 5_000
+) {
+  try {
+    await expect(locator).toBeVisible({ timeout });
+  } catch (error) {
+    const bodyText = await page
+      .locator("body")
+      .innerText({ timeout: 1_000 })
+      .catch(() => "[body text unavailable]");
+
+    throw new Error(
+      `${description} was not visible at ${page.url()}. Page text: ${bodyText.slice(0, 1_500)}`,
+      { cause: error }
+    );
+  }
 }
 
 async function getCookieHeader(page: Page) {
@@ -346,9 +367,12 @@ test.describe("organization invitations", () => {
       const acceptInvitationButton = invitedPage.getByRole("button", {
         name: "Accept invitation",
       });
-      await expect(acceptInvitationButton).toBeVisible({
-        timeout: INVITATION_UI_TIMEOUT_MS,
-      });
+      await expectVisibleWithPageSnapshot(
+        invitedPage,
+        acceptInvitationButton,
+        "Invitation accept action",
+        INVITATION_UI_TIMEOUT_MS
+      );
       await acceptInvitationButton.click();
 
       await expectAuthenticatedHome(invitedPage);
