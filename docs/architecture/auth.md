@@ -111,7 +111,7 @@ Current config decisions:
 - `OAUTH_ISSUER_URL` is optional; when omitted OAuth/OIDC issuer metadata
   defaults to `BETTER_AUTH_BASE_URL`; explicit issuer URLs are canonicalized to
   match Better Auth discovery metadata before token signing uses them
-- trusted origins are restricted to known local and sandbox app origins
+- trusted origins are restricted to known local and configured app origins
 
 Current OAuth/OIDC discovery endpoints provided by Better Auth under the auth
 base path:
@@ -181,8 +181,8 @@ Current defaulted value:
 - `AUTH_EMAIL_FROM_NAME`, which defaults to `"Ceird"`
 
 Environment variables configure credentials and email metadata, not transport
-topology. Local Node and sandbox runtimes compose `AuthEmailTransport.Local`,
-which uses the Cloudflare REST API only when `CLOUDFLARE_ACCOUNT_ID` and
+topology. Package-local Node runtimes compose `AuthEmailTransport.Local`, which
+uses the Cloudflare REST API only when `CLOUDFLARE_ACCOUNT_ID` and
 `CLOUDFLARE_API_TOKEN` are present; otherwise it falls back to deterministic
 development delivery. The Cloudflare Worker composes
 `AuthEmailTransport.CloudflareBinding` directly and fails fast when the
@@ -222,7 +222,7 @@ Rule:
   the domain contract
 - verification and organization invitation mail now pass through the same
   `AuthEmailSender` boundary
-- Node and sandbox runtimes send auth email through the direct promise bridge
+- package-local Node runtimes send auth email through the direct promise bridge
   with `AuthEmailTransport.Local`
 - the Cloudflare Worker runtime enqueues auth email work to Cloudflare Queues
   and consumes it from the same Worker through the `queue()` handler with
@@ -238,8 +238,7 @@ The same Worker consumes the queue and sends through the existing
 `AuthEmailSender` and Cloudflare transport boundary. Queue retries and the
 dead-letter queue own durable failure handling.
 
-The Node sandbox runtime continues to use direct promise-based delivery until
-the sandbox is moved to Workers.
+Package-local Node runtime continues to use direct promise-based delivery.
 
 ### Base URL Strategy
 
@@ -251,24 +250,19 @@ Rules:
 
 - the API fails fast if `BETTER_AUTH_BASE_URL` is missing
 - we do not derive the backend auth base URL from request hosts anymore
-- local, test, and sandbox entry points are responsible for providing the value
+- local, test, and Alchemy entry points are responsible for providing the value
 
 Current defaults by entry point:
 
 - local Portless dev injects `https://api.ceird.localhost:1355`
 - Playwright auth e2e injects `http://127.0.0.1:3001`
-- sandbox containers inject one explicit auth origin into both sides:
-  `BETTER_AUTH_BASE_URL` for the API and `VITE_AUTH_ORIGIN` for the app
-- when sandbox aliases are healthy, that injected origin is
-  `https://<slug>.api.ceird.localhost:1355`
-- when sandbox aliases are unavailable, that injected origin falls back to the
-  loopback API URL such as `http://127.0.0.1:4301`
+- Alchemy stages inject one explicit auth origin into both sides through
+  `BETTER_AUTH_BASE_URL` for the API and app/API origin env for the app
 - local dev and Playwright launchers inject `AUTH_EMAIL_FROM` and
   `AUTH_EMAIL_FROM_NAME`
 - local dev uses Cloudflare email when real Cloudflare API credentials are
   present, otherwise it uses the deterministic development transport
-- sandbox startup preflight validates the auth email sender address and allows
-  blank Cloudflare API credentials for development fallback
+- Alchemy stage config validates the deployed auth email sender address
 
 ### Trusted Origins and CORS
 
@@ -282,8 +276,8 @@ Allowed by default:
 - `http://localhost:4173`
 - `http://app.ceird.localhost:1355`
 - `https://app.ceird.localhost:1355`
-- sandbox app origins matching `http://*.app.ceird.localhost:1355`
-- sandbox app origins matching `https://*.app.ceird.localhost:1355`
+- local app origins matching `http://*.app.ceird.localhost:1355`
+- local app origins matching `https://*.app.ceird.localhost:1355`
 - the app-side origin derived from a configured `PORTLESS_URL`
 
 Rules:

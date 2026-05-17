@@ -487,7 +487,7 @@ export function createAuthentication(options: {
 
 function makeAuthenticationBackgroundTaskHandler() {
   return (task: Promise<unknown>) => {
-    // Node/sandbox runtime only. The Cloudflare Worker runtime provides a
+    // Package-local Node runtime only. The Cloudflare Worker runtime provides a
     // waitUntil-backed handler and schedules durable work through Queues.
     queueMicrotask(() => {
       void task;

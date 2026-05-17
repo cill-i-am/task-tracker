@@ -22,7 +22,7 @@ Worker.
 System endpoints are defined in `src/server.ts`:
 
 - `GET /` returns a plain API marker string.
-- `GET /health` returns a sandbox-compatible `HealthPayload`.
+- `GET /health` returns a stage-aware `HealthPayload`.
 
 `src/server.ts` also intercepts MCP resource-server traffic before falling
 through to the Effect `HttpApi` handler. The MCP route defaults to `/mcp`, or
@@ -81,7 +81,7 @@ a public invitation preview route matched by
 organization name, and role for pending non-expired invitations.
 
 Auth email senders depend on the `AuthEmailTransport` capability rather than a
-specific provider. Local Node and sandbox composition use
+specific provider. Package-local Node composition uses
 `AuthEmailTransport.Local`, which selects the Cloudflare API provider only when
 both Cloudflare credentials are present and otherwise falls back to deterministic
 development delivery. The deployed Worker queue composes
@@ -255,7 +255,7 @@ Core files:
 
 Site and job services depend on the `SiteGeocoder` capability, not on a
 provider-specific implementation. Runtime entrypoints choose the provider layer:
-local Node/sandbox composition uses `SiteGeocoder.Local`, which selects Google
+package-local Node composition uses `SiteGeocoder.Local`, which selects Google
 when `GOOGLE_MAPS_API_KEY` is present and falls back to deterministic
 development coordinates when it is absent. The Cloudflare Worker composition
 uses `SiteGeocoder.Google`, so deployed API startup fails fast without the
@@ -341,17 +341,10 @@ Run them with:
 pnpm --filter api test
 ```
 
-When database-backed integration coverage is required from the host, run the
-sandbox-aware wrapper:
-
-```bash
-pnpm api:test:with-sandbox
-```
-
 Database-backed integration tests create an isolated database from a base
 Postgres URL. By default they use the local app database URL, but
-`API_TEST_DATABASE_URL` or `TEST_DATABASE_URL` can point them at any sandbox
-Postgres port.
+`API_TEST_DATABASE_URL` or `TEST_DATABASE_URL` can point them at a specific
+Postgres instance for focused coverage.
 
 High-risk API changes should include tests for the service behavior,
 authorization behavior, repository behavior when SQL is involved, and HTTP

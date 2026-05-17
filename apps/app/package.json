@@ -14,7 +14,6 @@
     "preview": "vite preview",
     "react-doctor": "react-doctor --full --fail-on warning --offline",
     "react-doctor:staged": "react-doctor --staged --fail-on warning --offline",
-    "sandbox:dev": "node ../../scripts/vite-sandbox-dev.mjs",
     "test": "vitest run"
   },
   "dependencies": {
@@ -23,7 +22,6 @@
     "@ceird/identity-core": "workspace:*",
     "@ceird/jobs-core": "workspace:^",
     "@ceird/labels-core": "workspace:*",
-    "@ceird/sandbox-core": "workspace:*",
     "@ceird/sites-core": "workspace:*",
     "@effect-atom/atom-react": "^0.5.0",
     "@effect/platform": "^0.96.1",

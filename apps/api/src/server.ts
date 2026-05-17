@@ -1,6 +1,5 @@
 import { createServer } from "node:http";
 
-import { makeHealthPayloadFromSandboxIdInput } from "@ceird/sandbox-core";
 import {
   HttpApp,
   HttpApiBuilder,
@@ -24,22 +23,17 @@ import { SiteGeocoder } from "./domains/sites/geocoder.js";
 import { SitesHttpLive } from "./domains/sites/http.js";
 import { AppApi } from "./http-api.js";
 import { AppDatabaseRuntimeLive } from "./platform/database/database.js";
+import { makeHealthPayload } from "./system/health.js";
 
 const RuntimeConfig = Config.all({
-  sandboxId: Config.string("SANDBOX_ID").pipe(
-    Config.withDefault("000000000000")
-  ),
+  stage: Config.string("ALCHEMY_STAGE").pipe(Config.withDefault("local")),
 }).pipe(Effect.orDie);
 
 const SystemLive = HttpApiBuilder.group(AppApi, "system", (handlers) =>
   handlers
     .handle("root", () => Effect.succeed("ceird api"))
     .handle("health", () =>
-      RuntimeConfig.pipe(
-        Effect.map(({ sandboxId }) =>
-          makeHealthPayloadFromSandboxIdInput("api", sandboxId)
-        )
-      )
+      RuntimeConfig.pipe(Effect.map(({ stage }) => makeHealthPayload(stage)))
     )
 );
 

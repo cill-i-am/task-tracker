@@ -65,6 +65,7 @@ export const makeCloudflareStack = Effect.fn("CloudflareStack.make")(function* (
       AUTH_EMAIL_QUEUE: authEmailQueue,
     },
     env: {
+      ALCHEMY_STAGE: input.config.stage,
       AUTH_APP_ORIGIN: `https://${input.config.appHostname}`,
       AUTH_EMAIL_FROM: input.config.authEmailFrom,
       AUTH_EMAIL_FROM_NAME: input.config.authEmailFromName,
@@ -124,6 +125,7 @@ export const makeCloudflareStack = Effect.fn("CloudflareStack.make")(function* (
     rootDir: "apps/app",
     compatibility: workerCompatibility,
     env: {
+      ALCHEMY_STAGE: input.config.stage,
       API_ORIGIN: `https://${input.config.apiHostname}`,
       CEIRD_CLOUDFLARE: "1",
       VITE_API_ORIGIN: `https://${input.config.apiHostname}`,

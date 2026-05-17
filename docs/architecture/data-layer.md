@@ -78,8 +78,8 @@ checked-in Drizzle SQL migrations; migration generation with `Drizzle.Schema`
 is deferred until the API Drizzle/Effect upgrade.
 
 The API Worker receives a `DATABASE` Hyperdrive binding and resolves the runtime
-Postgres URL from `env.DATABASE.connectionString`. Local Node and sandbox
-runtimes still read `DATABASE_URL`.
+Postgres URL from `env.DATABASE.connectionString`. Package-local Node runtimes
+still read `DATABASE_URL`.
 
 The Worker does not run migrations. During deploy, the native Neon branch
 resource applies the checked-in `apps/api/drizzle/*.sql` files before

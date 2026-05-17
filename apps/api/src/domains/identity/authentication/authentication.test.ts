@@ -244,7 +244,7 @@ describe("makeAuthenticationConfig()", () => {
     });
   }, 10_000);
 
-  it("adds the matching app origin for a portless sandbox URL", () => {
+  it("adds the matching app origin for a portless API URL", () => {
     expect(
       makeAuthenticationTrustedOrigins({
         portlessUrl: "https://ceird.api.ceird.localhost:1355",
@@ -1031,7 +1031,7 @@ describe("createAuthentication()", () => {
     }
   }, 10_000);
 
-  it("matches wildcard trusted origins for sandbox aliases", () => {
+  it("matches wildcard trusted origins for local aliases", () => {
     expect({
       api: matchesTrustedOrigin(
         "https://organization-invitations.api.ceird.localhost:1355",

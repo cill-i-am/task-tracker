@@ -162,26 +162,15 @@ test("setup does not leave a partial .env.local when fallback generation fails",
   );
 });
 
-test("teardown succeeds when sandbox down has nothing to stop", async (t) => {
+test("teardown is a no-op for Alchemy-native local environments", async (t) => {
   const fixture = await createFixture();
   t.after(fixture.cleanup);
 
   const result = runScript(teardownScript, fixture);
 
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(await readFile(fixture.callLog, "utf8"), "pnpm sandbox:down\n");
-});
-
-test("teardown propagates sandbox down failures", async (t) => {
-  const fixture = await createFixture();
-  t.after(fixture.cleanup);
-
-  const result = runScript(teardownScript, fixture, {
-    PNPM_FAIL_SANDBOX_DOWN: "1",
-  });
-
-  assert.equal(result.status, 42, result.stderr);
-  assert.equal(await readFile(fixture.callLog, "utf8"), "pnpm sandbox:down\n");
+  assert.match(result.stdout, /No local Docker teardown is required/);
+  assert.equal(await readFile(fixture.callLog, "utf8"), "");
 });
 
 async function createFixture() {
@@ -212,9 +201,6 @@ async function createFixture() {
     [
       "#!/usr/bin/env bash",
       'printf "pnpm %s\\n" "$*" >> "$LOCAL_ENV_CALL_LOG"',
-      `if [[ "\${PNPM_FAIL_SANDBOX_DOWN:-}" == "1" && "$*" == "sandbox:down" ]]; then`,
-      "  exit 42",
-      "fi",
       "",
     ].join("\n")
   );

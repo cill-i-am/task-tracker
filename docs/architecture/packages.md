@@ -100,51 +100,6 @@ Labels are organization-level labels. Jobs and sites may assign labels through
 their owning-domain assignment endpoints, but the label definitions themselves
 are not job- or site-owned.
 
-## `@ceird/sandbox-core`
-
-Path: `packages/sandbox-core`
-
-Exports pure sandbox primitives:
-
-- sandbox name, ID, hostname slug, and compose project name validation
-- sandbox identity derivation from repo root, worktree path, and preferred branch
-  name when available
-- port allocation and URL-building shapes
-- health payload schemas
-- sandbox record reconciliation
-- runtime spec construction for Docker Compose
-- shared sandbox environment decoding under the `./node` export
-- registry record schemas under the `./node` export
-
-This package should stay side-effect-light. Process execution, Docker, and CLI
-presentation belong in `packages/sandbox-cli`.
-
-## `@ceird/sandbox-cli`
-
-Path: `packages/sandbox-cli`
-
-Implements the local sandbox command:
-
-- `up`
-- `down`
-- `status`
-- `list`
-- `logs`
-- `url`
-
-The CLI uses Effect CLI and Node platform services. It validates a sandbox name,
-loads shared environment, allocates ports, resolves runtime assets, starts
-Docker Compose, applies migrations, waits for service health, persists registry
-state, and formats status output.
-
-Docker runtime assets live under `packages/sandbox-cli/docker`:
-
-- `sandbox.compose.yaml`
-- `sandbox-dev.Dockerfile`
-- `sandbox-entrypoint.sh`
-- `sandbox-bootstrap.mjs`
-- `sandbox-bootstrap.d.mts`
-
 ## `@ceird/infra`
 
 Path: `packages/infra`
@@ -171,7 +126,6 @@ apps/app
   -> @ceird/jobs-core
   -> @ceird/sites-core
   -> @ceird/labels-core
-  -> @ceird/sandbox-core
 
 apps/api
   -> @ceird/comments-core
@@ -179,10 +133,6 @@ apps/api
   -> @ceird/jobs-core
   -> @ceird/sites-core
   -> @ceird/labels-core
-  -> @ceird/sandbox-core
-
-packages/sandbox-cli
-  -> @ceird/sandbox-core
 
 packages/jobs-core
   -> @ceird/comments-core
@@ -218,8 +168,6 @@ pnpm --filter @ceird/comments-core test
 pnpm --filter @ceird/jobs-core test
 pnpm --filter @ceird/sites-core test
 pnpm --filter @ceird/labels-core test
-pnpm --filter @ceird/sandbox-core test
-pnpm --filter @ceird/sandbox-cli test
 pnpm --filter @ceird/infra check-types
 ```
 

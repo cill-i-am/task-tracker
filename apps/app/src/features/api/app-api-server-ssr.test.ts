@@ -133,7 +133,7 @@ describe("shared app api server helpers", () => {
     });
   }, 1000);
 
-  it("forwards trusted sandbox origin headers when reading labels", async () => {
+  it("forwards trusted local origin headers when reading labels", async () => {
     mockedGetRequestHeader.mockImplementation((name) => {
       if (name === "cookie") {
         return "__Secure-better-auth.session_token=session-token";

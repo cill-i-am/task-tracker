@@ -32,46 +32,6 @@
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "sandbox:dev": {
-      "cache": false,
-      "persistent": true,
-      "env": [
-        "AUTH_APP_ORIGIN",
-        "AUTH_EMAIL_FROM",
-        "AUTH_EMAIL_FROM_NAME",
-        "AUTH_EMAIL_TRANSPORT",
-        "API_ORIGIN",
-        "BETTER_AUTH_BASE_URL",
-        "BETTER_AUTH_SECRET",
-        "CLOUDFLARE_ACCOUNT_ID",
-        "CLOUDFLARE_API_TOKEN",
-        "DATABASE_URL",
-        "HOST",
-        "PNPM_STORE_DIR",
-        "PORT",
-        "SANDBOX_ID",
-        "CEIRD_SANDBOX",
-        "VITE_API_ORIGIN"
-      ]
-    },
-    "sandbox:up": {
-      "cache": false
-    },
-    "sandbox:down": {
-      "cache": false
-    },
-    "sandbox:status": {
-      "cache": false
-    },
-    "sandbox:list": {
-      "cache": false
-    },
-    "sandbox:logs": {
-      "cache": false
-    },
-    "sandbox:url": {
-      "cache": false
     }
   }
 }

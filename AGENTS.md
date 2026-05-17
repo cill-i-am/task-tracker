@@ -28,24 +28,30 @@ historical plans as decision context only.
 - Start with `README.md`, `docs/README.md`, and the relevant guide under
   `docs/architecture/` when orienting on an unfamiliar area.
 - When code changes affect routes, API contracts, persistence, shared package
-  boundaries, sandbox behavior, or infrastructure, update the matching
+  boundaries, local development behavior, or infrastructure, update the matching
   architecture guide in the same change.
 - Use `docs/superpowers/specs` and `docs/superpowers/plans` to understand prior
   intent, but verify current behavior against source before relying on them.
 
-## Worktrees And Sandboxes
+## Worktrees And Alchemy Stages
 
-When working from a linked git worktree, prefer the sandbox workflow over the host-level dev scripts.
+Local development is Alchemy-native. Root `pnpm dev` delegates to
+`pnpm alchemy dev`, which creates or updates the selected Cloudflare/Neon stage.
 
-- Before starting a sandbox, check the current branch. If the worktree is detached, create or switch to a descriptive `codex/<task-slug>` branch before running sandbox commands. If creating a branch would be inappropriate for the task, pass an explicit sandbox name with `--name` instead of letting the CLI fall back to the worktree basename.
-- Sandboxes should have an intentional, task-specific identity. Prefer branch-derived names such as `<branch-slug>.app.ceird.localhost`; avoid generic names like `ceird.app.ceird.localhost` for agent work unless that is explicitly requested.
-- Use `pnpm sandbox:up` to boot app, api, and Postgres for the current worktree.
-- Use `pnpm sandbox:status` or `pnpm sandbox:url` to discover the current worktree's endpoints.
-- Use `pnpm sandbox:logs` when debugging sandboxed services.
-- Use `pnpm sandbox:down` when you are finished with that worktree's sandbox.
-- Prefer the sandbox URLs and `portless` aliases for worktree development. Fall back to the loopback URLs printed by the CLI when aliases are unavailable.
-- When running Playwright against an existing sandbox, set `PLAYWRIGHT_USE_EXTERNAL_SERVER=1` and use the canonical sandbox HTTPS `app url` and `api url` from `pnpm sandbox:url`; avoid the loopback fallback URLs for E2E because auth cookies and origin checks depend on the sandbox hostnames.
-- Do not default to `pnpm dev` inside linked worktrees unless the user explicitly asks for the non-sandbox flow.
+- Before starting an Alchemy dev stage from a linked worktree, check the current
+  branch. If the worktree is detached, create or switch to a descriptive
+  `codex/<task-slug>` branch, or set an explicit `ALCHEMY_STAGE`.
+- Stages should have intentional, task-specific names. Prefer branch-derived
+  names such as `codex-my-task`; avoid generic names like `dev` unless that is
+  explicitly requested.
+- Use `ALCHEMY_STAGE=<stage> pnpm dev` for local cloud-backed development, or
+  `ALCHEMY_STAGE=<stage> pnpm alchemy dev` when being explicit.
+- Use `pnpm alchemy deploy` for non-dev reconciliation and
+  `pnpm alchemy destroy` only when intentionally deleting a stage's resources.
+- Do not run provider-mutating Alchemy commands (`dev`, `deploy`, or `destroy`)
+  without confirming the target stage and credentials are appropriate.
+- For browser workflows that depend on auth cookies, API calls, or database
+  state, use the app/API URLs emitted by Alchemy for the selected stage.
 
 ## Linear Issues And Pull Requests
 
@@ -87,9 +93,10 @@ touches shared behavior.
 - For cross-package or handoff-ready changes, prefer `pnpm check-types`,
   `pnpm test`, `pnpm lint`, and `pnpm format`.
 - For browser workflows that depend on auth cookies, API calls, or database
-  state, use `pnpm sandbox:up` and run the affected Playwright tests.
+  state, use an explicit Alchemy stage and run the affected Playwright tests
+  against that stage's app/API URLs.
 - For database schema changes, generate and inspect the Drizzle migration under
-  `apps/api/drizzle`, then verify the API and sandbox migration path.
+  `apps/api/drizzle`, then verify the API and native Neon branch migration path.
 
 <!-- stripe-projects-cli managed:agents-md:start -->
 

@@ -3,11 +3,10 @@
   "private": true,
   "scripts": {
     "alchemy": "node packages/infra/scripts/alchemy-env.mjs",
-    "api:test:with-sandbox": "node scripts/test-with-sandbox.mjs --api",
     "build": "turbo run build",
     "check": "ultracite check .",
     "check-types": "turbo run check-types",
-    "dev": "node scripts/dev.mjs",
+    "dev": "pnpm alchemy dev",
     "fix": "ultracite fix .",
     "format": "oxfmt --check .",
     "format:write": "oxfmt --write .",
@@ -21,15 +20,8 @@
     "postinstall": "pnpm run opensrc:sync",
     "prebuild": "pnpm run opensrc:sync",
     "prepare": "node scripts/prepare.mjs",
-    "sandbox:down": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts down",
-    "sandbox:list": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts list",
-    "sandbox:logs": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts logs",
-    "sandbox:status": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts status",
-    "sandbox:up": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts up",
-    "sandbox:url": "pnpm --dir packages/sandbox-cli exec tsx src/cli.ts url",
     "test": "turbo run test && pnpm run test:scripts",
-    "test:scripts": "node --test scripts/*.test.mjs",
-    "test:with-sandbox": "node scripts/test-with-sandbox.mjs"
+    "test:scripts": "node --test scripts/*.test.mjs"
   },
   "devDependencies": {
     "alchemy": "2.0.0-beta.40",

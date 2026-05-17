@@ -9,11 +9,6 @@ if (process.env.CI === "true") {
   process.exit(0);
 }
 
-if (process.env.CEIRD_SANDBOX === "1") {
-  console.log("Skipping opensrc sync inside sandbox containers.");
-  process.exit(0);
-}
-
 const workspacePackages = ["apps/api/package.json", "apps/app/package.json"];
 const workspacePackageJsons = [];
 

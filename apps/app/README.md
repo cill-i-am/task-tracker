@@ -8,7 +8,6 @@ clients, component tests, and Playwright E2E tests.
 
 ```bash
 pnpm --filter app dev
-pnpm --filter app sandbox:dev
 pnpm --filter app test
 pnpm --filter app e2e
 pnpm --filter app check-types
@@ -16,10 +15,10 @@ pnpm --filter app build
 pnpm --filter app build:cloudflare
 ```
 
-For full app/API/Postgres testing, start the root sandbox first:
+For full cloud-backed app/API/Postgres testing, start an Alchemy stage first:
 
 ```bash
-pnpm sandbox:up
+ALCHEMY_STAGE=codex-my-task pnpm dev
 pnpm --filter app e2e
 ```
 

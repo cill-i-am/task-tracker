@@ -34,7 +34,7 @@ Current visible routes:
 | `/sites`                           | `_app._org.sites.tsx`                 | Sites list.                                                   |
 | `/sites/new`                       | `_app._org.sites.new.tsx`             | New site flow.                                                |
 | `/sites/$siteId`                   | `_app._org.sites.$siteId.tsx`         | Site detail route.                                            |
-| `/health`                          | `health.ts`                           | App health response for sandbox checks.                       |
+| `/health`                          | `health.ts`                           | App health response for Alchemy and Worker checks.            |
 
 `apps/app/src/router.tsx` configures scroll restoration, intent preloading, and
 typed route registration. Breadcrumb labels are declared through route
@@ -209,9 +209,9 @@ workflow-specific layouts over decorative landing-page patterns.
 - Playwright config lives in `playwright.config.ts`.
 - E2E tests live in `apps/app/e2e`.
 - Page objects for E2E tests live in `apps/app/e2e/pages`.
-- Auth E2E tests may read Better Auth verification tokens directly from the
-  sandbox database using `PLAYWRIGHT_DATABASE_URL` so password-reset browser
-  flows can cover the email-token handoff without depending on a mailbox.
+- Auth E2E tests may read Better Auth verification tokens directly from a test
+  database using `PLAYWRIGHT_DATABASE_URL` so password-reset browser flows can
+  cover the email-token handoff without depending on a mailbox.
 
 Run app tests:
 

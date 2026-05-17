@@ -7,7 +7,6 @@ server locally and as a Cloudflare Worker in deployed environments.
 
 ```bash
 pnpm --filter api dev
-pnpm --filter api sandbox:dev
 pnpm --filter api test
 pnpm --filter api check-types
 pnpm --filter api build
@@ -16,11 +15,11 @@ pnpm --filter api db:migrate
 pnpm --filter api db:studio
 ```
 
-For full app/API/Postgres development, prefer the root sandbox:
+For full cloud-backed app/API/Postgres development, prefer the root Alchemy
+stage:
 
 ```bash
-pnpm sandbox:up
-pnpm sandbox:logs -- --service api
+ALCHEMY_STAGE=codex-my-task pnpm dev
 ```
 
 ## Important Paths

@@ -7,7 +7,7 @@ This app owns the Ceird HTTP API, authentication runtime, database access, and s
 - Keep Better Auth integration native where possible. Compose around Better Auth instead of hiding its contract behind broad custom wrappers.
 - Keep Drizzle schema, migrations, and repository code aligned. Persistence changes should include tests that exercise the database boundary when behavior changes.
 - Keep Node and Cloudflare Worker entrypoints thin. Shared API behavior should live behind reusable layers such as the web handler and domain services.
-- Domain packages such as `@ceird/identity-core`, `@ceird/jobs-core`, and `@ceird/sandbox-core` own shared contracts; this app owns authorization, persistence, runtime effects, and HTTP wiring.
+- Domain packages such as `@ceird/identity-core`, `@ceird/jobs-core`, `@ceird/sites-core`, and `@ceird/labels-core` own shared contracts; this app owns authorization, persistence, runtime effects, and HTTP wiring.
 
 ## Contract And Persistence Changes
 
