@@ -46,19 +46,15 @@ const hasFlag = (flag) =>
 
 const resolvedAlchemyProfile =
   process.env.ALCHEMY_PROFILE ?? process.env.CEIRD_ALCHEMY_PROFILE;
+const resolvedAlchemyStage =
+  process.env.ALCHEMY_STAGE ?? process.env.CEIRD_ALCHEMY_STAGE;
 const profileArgs =
   resolvedAlchemyProfile || process.env.CI !== "true"
     ? ["--profile", resolvedAlchemyProfile ?? "ceird-bootstrap"]
     : [];
 const stageArgs =
-  stageAwareCommands.has(command) && !hasFlag("--stage")
-    ? [
-        "--stage",
-        process.env.ALCHEMY_STAGE ??
-          process.env.CEIRD_ALCHEMY_STAGE ??
-          process.env.CEIRD_INFRA_STAGE ??
-          "production",
-      ]
+  stageAwareCommands.has(command) && !hasFlag("--stage") && resolvedAlchemyStage
+    ? ["--stage", resolvedAlchemyStage]
     : [];
 const yesArgs =
   promptlessCommands.has(command) && !hasFlag("--yes") ? ["--yes"] : [];

@@ -9,7 +9,7 @@ function neonDatabaseUrl(value: string) {
   return Redacted.make(Schema.decodeUnknownSync(NeonDirectDatabaseUrl)(value));
 }
 
-const configWithoutCloudflareBootstrapSecrets = {
+export const configWithoutCloudflareBootstrapSecrets = {
   appName: "ceird",
   applyMigrations: false,
   apiHostname: "api.example.com",

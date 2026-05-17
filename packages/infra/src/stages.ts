@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -6,8 +8,10 @@ import * as Schema from "effect/Schema";
 
 import { NeonDirectDatabaseUrl } from "./neon.ts";
 
-export const InfraStage = Schema.Literals(["preview", "production"]);
+export const InfraStage = Schema.NonEmptyString;
 export type InfraStage = Schema.Schema.Type<typeof InfraStage>;
+
+const maxStageSlugLength = 40;
 
 const domainNamePattern = /^[a-z0-9.-]+$/;
 const emailAddressPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -29,7 +33,7 @@ export type InfraGoogleMapsApiKey = Schema.Schema.Type<
 
 export interface InfraStageConfig {
   readonly appName: string;
-  readonly stage: InfraStage;
+  readonly stage: string;
   readonly zoneName: DomainName;
   readonly appHostname: DomainName;
   readonly apiHostname: DomainName;
@@ -42,6 +46,20 @@ export interface InfraStageConfig {
     | Redacted.Redacted<NeonDirectDatabaseUrl>
     | undefined;
   readonly applyMigrations: boolean;
+}
+
+export interface AlchemyStageIdentityInput {
+  readonly appName?: string | undefined;
+  readonly productionStage?: string | undefined;
+  readonly stage: string;
+}
+
+export interface AlchemyStageIdentity {
+  readonly appName: string;
+  readonly isProduction: boolean;
+  readonly neonBranchName: string;
+  readonly stage: string;
+  readonly stageSlug: string;
 }
 
 const AuthEmailFromAddress = Schema.String.check(
@@ -59,7 +77,7 @@ const HyperdriveOriginConnectionLimit = Schema.Int.check(
   )
 );
 
-function decodeInfraStage(value: string) {
+function decodeAlchemyStage(value: string) {
   return Schema.decodeUnknownEffect(InfraStage)(value).pipe(
     Effect.mapError((error) => new Config.ConfigError(error))
   );
@@ -108,78 +126,131 @@ function decodeNeonDirectDatabaseUrl(value: Redacted.Redacted<string>) {
   );
 }
 
-export const loadInfraStageConfig = Effect.gen(function* () {
-  const stage = yield* Config.string("CEIRD_INFRA_STAGE").pipe(
-    Config.withDefault("production"),
-    Config.mapOrFail(decodeInfraStage)
-  );
-  const zoneName = yield* Config.string("CEIRD_ZONE_NAME").pipe(
-    Config.mapOrFail(decodeDomainName)
-  );
-  const appHostname = yield* Config.string("CEIRD_APP_HOSTNAME").pipe(
-    Config.withDefault(`app.${zoneName}`),
-    Config.mapOrFail(decodeDomainName)
-  );
-  const apiHostname = yield* Config.string("CEIRD_API_HOSTNAME").pipe(
-    Config.withDefault(`api.${zoneName}`),
-    Config.mapOrFail(decodeDomainName)
-  );
-  const authEmailFrom = yield* Config.redacted("AUTH_EMAIL_FROM").pipe(
-    Config.mapOrFail(decodeAuthEmailFrom)
-  );
-  const authEmailFromName = yield* Config.string("AUTH_EMAIL_FROM_NAME").pipe(
-    Config.withDefault("Ceird")
-  );
-  const googleMapsApiKey = yield* Config.redacted("GOOGLE_MAPS_API_KEY").pipe(
-    Config.mapOrFail(decodeGoogleMapsApiKey)
-  );
-  const hyperdriveOriginConnectionLimit = yield* Config.number(
-    "CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT"
-  ).pipe(
-    Config.withDefault(5),
-    Config.mapOrFail(decodeHyperdriveOriginConnectionLimit)
-  );
-  const neonDatabaseUrl = yield* Config.redacted("NEON_DATABASE_URL").pipe(
-    Config.map(trimRedactedConfigString),
-    Config.mapOrFail(decodeNeonDirectDatabaseUrl)
-  );
-  const neonMigrationDatabaseUrlOption = yield* Config.option(
-    Config.redacted("NEON_MIGRATION_DATABASE_URL").pipe(
-      Config.map(trimRedactedConfigString)
-    )
-  );
-  const neonMigrationDatabaseUrl:
-    | Redacted.Redacted<NeonDirectDatabaseUrl>
-    | undefined = yield* Option.match(neonMigrationDatabaseUrlOption, {
-    onNone: () =>
-      Effect.succeed(Option.none<Redacted.Redacted<NeonDirectDatabaseUrl>>()),
-    onSome: (value) =>
-      Redacted.value(value).length > 0
-        ? decodeNeonDirectDatabaseUrl(value).pipe(Effect.map(Option.some))
-        : Effect.succeed(
-            Option.none<Redacted.Redacted<NeonDirectDatabaseUrl>>()
-          ),
-  }).pipe(Effect.map(Option.getOrUndefined));
-  const applyMigrations = yield* Config.boolean("CEIRD_APPLY_MIGRATIONS").pipe(
-    Config.withDefault(false)
-  );
+export function loadInfraStageConfig(stageInput: string) {
+  return Effect.gen(function* () {
+    const stage = yield* decodeAlchemyStage(stageInput);
+    const zoneName = yield* Config.string("CEIRD_ZONE_NAME").pipe(
+      Config.mapOrFail(decodeDomainName)
+    );
+    const appHostname = yield* Config.string("CEIRD_APP_HOSTNAME").pipe(
+      Config.withDefault(`app.${zoneName}`),
+      Config.mapOrFail(decodeDomainName)
+    );
+    const apiHostname = yield* Config.string("CEIRD_API_HOSTNAME").pipe(
+      Config.withDefault(`api.${zoneName}`),
+      Config.mapOrFail(decodeDomainName)
+    );
+    const authEmailFrom = yield* Config.redacted("AUTH_EMAIL_FROM").pipe(
+      Config.mapOrFail(decodeAuthEmailFrom)
+    );
+    const authEmailFromName = yield* Config.string("AUTH_EMAIL_FROM_NAME").pipe(
+      Config.withDefault("Ceird")
+    );
+    const googleMapsApiKey = yield* Config.redacted("GOOGLE_MAPS_API_KEY").pipe(
+      Config.mapOrFail(decodeGoogleMapsApiKey)
+    );
+    const hyperdriveOriginConnectionLimit = yield* Config.number(
+      "CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT"
+    ).pipe(
+      Config.withDefault(5),
+      Config.mapOrFail(decodeHyperdriveOriginConnectionLimit)
+    );
+    const neonDatabaseUrl = yield* Config.redacted("NEON_DATABASE_URL").pipe(
+      Config.map(trimRedactedConfigString),
+      Config.mapOrFail(decodeNeonDirectDatabaseUrl)
+    );
+    const neonMigrationDatabaseUrlOption = yield* Config.option(
+      Config.redacted("NEON_MIGRATION_DATABASE_URL").pipe(
+        Config.map(trimRedactedConfigString)
+      )
+    );
+    const neonMigrationDatabaseUrl:
+      | Redacted.Redacted<NeonDirectDatabaseUrl>
+      | undefined = yield* Option.match(neonMigrationDatabaseUrlOption, {
+      onNone: () =>
+        Effect.succeed(Option.none<Redacted.Redacted<NeonDirectDatabaseUrl>>()),
+      onSome: (value) =>
+        Redacted.value(value).length > 0
+          ? decodeNeonDirectDatabaseUrl(value).pipe(Effect.map(Option.some))
+          : Effect.succeed(
+              Option.none<Redacted.Redacted<NeonDirectDatabaseUrl>>()
+            ),
+    }).pipe(Effect.map(Option.getOrUndefined));
+    const applyMigrations = yield* Config.boolean(
+      "CEIRD_APPLY_MIGRATIONS"
+    ).pipe(Config.withDefault(false));
 
-  return {
-    appName: "ceird",
-    stage,
-    zoneName,
-    appHostname,
-    apiHostname,
-    authEmailFrom,
-    authEmailFromName,
-    googleMapsApiKey,
-    hyperdriveOriginConnectionLimit,
-    neonDatabaseUrl,
-    neonMigrationDatabaseUrl,
-    applyMigrations,
-  } satisfies InfraStageConfig;
-});
+    return {
+      appName: "ceird",
+      stage,
+      zoneName,
+      appHostname,
+      apiHostname,
+      authEmailFrom,
+      authEmailFromName,
+      googleMapsApiKey,
+      hyperdriveOriginConnectionLimit,
+      neonDatabaseUrl,
+      neonMigrationDatabaseUrl,
+      applyMigrations,
+    } satisfies InfraStageConfig;
+  });
+}
 
 export function resourceName(config: InfraStageConfig, suffix: string) {
-  return `${config.appName}-${config.stage}-${suffix}`;
+  return stageResourceName(
+    makeAlchemyStageIdentity({
+      appName: config.appName,
+      productionStage: "production",
+      stage: config.stage,
+    }),
+    suffix
+  );
+}
+
+export function makeAlchemyStageIdentity(
+  input: AlchemyStageIdentityInput
+): AlchemyStageIdentity {
+  const appName = input.appName ?? "ceird";
+  const stage = input.stage.trim();
+  const stageSlug = makeStageSlug(stage);
+  const productionStage = input.productionStage ?? "main";
+
+  return {
+    appName,
+    isProduction: stage === productionStage,
+    neonBranchName: stageSlug,
+    stage,
+    stageSlug,
+  };
+}
+
+export function stageResourceName(
+  identity: AlchemyStageIdentity,
+  suffix: string
+) {
+  return [identity.appName, identity.stageSlug, makeStageSlug(suffix)].join(
+    "-"
+  );
+}
+
+function makeStageSlug(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  const base = slug.length > 0 ? slug : "stage";
+
+  if (base.length <= maxStageSlugLength) {
+    return base;
+  }
+
+  const hash = createHash("sha256").update(value).digest("hex").slice(0, 8);
+  const prefix = base
+    .slice(0, maxStageSlugLength - hash.length - 1)
+    .replace(/-+$/g, "");
+
+  return `${prefix}-${hash}`;
 }

@@ -143,12 +143,14 @@ budget is applied and before new API code is uploaded.
 
 ## Infra Configuration
 
-`packages/infra/src/stages.ts` loads deployment config from environment
-variables.
+`packages/infra/src/stages.ts` receives the resolved Alchemy stage from the
+current Stack service and loads the remaining deployment config from
+environment variables. Do not set a separate infra stage; the Alchemy `--stage`
+value is the environment identity for state, resource names, and future Neon
+branch names.
 
 | Variable                                   | Default      | Purpose                                                |
 | ------------------------------------------ | ------------ | ------------------------------------------------------ |
-| `CEIRD_INFRA_STAGE`                        | `production` | `preview` or `production`.                             |
 | `CEIRD_ZONE_NAME`                          | required     | Cloudflare zone.                                       |
 | `CEIRD_APP_HOSTNAME`                       | `app.<zone>` | App hostname.                                          |
 | `CEIRD_API_HOSTNAME`                       | `api.<zone>` | API hostname.                                          |
@@ -160,7 +162,9 @@ variables.
 | `NEON_MIGRATION_DATABASE_URL`              | migrations   | Direct Neon database URL for a migration-capable role. |
 | `CEIRD_APPLY_MIGRATIONS`                   | `false`      | Run API Drizzle migrations during deploy.              |
 
-Resource names use `ceird-<stage>-<suffix>`.
+Resource names use `ceird-<normalized-alchemy-stage>-<suffix>`. Branch-shaped
+stages are normalized to provider-safe lowercase slugs with deterministic hash
+suffixes when needed.
 
 `NEON_MIGRATION_DATABASE_URL` is required when
 `CEIRD_APPLY_MIGRATIONS=true`. Both Neon URLs must be direct non-pooler URLs for

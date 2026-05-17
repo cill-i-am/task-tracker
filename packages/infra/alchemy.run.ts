@@ -1,6 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import type { Input } from "alchemy/Input";
+import { Stack } from "alchemy/Stack";
 import type { StackServices } from "alchemy/Stack";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -38,7 +39,8 @@ export default Alchemy.Stack(
     state: Cloudflare.state(),
   },
   Effect.gen(function* () {
-    const config = yield* loadInfraStageConfig;
+    const currentStack = yield* Stack;
+    const config = yield* loadInfraStageConfig(currentStack.stage);
     yield* Effect.annotateCurrentSpan("stage", config.stage);
     yield* Effect.annotateCurrentSpan("appHostname", config.appHostname);
     yield* Effect.annotateCurrentSpan("apiHostname", config.apiHostname);
@@ -78,7 +80,7 @@ export default Alchemy.Stack(
       migrationRunId = migrations.runId;
     }
 
-    const stack = yield* makeCloudflareStack({
+    const cloudflareStack = yield* makeCloudflareStack({
       config,
       database,
       hyperdrive,
@@ -86,9 +88,9 @@ export default Alchemy.Stack(
     });
 
     return {
-      api: stack.api.url,
-      app: stack.app.url,
-      hyperdrive: stack.database.name,
+      api: cloudflareStack.api.url,
+      app: cloudflareStack.app.url,
+      hyperdrive: cloudflareStack.database.name,
       neonDatabase: database.databaseName,
     } as const;
   }).pipe(

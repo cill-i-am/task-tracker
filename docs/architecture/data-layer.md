@@ -67,9 +67,8 @@ URLs:
 7. Set `AUTH_EMAIL_FROM`.
 8. Set `CEIRD_APPLY_MIGRATIONS=true` only when the deploy should apply Drizzle
    migrations.
-9. Run `ALCHEMY_STAGE=main CEIRD_INFRA_STAGE=production pnpm infra:deploy` to
-   create or update the Hyperdrive config, Workers, queues,
-   runtime email token, and routes.
+9. Run `ALCHEMY_STAGE=main pnpm infra:deploy` to create or update the
+   Hyperdrive config, Workers, queues, runtime email token, and routes.
 
 The bootstrap Cloudflare token is not the Worker runtime email token. It is the
 credential Alchemy uses to manage Cloudflare. It needs write access for the

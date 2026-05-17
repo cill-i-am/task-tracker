@@ -11,25 +11,24 @@ the `Build` workflow.
 
 ## Alchemy Stage
 
-Alchemy has its own CLI stage in addition to the application naming stage loaded
-from `CEIRD_INFRA_STAGE`. Both must be stable in CI.
+Alchemy stage is the only infrastructure environment axis. CI must pass it
+explicitly so GitHub Actions never falls back to Alchemy's default
+`dev_${USER}` stage.
 
 For the mainline deployment:
 
 - `ALCHEMY_STAGE=main`
 - `CEIRD_ALCHEMY_STAGE=main`
-- `CEIRD_INFRA_STAGE=production`
 
 The `packages/infra/scripts/alchemy-env.mjs` wrapper injects `--stage` from
 those environment variables when the caller does not pass one explicitly. This
-prevents GitHub Actions from falling back to Alchemy's default
-`dev_${USER}` stage, which would create a separate state namespace on every
-runner.
+prevents accidental per-runner state namespaces.
 
-The current live resource names are intended to be `ceird-production-*`. The
-original local POC used `ceird-preview-*` under the local
-`dev_cillianbarron` Alchemy stage; those resources should be destroyed before
-the first `ceird-production` deploy, rather than adopted into CI.
+Resource names are derived from the Alchemy stage, for example
+`ceird-main-api`, `ceird-pr-42-api`, or `ceird-dev-cillian-api`. Any old
+`ceird-production-*` or `ceird-preview-*` resources from the earlier split-stage
+POC should be handled intentionally before the corresponding native-stage
+deploy, rather than adopted accidentally.
 
 ## GitHub Secrets And Variables
 
