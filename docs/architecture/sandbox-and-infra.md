@@ -78,9 +78,11 @@ The API Worker declares its Cloudflare runtime resources through the
 `DATABASE` is the native Hyperdrive resource, `AUTH_EMAIL_QUEUE` is the native
 Queue resource, and `AUTH_EMAIL` is the Cloudflare Email Worker binding
 descriptor. The infra package derives `ApiWorkerBindingEnv` with
-`Cloudflare.InferEnv`, while the API runtime keeps its local Worker `env` shape
-in `apps/api/src/platform/cloudflare/env.ts` so Alchemy and Effect 4 stay inside
-the infra package until the Worker runtime itself is migrated.
+`Cloudflare.InferEnv`; its tests compare that type against the API package's
+`ApiWorkerBindingRuntimeEnv` contract in
+`apps/api/src/platform/cloudflare/env.ts`. That keeps the temporary async
+Worker bridge type-checked without making the API runtime depend on Alchemy or
+Effect 4 before the Worker runtime itself is migrated.
 The API Worker is also configured with Better Auth env vars, Google Maps
 geocoding credentials, observability logs, and traces.
 The app is configured with app/API origins, Cloudflare-specific Vite flags, and

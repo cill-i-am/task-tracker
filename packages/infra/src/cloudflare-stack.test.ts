@@ -2,15 +2,34 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 
+import type { ApiWorkerBindingRuntimeEnv } from "../../../apps/api/src/platform/cloudflare/env.ts";
 import type { ApiWorkerBindingEnv } from "./cloudflare-stack.ts";
 import { makeApiWorkerBindings } from "./cloudflare-stack.ts";
 import { configWithoutCloudflareBootstrapSecrets } from "./stages.contract.ts";
+
+type AssertTrue<Value extends true> = Value;
+type HasSameKeys<Type, Expected> = [
+  Exclude<keyof Type, keyof Expected>,
+  Exclude<keyof Expected, keyof Type>,
+] extends [never, never]
+  ? true
+  : false;
 
 const apiWorkerBindingKeys = [
   "AUTH_EMAIL",
   "AUTH_EMAIL_QUEUE",
   "DATABASE",
 ] as const satisfies readonly (keyof ApiWorkerBindingEnv)[];
+
+const apiWorkerBindingKeysMatchRuntimeContract: AssertTrue<
+  HasSameKeys<ApiWorkerBindingEnv, ApiWorkerBindingRuntimeEnv>
+> = true;
+const apiWorkerBindingsSatisfyRuntimeContract: AssertTrue<
+  ApiWorkerBindingEnv extends ApiWorkerBindingRuntimeEnv ? true : false
+> = true;
+const apiWorkerRuntimeContractSatisfiesBindings: AssertTrue<
+  ApiWorkerBindingRuntimeEnv extends ApiWorkerBindingEnv ? true : false
+> = true;
 
 describe("Cloudflare stack", () => {
   it("declares the API Worker cloud resources as typed Alchemy bindings", () => {
@@ -33,6 +52,9 @@ describe("Cloudflare stack", () => {
     const authEmail = Effect.runSync(bindings.AUTH_EMAIL);
 
     expect(Object.keys(bindings)).toStrictEqual([...apiWorkerBindingKeys]);
+    expect(apiWorkerBindingKeysMatchRuntimeContract).toBe(true);
+    expect(apiWorkerBindingsSatisfyRuntimeContract).toBe(true);
+    expect(apiWorkerRuntimeContractSatisfiesBindings).toBe(true);
     expect(bindings.AUTH_EMAIL_QUEUE).toBe(authEmailQueue);
     expect(bindings.DATABASE).toBe(hyperdrive);
     expect(Cloudflare.isSendEmail(authEmail)).toBe(true);

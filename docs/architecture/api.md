@@ -25,13 +25,15 @@ System endpoints are defined in `src/server.ts`:
 - `GET /health` returns a stage-aware `HealthPayload`.
 
 The Cloudflare Worker runtime reads Cloudflare bindings from
-`src/platform/cloudflare/env.ts`. The API package owns the concrete runtime
-shape for `DATABASE`, `AUTH_EMAIL_QUEUE`, and `AUTH_EMAIL`, while
-`packages/infra/src/cloudflare-stack.ts` owns the Alchemy binding resources and
-derives its stack-side binding type with `Cloudflare.InferEnv`. Keep those
-binding names aligned when adding Worker resources; the API runtime should not
-import Alchemy or Effect 4 until the Worker entrypoint is migrated to an
-Alchemy Effect Worker.
+`src/platform/cloudflare/env.ts`. That file separates plain configuration vars
+from `ApiWorkerBindingRuntimeEnv`, the runtime binding contract for `DATABASE`,
+`AUTH_EMAIL_QUEUE`, and `AUTH_EMAIL`. The infra stack owns the Alchemy binding
+resources in `packages/infra/src/cloudflare-stack.ts` and derives
+`ApiWorkerBindingEnv` with `Cloudflare.InferEnv`. The infra test suite imports
+the API binding contract and asserts the Alchemy-inferred type has the same
+keys and assignable runtime binding types. Keep that bridge green when adding
+Worker resources; the API runtime should not import Alchemy or Effect 4 until
+the Worker entrypoint is migrated to an Alchemy Effect Worker.
 
 `src/server.ts` also intercepts MCP resource-server traffic before falling
 through to the Effect `HttpApi` handler. The MCP route defaults to `/mcp`, or

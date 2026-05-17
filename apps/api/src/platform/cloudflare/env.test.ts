@@ -1,17 +1,19 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import type { AuthEmailQueueMessage } from "../../domains/identity/authentication/auth-email-queue.js";
 import type { ApiWorkerEnv } from "./env.js";
 import { apiWorkerEnvConfigMap } from "./env.js";
 
 function makeWorkerEnv(): ApiWorkerEnv {
   return {
     AUTH_APP_ORIGIN: "https://app.example.com",
+    AUTH_EMAIL: {
+      send: () => Promise.resolve({ messageId: "email_123" }),
+    },
     AUTH_EMAIL_FROM: "auth@example.com",
     AUTH_EMAIL_FROM_NAME: "Ceird",
     AUTH_EMAIL_QUEUE: {
       send: () => Promise.resolve(),
-    } as unknown as Queue<AuthEmailQueueMessage>,
+    } as unknown as Queue<unknown>,
     BETTER_AUTH_BASE_URL: "https://api.example.com/api/auth",
     BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
     DATABASE: {

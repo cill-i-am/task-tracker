@@ -1,21 +1,26 @@
-import type { AuthEmailQueueMessage } from "../../domains/identity/authentication/auth-email-queue.js";
+import type { Hyperdrive, Queue, SendEmail } from "@cloudflare/workers-types";
 
-export interface ApiWorkerEnv {
+export interface ApiWorkerBindingRuntimeEnv {
+  readonly AUTH_EMAIL: SendEmail;
+  readonly AUTH_EMAIL_QUEUE: Queue<unknown>;
+  readonly DATABASE: Hyperdrive;
+}
+
+export interface ApiWorkerConfigEnv {
   readonly AUTH_APP_ORIGIN: string;
-  readonly AUTH_EMAIL?: SendEmail;
   readonly AUTH_EMAIL_FROM: string;
   readonly AUTH_EMAIL_FROM_NAME?: string;
-  readonly AUTH_EMAIL_QUEUE: Queue<AuthEmailQueueMessage>;
   readonly BETTER_AUTH_BASE_URL: string;
   readonly BETTER_AUTH_SECRET: string;
   readonly CLOUDFLARE_ACCOUNT_ID?: string;
   readonly CLOUDFLARE_API_TOKEN?: string;
-  readonly DATABASE: Hyperdrive;
   readonly GOOGLE_MAPS_API_KEY: string;
   readonly MCP_RESOURCE_URL?: string;
   readonly NODE_ENV?: string;
   readonly OAUTH_ISSUER_URL?: string;
 }
+
+export type ApiWorkerEnv = ApiWorkerBindingRuntimeEnv & ApiWorkerConfigEnv;
 
 export function apiWorkerEnvConfigMap(env: ApiWorkerEnv) {
   return new Map(

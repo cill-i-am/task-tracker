@@ -81,7 +81,7 @@ function makeEnv(
     AUTH_EMAIL_FROM_NAME: "Ceird",
     AUTH_EMAIL_QUEUE: {
       send: () => Promise.resolve(),
-    } as unknown as Queue<AuthEmailQueueMessage>,
+    } as unknown as Queue<unknown>,
     BETTER_AUTH_BASE_URL: "https://api.example.com/api/auth",
     BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
     DATABASE: {
@@ -152,7 +152,7 @@ describe("worker queue auth email delivery", () => {
       runWorkerQueue(
         makeBatch([message]),
         makeEnv({
-          AUTH_EMAIL: undefined,
+          AUTH_EMAIL: undefined as unknown as SendEmail,
           sendEmail,
         })
       )

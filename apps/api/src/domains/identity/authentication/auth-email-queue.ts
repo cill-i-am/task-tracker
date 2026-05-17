@@ -67,7 +67,7 @@ export function decodeAuthEmailQueueMessageStrict(input: unknown) {
 }
 
 export function makeCloudflareAuthenticationEmailSchedulerLive(
-  queue: Queue<AuthEmailQueueMessage>
+  queue: Queue<unknown>
 ) {
   return Layer.succeed(AuthenticationEmailScheduler, {
     sendPasswordResetEmail: async (payload) => {
