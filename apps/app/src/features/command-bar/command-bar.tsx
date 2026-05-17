@@ -21,6 +21,7 @@ import {
 } from "#/components/ui/responsive-dialog";
 import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import type { HotkeyDefinition } from "#/hotkeys/hotkey-registry";
+import { emitAppEffectLog } from "#/lib/effect-log";
 
 type CommandScope = "detail" | "global" | "org" | "route";
 
@@ -301,6 +302,11 @@ function reportCommandActionError(error: unknown) {
     return;
   }
 
-  // eslint-disable-next-line no-console -- Surface command failures without producing unhandled promise rejections.
-  console.error("Command action failed", error);
+  emitAppEffectLog({
+    annotations: {
+      errorName: error instanceof Error ? error.name : typeof error,
+    },
+    level: "error",
+    message: "Command action failed",
+  });
 }

@@ -131,9 +131,17 @@ compatibility contract, including `nodejs_compat`, so runtime packages that rely
 on Node.js compatibility APIs run consistently across both deployable surfaces.
 The API Worker is also configured with Better Auth env vars, database
 Hyperdrive binding, auth email queue binding, Google Maps geocoding credentials,
-observability logs, and traces.
+observability logs and traces. Cloudflare invocation logs are disabled by
+default because provider-generated invocation records can include full request
+URLs outside the app/API redaction path. Worker log and trace head sampling
+rates are stage config inputs; production defaults to sampled capture while
+preview defaults to full capture.
 The app is configured with app/API origins, Cloudflare-specific Vite flags, and
-Cloudflare observability logs and traces.
+Cloudflare observability logs and traces using the same sampling config.
+`API_ORIGIN` is also compiled into the app server bundle through the Vite
+`__SERVER_API_ORIGIN__` define so deployed TanStack Start server functions can
+resolve the API even when the Worker runtime does not expose a Node-style
+`process.env`.
 
 The production Hyperdrive configuration sets a conservative origin connection
 limit before deploy-time migrations run. Drizzle migrations depend on that
@@ -159,6 +167,9 @@ variables.
 | `NEON_DATABASE_URL`                        | required     | Direct Neon app database URL used by Hyperdrive.       |
 | `NEON_MIGRATION_DATABASE_URL`              | migrations   | Direct Neon database URL for a migration-capable role. |
 | `CEIRD_APPLY_MIGRATIONS`                   | `false`      | Run API Drizzle migrations during deploy.              |
+| `CEIRD_WORKER_INVOCATION_LOGS_ENABLED`     | `false`      | Enable Cloudflare invocation logs for app/API Workers. |
+| `CEIRD_WORKER_LOG_SAMPLE_RATE`             | stage-based  | App/API Worker observability log head sampling rate.   |
+| `CEIRD_WORKER_TRACE_SAMPLE_RATE`           | stage-based  | App/API Worker observability trace head sampling rate. |
 
 Resource names use `ceird-<stage>-<suffix>`.
 

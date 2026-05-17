@@ -1,4 +1,12 @@
-import { Config, Effect, Option, Schema, pipe } from "effect";
+import {
+  Config,
+  ConfigError,
+  Effect,
+  Either,
+  Option,
+  Schema,
+  pipe,
+} from "effect";
 
 import {
   DEFAULT_APP_DATABASE_URL,
@@ -9,6 +17,11 @@ export const DEFAULT_AUTH_BASE_PATH = "/api/auth" as const;
 export const DEFAULT_AUTH_DATABASE_URL = DEFAULT_APP_DATABASE_URL;
 export const DEFAULT_MCP_RESOURCE_PATH = "/mcp" as const;
 export const DEFAULT_OAUTH_CONSENT_PATH = "/oauth/consent" as const;
+const CLIENT_IP_ADDRESS_HEADERS = [
+  "cf-connecting-ip",
+  "x-real-ip",
+  "x-forwarded-for",
+] as const;
 export const CEIRD_OAUTH_SCOPES = [
   "openid",
   "profile",
@@ -29,6 +42,9 @@ export const CEIRD_OAUTH_CLIENT_REGISTRATION_DEFAULT_SCOPES = [
 const TrustedOriginPattern = Schema.String.pipe(
   Schema.pattern(/^https?:\/\/(?:\*\.)?[a-z0-9.-]+(?::\d+)?$/i),
   Schema.brand("TrustedOriginPattern")
+);
+const AbsoluteHttpUrl = Schema.String.pipe(
+  Schema.filter((value) => isAbsoluteHttpUrl(value))
 );
 
 export type TrustedOriginPattern = Schema.Schema.Type<
@@ -82,31 +98,13 @@ const DEFAULT_LOCAL_APP_ORIGINS = DEFAULT_LOCAL_APP_ORIGIN_STRINGS.map(
 );
 export const authenticationDatabaseUrlConfig = appDatabaseUrlConfig;
 const authenticationBaseUrlConfig = Config.string("BETTER_AUTH_BASE_URL").pipe(
-  Config.validate({
-    message: "BETTER_AUTH_BASE_URL must be a valid absolute URL",
-    validation: (value) => {
-      try {
-        const url = new URL(value);
-        return url.protocol === "http:" || url.protocol === "https:";
-      } catch {
-        return false;
-      }
-    },
-  })
+  Config.mapOrFail((value) =>
+    decodeAbsoluteHttpUrlConfig("BETTER_AUTH_BASE_URL", value)
+  )
 );
 const absoluteUrlConfig = (name: string) =>
   Config.string(name).pipe(
-    Config.validate({
-      message: `${name} must be a valid absolute URL`,
-      validation: (value) => {
-        try {
-          const url = new URL(value);
-          return url.protocol === "http:" || url.protocol === "https:";
-        } catch {
-          return false;
-        }
-      },
-    })
+    Config.mapOrFail((value) => decodeAbsoluteHttpUrlConfig(name, value))
   );
 
 const authenticationMcpResourceUrlConfig = absoluteUrlConfig(
@@ -115,6 +113,24 @@ const authenticationMcpResourceUrlConfig = absoluteUrlConfig(
 const oauthIssuerUrlConfig = absoluteUrlConfig("OAUTH_ISSUER_URL").pipe(
   Config.option
 );
+
+function isAbsoluteHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function decodeAbsoluteHttpUrlConfig(name: string, value: string) {
+  return pipe(
+    Schema.decodeUnknownEither(AbsoluteHttpUrl)(value),
+    Either.mapLeft(() =>
+      ConfigError.InvalidData([], `${name} must be a valid absolute URL`)
+    )
+  );
+}
 
 function isLoopbackHostname(hostname: string) {
   return (
@@ -158,6 +174,9 @@ export interface AuthenticationConfig {
   readonly databaseUrl: string;
   readonly advanced?: {
     readonly trustedProxyHeaders: true;
+    readonly ipAddress: {
+      readonly ipAddressHeaders: string[];
+    };
     readonly crossSubDomainCookies?: {
       readonly enabled: true;
       readonly domain: string;
@@ -327,6 +346,9 @@ export function makeAuthenticationConfig(
     databaseUrl: environment.databaseUrl,
     advanced: {
       trustedProxyHeaders: true,
+      ipAddress: {
+        ipAddressHeaders: [...CLIENT_IP_ADDRESS_HEADERS],
+      },
       ...(crossSubDomainCookieDomain
         ? {
             crossSubDomainCookies: {

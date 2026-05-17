@@ -5,13 +5,17 @@ import { oauthProvider } from "@better-auth/oauth-provider";
 import {
   isAdministrativeOrganizationRole,
   decodeCreateOrganizationInput,
+  decodeOrganizationId,
   decodeOrganizationRole,
   decodePublicInvitationPreview,
   decodeUpdateOrganizationInput,
+  UserId as UserIdSchema,
 } from "@ceird/identity-core";
 import type {
+  OrganizationId,
   OrganizationRole,
   PublicInvitationPreview,
+  UserId as UserIdType,
 } from "@ceird/identity-core";
 import { HttpApiBuilder, HttpApp } from "@effect/platform";
 import { betterAuth } from "better-auth";
@@ -28,9 +32,10 @@ import {
 } from "better-auth/plugins/organization/access";
 import { and, eq, gt } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Context, Effect, Layer, Runtime } from "effect";
+import { Context, Effect, Layer, Runtime, Schema } from "effect";
 
 import { AppDatabase } from "../../../platform/database/database.js";
+import { emitApiEffectLog } from "../../effect-log.js";
 import { loadAuthEmailConfig } from "./auth-email-config.js";
 import {
   AuthenticationEmailScheduler,
@@ -76,10 +81,37 @@ const SESSION_COOKIE_NAMES = [
   "__Host-better-auth.session_token",
   "better-auth-session_token",
 ] as const;
+const BETTER_AUTH_EXPECTED_FAILURE_BUCKETS = {
+  "Credential account not found": "credential_account_not_found",
+  "Invalid password": "invalid_password",
+  "Password not found": "password_not_found",
+  "Reset Password: User not found": "password_reset_user_not_found",
+  "User not found": "user_not_found",
+} as const;
+const EMAIL_PATTERN = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+const BEARER_TOKEN_PATTERN = /\bBearer\s+[^\s,;]+/gi;
+const SENSITIVE_ASSIGNMENT_PATTERN =
+  /\b(authorization|cookie|password|secret|session|token)\s*[:=]\s*[^,\s;]+/gi;
+const SENSITIVE_LOG_KEY_PATTERN =
+  /authorization|callback|code|cookie|email|password|redirect|secret|session|state|token|url/i;
+const SENSITIVE_QUERY_PARAM_PATTERN =
+  /([?&](?:access_token|callbackURL|callbackUrl|code|id_token|redirectTo|refresh_token|state|token)=)[^&\s]+/gi;
+const MAX_BETTER_AUTH_LOG_DEPTH = 4;
+const MAX_BETTER_AUTH_LOG_ENTRIES = 25;
 
 type AuthEmailFailureReporter = (error: unknown) => void;
 type AuthEmailPromiseSender<Input> = (input: Input) => Promise<void>;
+type BetterAuthLogger = NonNullable<BetterAuthOptions["logger"]>;
+type BetterAuthLogLevel = Parameters<NonNullable<BetterAuthLogger["log"]>>[0];
 interface AuthenticationSessionResult {
+  readonly session: {
+    readonly activeOrganizationId?: OrganizationId | null | undefined;
+  } & Record<string, unknown>;
+  readonly user: {
+    readonly id: UserIdType;
+  } & Record<string, unknown>;
+}
+interface BetterAuthSessionResult {
   readonly session: {
     readonly activeOrganizationId?: string | null | undefined;
   } & Record<string, unknown>;
@@ -117,6 +149,163 @@ export function maskInvitationEmail(email: string) {
   const maskedDomainLabel = domainLabel ? `${domainLabel[0]}***` : "***";
 
   return `${localPart[0]}***@${maskedDomainLabel}${domainSuffix.length > 0 ? `.${domainSuffix.join(".")}` : ""}`;
+}
+
+export function makeCeirdBetterAuthLogger(): BetterAuthLogger {
+  return {
+    level: "warn",
+    disableColors: true,
+    log(level, message, ...args) {
+      const expectedFailureBucket =
+        readExpectedBetterAuthFailureBucket(message);
+
+      if (expectedFailureBucket) {
+        emitApiEffectLog({
+          annotations: {
+            authEvent: "expected_auth_failure",
+            authFailureBucket: expectedFailureBucket,
+            betterAuthLevel: level,
+          },
+          level: "info",
+          message: "Better Auth expected authentication failure",
+        });
+        return;
+      }
+
+      if (message === "Failed to run background task:") {
+        emitApiEffectLog({
+          annotations: {
+            authEvent: "background_task_failed",
+            betterAuthLevel: level,
+            args: sanitizeBetterAuthLogArgs(args),
+          },
+          level: "warning",
+          message: "Better Auth background task failed",
+        });
+        return;
+      }
+
+      emitApiEffectLog({
+        annotations: {
+          authEvent: "better_auth_log",
+          betterAuthLevel: level,
+          message: sanitizeBetterAuthLogString(message),
+          args: sanitizeBetterAuthLogArgs(args),
+        },
+        level: readBetterAuthEffectLogLevel(level),
+        message: "Better Auth log",
+      });
+    },
+  };
+}
+
+function readBetterAuthEffectLogLevel(
+  level: BetterAuthLogLevel
+): "error" | "info" | "warning" {
+  if (level === "error") {
+    return "error";
+  }
+
+  if (level === "warn") {
+    return "warning";
+  }
+
+  return "info";
+}
+
+function sanitizeBetterAuthLogArgs(args: readonly unknown[]) {
+  const seen = new WeakSet<object>();
+  const sanitizedArgs = args
+    .slice(0, MAX_BETTER_AUTH_LOG_ENTRIES)
+    .map((arg) => sanitizeBetterAuthLogValue(arg, seen, 0));
+
+  return args.length > MAX_BETTER_AUTH_LOG_ENTRIES
+    ? [...sanitizedArgs, "[truncated]"]
+    : sanitizedArgs;
+}
+
+function sanitizeBetterAuthLogValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number
+): unknown {
+  if (typeof value === "string") {
+    return sanitizeBetterAuthLogString(value);
+  }
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: sanitizeBetterAuthLogString(value.message),
+    };
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+
+  if (seen.has(value)) {
+    return "[circular]";
+  }
+
+  if (depth >= MAX_BETTER_AUTH_LOG_DEPTH) {
+    return "[max-depth]";
+  }
+
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    const entries = value
+      .slice(0, MAX_BETTER_AUTH_LOG_ENTRIES)
+      .map((entry) => sanitizeBetterAuthLogValue(entry, seen, depth + 1));
+
+    return value.length > MAX_BETTER_AUTH_LOG_ENTRIES
+      ? [...entries, "[truncated]"]
+      : entries;
+  }
+
+  try {
+    const sanitizedEntries: [string, unknown][] = [];
+    const source = value as Record<string, unknown>;
+
+    for (const key in source) {
+      if (!Object.hasOwn(source, key)) {
+        continue;
+      }
+
+      if (sanitizedEntries.length >= MAX_BETTER_AUTH_LOG_ENTRIES) {
+        sanitizedEntries.push(["__truncated", true]);
+        break;
+      }
+
+      sanitizedEntries.push([
+        key,
+        SENSITIVE_LOG_KEY_PATTERN.test(key)
+          ? "[redacted]"
+          : sanitizeBetterAuthLogValue(source[key], seen, depth + 1),
+      ]);
+    }
+
+    return Object.fromEntries(sanitizedEntries);
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+function sanitizeBetterAuthLogString(value: string) {
+  return value
+    .replaceAll(EMAIL_PATTERN, "[redacted-email]")
+    .replaceAll(BEARER_TOKEN_PATTERN, "Bearer [redacted]")
+    .replaceAll(SENSITIVE_ASSIGNMENT_PATTERN, "$1=[redacted]")
+    .replaceAll(SENSITIVE_QUERY_PARAM_PATTERN, "$1[redacted]");
+}
+
+function readExpectedBetterAuthFailureBucket(message: string) {
+  return Object.hasOwn(BETTER_AUTH_EXPECTED_FAILURE_BUCKETS, message)
+    ? BETTER_AUTH_EXPECTED_FAILURE_BUCKETS[
+        message as keyof typeof BETTER_AUTH_EXPECTED_FAILURE_BUCKETS
+      ]
+    : undefined;
 }
 
 export async function findPublicInvitationPreview(options: {
@@ -305,6 +494,7 @@ export function createAuthentication(options: {
       schema: authSchema,
     }),
     disabledPaths: ["/token"],
+    logger: makeCeirdBetterAuthLogger(),
     plugins: [
       jwt({
         disableSettingJwtHeader: true,
@@ -480,9 +670,57 @@ export function createAuthentication(options: {
     },
   });
 
-  auth.handler = withAuthenticationAuthorizationGuards(auth.handler, database);
+  const ceirdAuth = auth as CeirdAuthentication;
+  const getRawSession = (
+    ceirdAuth.api.getSession as unknown as (options: {
+      readonly headers: Headers;
+    }) => Promise<BetterAuthSessionResult | null>
+  ).bind(ceirdAuth.api);
 
-  return auth as CeirdAuthentication;
+  (
+    ceirdAuth.api as {
+      getSession: CeirdAuthentication["api"]["getSession"];
+    }
+  ).getSession = async (sessionOptions: { readonly headers: Headers }) =>
+    decodeAuthenticationSessionResult(await getRawSession(sessionOptions));
+  ceirdAuth.handler = withAuthenticationAuthorizationGuards(
+    ceirdAuth.handler,
+    database
+  );
+
+  return ceirdAuth;
+}
+
+function decodeAuthenticationSessionResult(
+  sessionResult: BetterAuthSessionResult | null
+): AuthenticationSessionResult | null {
+  if (sessionResult === null) {
+    return null;
+  }
+
+  return {
+    ...sessionResult,
+    session: {
+      ...sessionResult.session,
+      activeOrganizationId: decodeOptionalSessionOrganizationId(
+        sessionResult.session.activeOrganizationId
+      ),
+    },
+    user: {
+      ...sessionResult.user,
+      id: Schema.decodeUnknownSync(UserIdSchema)(sessionResult.user.id),
+    },
+  };
+}
+
+function decodeOptionalSessionOrganizationId(
+  organizationId: string | null | undefined
+) {
+  if (organizationId === null || organizationId === undefined) {
+    return organizationId;
+  }
+
+  return decodeOrganizationId(organizationId);
 }
 
 function makeAuthenticationBackgroundTaskHandler() {
@@ -690,7 +928,7 @@ async function resolveAdministrativeOrganizationTargetId(
   database: NodePgDatabase<typeof authSchema>,
   request: Request,
   activeOrganizationId: string | null
-) {
+): Promise<OrganizationId | null> {
   const { searchParams } = new URL(request.url);
   const organizationSlug = searchParams.get("organizationSlug");
 
@@ -703,10 +941,24 @@ async function resolveAdministrativeOrganizationTargetId(
       .where(eq(organizationTable.slug, organizationSlug))
       .limit(1);
 
-    return organizationRow?.id ?? null;
+    return decodeAdministrativeOrganizationId(organizationRow?.id);
   }
 
-  return searchParams.get("organizationId") ?? activeOrganizationId;
+  return decodeAdministrativeOrganizationId(
+    searchParams.get("organizationId") ?? activeOrganizationId
+  );
+}
+
+function decodeAdministrativeOrganizationId(value: unknown) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  try {
+    return decodeOrganizationId(value);
+  } catch {
+    return null;
+  }
 }
 
 function extractBetterAuthSessionToken(cookieHeader: string | null) {

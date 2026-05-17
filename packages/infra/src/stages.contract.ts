@@ -25,6 +25,9 @@ const configWithoutCloudflareBootstrapSecrets = {
   ),
   neonMigrationDatabaseUrl: undefined,
   stage: "production",
+  workerInvocationLogsEnabled: false,
+  workerLogHeadSamplingRate: 0.1,
+  workerTraceHeadSamplingRate: 0.1,
   zoneName: "example.com",
 } satisfies InfraStageConfig;
 

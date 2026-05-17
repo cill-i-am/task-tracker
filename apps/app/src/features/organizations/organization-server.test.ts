@@ -1,4 +1,7 @@
 import { decodeOrganizationId } from "@ceird/identity-core";
+import { Effect } from "effect";
+
+import { withAppEffectLogSinkForTest } from "#/lib/effect-log";
 
 import {
   createCurrentServerOrganizationDirect,
@@ -357,6 +360,10 @@ describe("server organization lookup", () => {
       if (name === "origin") {
         return "https://codex-task.app.ceird.localhost:1355";
       }
+
+      if (name === "cf-ray") {
+        return "0123456789abcdef-DUB";
+      }
     });
     process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
 
@@ -391,6 +398,7 @@ describe("server organization lookup", () => {
           "content-type": "application/json",
           cookie: "__Secure-better-auth.session_token=session-token",
           origin: "https://codex-task.app.ceird.localhost:1355",
+          "x-ceird-request-id": "0123456789abcdef-DUB",
           "x-forwarded-host": "codex-task.api.ceird.localhost:1355",
           "x-forwarded-proto": "https",
         },
@@ -517,9 +525,16 @@ describe("server organization lookup", () => {
   }, 1000);
 
   it("does not retry organization creation for generic validation failures", async () => {
-    mockedGetRequestHeader.mockImplementation((name) =>
-      name === "cookie" ? "better-auth.session_token=session-token" : undefined
-    );
+    const logs: unknown[] = [];
+    mockedGetRequestHeader.mockImplementation((name) => {
+      if (name === "cookie") {
+        return "better-auth.session_token=session-token";
+      }
+
+      if (name === "cf-ray") {
+        return "3234567890abcdef-DUB";
+      }
+    });
     process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
 
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -532,10 +547,30 @@ describe("server organization lookup", () => {
       )
     );
 
-    await expect(
-      createCurrentServerOrganizationDirect({ name: "Acme Field Ops" })
-    ).rejects.toThrow("Organization creation failed with status 400.");
+    await withAppEffectLogSinkForTest(
+      (logEntry) =>
+        Effect.sync(() => {
+          logs.push(logEntry);
+        }),
+      () =>
+        expect(
+          createCurrentServerOrganizationDirect({ name: "Acme Field Ops" })
+        ).rejects.toThrow("Organization creation failed with status 400.")
+    );
 
     expect(fetchMock).toHaveBeenCalledOnce();
+    expect(logs).toStrictEqual([
+      {
+        annotations: expect.objectContaining({
+          errorBucket: "upstream_status",
+          operation: "OrganizationsServer.createOrganization",
+          requestId: "3234567890abcdef-DUB",
+          status: 400,
+          targetOrigin: "http://ceird-sbx-api:4301/api/auth",
+        }),
+        level: "warning",
+        message: "App server operation failed",
+      },
+    ]);
   }, 1000);
 });

@@ -1,5 +1,11 @@
 import { createServer } from "node:http";
 
+import {
+  CEIRD_REQUEST_ID_HEADER,
+  CF_RAY_HEADER,
+  readSafeCorrelationId,
+  readSafeRequestPath,
+} from "@ceird/observability-core";
 import { makeHealthPayloadFromSandboxIdInput } from "@ceird/sandbox-core";
 import {
   HttpApp,
@@ -12,6 +18,7 @@ import {
 import { NodeHttpServer } from "@effect/platform-node";
 import { Config, Context, Effect, Layer } from "effect";
 
+import { emitApiEffectLog } from "./domains/effect-log.js";
 import {
   AuthenticationHttpLive,
   AuthenticationLive,
@@ -61,6 +68,12 @@ type ApiAuthenticationLive = typeof AuthenticationLive;
 type ApiBaseLive = Layer.Layer<never, never, never>;
 type ApiSiteGeocoderLive = Layer.Layer<SiteGeocoder, unknown, never>;
 
+interface RequestLogSource {
+  readonly headers: Headers | Record<string, string | undefined>;
+  readonly method: string;
+  readonly url: string;
+}
+
 export const makeApiLive = (
   databaseRuntimeLive: ApiDatabaseRuntimeLive,
   authenticationLive: ApiAuthenticationLive = AuthenticationLive,
@@ -92,7 +105,7 @@ export const apiRequestLogger: typeof HttpMiddleware.logger =
         fiber.currentContext,
         HttpServerRequest.HttpServerRequest
       );
-      const path = requestPathname(request.url);
+      const path = readSafeRequestPath(request.url);
 
       counter += 1;
 
@@ -116,11 +129,9 @@ export const apiRequestLogger: typeof HttpMiddleware.logger =
 
           return Effect.zipRight(
             log.pipe(
-              Effect.annotateLogs({
-                "http.method": request.method,
-                "http.path": path,
-                "http.status": status,
-              })
+              Effect.annotateLogs(
+                makeHttpRequestLogAnnotations(request, path, status)
+              )
             ),
             exit
           );
@@ -130,27 +141,80 @@ export const apiRequestLogger: typeof HttpMiddleware.logger =
     });
   });
 
-function requestPathname(url: string) {
-  const queryIndex = url.indexOf("?");
-  const pathOrUrl = queryIndex === -1 ? url : url.slice(0, queryIndex);
-
-  if (pathOrUrl.startsWith("/")) {
-    return pathOrUrl;
-  }
-
-  const protocolSeparatorIndex = pathOrUrl.indexOf("://");
-
-  if (protocolSeparatorIndex === -1) {
-    return pathOrUrl;
-  }
-
-  const pathnameStartIndex = pathOrUrl.indexOf("/", protocolSeparatorIndex + 3);
-
-  return pathnameStartIndex === -1 ? "/" : pathOrUrl.slice(pathnameStartIndex);
-}
-
 function shouldSkipRequestLog(path: string) {
   return path === "/health";
+}
+
+function makeHttpRequestLogAnnotations(
+  request: RequestLogSource,
+  path: string,
+  status: number
+) {
+  const requestId = readRequestHeader(request, CEIRD_REQUEST_ID_HEADER);
+  const cfRay = readRequestHeader(request, CF_RAY_HEADER);
+
+  return {
+    "http.method": request.method,
+    "http.path": path,
+    "http.status": status,
+    ...((requestId ?? cfRay) ? { "http.request_id": requestId ?? cfRay } : {}),
+    ...(cfRay ? { "http.cf_ray": cfRay } : {}),
+  };
+}
+
+function readRequestHeader(request: RequestLogSource, name: string) {
+  const { headers } = request;
+  const value =
+    typeof (headers as Headers).get === "function"
+      ? (headers as Headers).get(name)
+      : ((headers as Record<string, string | undefined>)[name] ??
+        (headers as Record<string, string | undefined>)[name.toLowerCase()]);
+
+  return readSafeCorrelationId(value);
+}
+
+async function handleMcpWebRequestWithLogging(
+  request: Request,
+  mcpWebHandler: (
+    request: Request
+  ) => Response | Promise<Response | null> | null
+) {
+  const startTime = performance.now();
+
+  try {
+    const response = await mcpWebHandler(request);
+
+    if (response === null) {
+      return null;
+    }
+
+    logMcpWebResponse(request, response.status, startTime);
+
+    return response;
+  } catch (error) {
+    logMcpWebResponse(request, 500, startTime, error);
+    throw error;
+  }
+}
+
+function logMcpWebResponse(
+  request: Request,
+  status: number,
+  startTime: number,
+  error?: unknown
+) {
+  const path = readSafeRequestPath(request.url);
+  const details = {
+    apiDomain: "mcp",
+    durationMs: Math.round(performance.now() - startTime),
+    ...makeHttpRequestLogAnnotations(request, path, status),
+    ...(error instanceof Error ? { errorName: error.name } : {}),
+  };
+  emitApiEffectLog({
+    annotations: details,
+    level: status >= 500 ? "warning" : "info",
+    message: status >= 500 ? "MCP HTTP error response" : "MCP HTTP response",
+  });
 }
 
 export const makeApiWebHandler = (
@@ -183,7 +247,8 @@ export const makeApiWebHandler = (
   return {
     dispose: handler.dispose,
     handler: async (request: Request) =>
-      (await mcpWebHandler(request)) ?? handler.handler(request),
+      (await handleMcpWebRequestWithLogging(request, mcpWebHandler)) ??
+      handler.handler(request),
   };
 };
 

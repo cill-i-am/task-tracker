@@ -105,6 +105,11 @@ Current config decisions:
 - Better Auth remains the native owner of
   `/api/auth/request-password-reset` and `/api/auth/reset-password`
 - rate limiting is enabled and stored in the database
+- rate limiting and session IP tracking read Cloudflare's `cf-connecting-ip`
+  header first, then `x-real-ip`, then `x-forwarded-for`
+- Better Auth's logger is wrapped by Ceird so expected credential failures are
+  bucketed, background-task failures are redacted, and sensitive fields are not
+  written directly to console
 - `BETTER_AUTH_BASE_URL` is required
 - `MCP_RESOURCE_URL` is optional; when omitted the valid MCP resource audience
   defaults to the API origin plus `/mcp`
@@ -252,6 +257,8 @@ Rules:
 - the API fails fast if `BETTER_AUTH_BASE_URL` is missing
 - we do not derive the backend auth base URL from request hosts anymore
 - local, test, and sandbox entry points are responsible for providing the value
+- deployed Cloudflare requests rely on the configured client IP header order:
+  `cf-connecting-ip`, `x-real-ip`, then `x-forwarded-for`
 
 Current defaults by entry point:
 
@@ -669,6 +676,11 @@ messages.
 Rules:
 
 - we do not surface raw Better Auth error payloads directly to users
+- we do not write raw Better Auth logger args directly to stderr; email
+  addresses, URL/token-shaped values, cookies, sessions, secrets, and passwords
+  are redacted before logging
+- expected credential failures use stable auth failure buckets instead of
+  high-severity stderr noise
 - rate-limit responses (`429`) map to a specific retry-later message
 - other sign-in failures map to a generic credentials-oriented message
 - other sign-up failures map to a generic account-creation message

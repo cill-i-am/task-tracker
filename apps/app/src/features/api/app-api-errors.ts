@@ -26,6 +26,7 @@ export class AppApiRequestError extends Schema.TaggedError<AppApiRequestError>()
   APP_API_REQUEST_ERROR_TAG,
   {
     message: Schema.String,
+    status: Schema.optional(Schema.Number),
   }
 ) {}
 
@@ -66,6 +67,9 @@ export function normalizeAppApiError(error: unknown): AppApiError {
   if (HttpClientError.isHttpClientError(error)) {
     return new AppApiRequestError({
       message: error.message,
+      ...(error instanceof HttpClientError.ResponseError
+        ? { status: error.response.status }
+        : {}),
     });
   }
 

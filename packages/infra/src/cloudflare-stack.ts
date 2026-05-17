@@ -37,6 +37,23 @@ export function makeCloudflareHyperdrive(input: {
   });
 }
 
+function makeWorkerObservability(
+  config: InfraStageConfig
+): NonNullable<WorkerProps["observability"]> {
+  return {
+    enabled: true,
+    logs: {
+      enabled: true,
+      headSamplingRate: config.workerLogHeadSamplingRate,
+      invocationLogs: config.workerInvocationLogsEnabled,
+    },
+    traces: {
+      enabled: true,
+      headSamplingRate: config.workerTraceHeadSamplingRate,
+    },
+  };
+}
+
 export const makeCloudflareStack = Effect.fn("CloudflareStack.make")(function* (
   input: CloudflareStackInput
 ) {
@@ -87,16 +104,7 @@ export const makeCloudflareStack = Effect.fn("CloudflareStack.make")(function* (
         : {}),
     },
     domain: input.config.apiHostname,
-    observability: {
-      enabled: true,
-      logs: {
-        enabled: true,
-        invocationLogs: true,
-      },
-      traces: {
-        enabled: true,
-      },
-    },
+    observability: makeWorkerObservability(input.config),
     url: true,
   });
 
@@ -142,16 +150,7 @@ export const makeCloudflareStack = Effect.fn("CloudflareStack.make")(function* (
       VITE_API_ORIGIN: `https://${input.config.apiHostname}`,
     },
     domain: input.config.appHostname,
-    observability: {
-      enabled: true,
-      logs: {
-        enabled: true,
-        invocationLogs: true,
-      },
-      traces: {
-        enabled: true,
-      },
-    },
+    observability: makeWorkerObservability(input.config),
     url: true,
   });
 

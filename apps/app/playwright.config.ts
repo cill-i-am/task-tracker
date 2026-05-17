@@ -12,6 +12,7 @@ const playwrightAuthEmailFromName = process.env.AUTH_EMAIL_FROM_NAME ?? "Ceird";
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
+  workers: useExternalServer ? 1 : undefined,
   use: {
     baseURL: playwrightBaseUrl,
     ignoreHTTPSErrors: playwrightBaseUrl.startsWith("https://"),

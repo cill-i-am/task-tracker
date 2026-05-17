@@ -14,8 +14,10 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Effect } from "effect";
 import { Pool } from "pg";
 
+import { withApiEffectLogSinkForTest } from "../../effect-log.js";
 import {
   createAuthentication,
+  makeCeirdBetterAuthLogger,
   maskInvitationEmail,
   matchesTrustedOrigin,
 } from "./auth.js";
@@ -270,6 +272,21 @@ describe("makeAuthenticationConfig()", () => {
     }
   }, 10_000);
 
+  it("uses Cloudflare client IP headers for rate limiting", () => {
+    const config = makeAuthenticationConfig({
+      appOrigin: "https://app.ceird.app",
+      baseUrl: "https://api.ceird.app/api/auth",
+      secret: "super-secret-value",
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
+    });
+
+    expect(config.advanced?.ipAddress?.ipAddressHeaders).toStrictEqual([
+      "cf-connecting-ip",
+      "x-real-ip",
+      "x-forwarded-for",
+    ]);
+  }, 10_000);
+
   it("keeps auth cookies host-scoped for plain localhost development", () => {
     const config = makeAuthenticationConfig({
       appOrigin: "http://127.0.0.1:4173",
@@ -280,6 +297,9 @@ describe("makeAuthenticationConfig()", () => {
 
     expect(config.advanced).toStrictEqual({
       trustedProxyHeaders: true,
+      ipAddress: {
+        ipAddressHeaders: ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"],
+      },
     });
   }, 10_000);
 
@@ -302,6 +322,23 @@ describe("makeAuthenticationConfig()", () => {
         const result = Effect.runPromise(loadAuthenticationConfig);
 
         await expect(result).rejects.toThrow(/BETTER_AUTH_BASE_URL/);
+      }
+    );
+  }, 10_000);
+
+  it("rejects non-http Better Auth base URLs through config decoding", async () => {
+    await withEnvironment(
+      {
+        BETTER_AUTH_BASE_URL: "file:///tmp/auth",
+        BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
+        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
+      },
+      async () => {
+        const result = Effect.runPromise(loadAuthenticationConfig);
+
+        await expect(result).rejects.toThrow(
+          /BETTER_AUTH_BASE_URL must be a valid absolute URL/
+        );
       }
     );
   }, 10_000);
@@ -458,10 +495,140 @@ describe("auth schema", () => {
 });
 
 describe("createAuthentication()", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("masks invitation emails for the public preview route", () => {
     expect(maskInvitationEmail("member@example.com")).toBe("m***@e***.com");
     expect(maskInvitationEmail("a@b.co")).toBe("a***@b***.co");
     expect(maskInvitationEmail("invalid-email")).toBe("***");
+  }, 10_000);
+
+  it("buckets expected Better Auth credential failures without stderr or email addresses", async () => {
+    const logs: unknown[] = [];
+    const logger = makeCeirdBetterAuthLogger();
+
+    await withApiEffectLogSinkForTest(
+      (entry) =>
+        Effect.sync(() => {
+          logs.push(entry);
+        }),
+      () => {
+        logger.log?.("error", "User not found", {
+          email: "codex-e2e@example.com",
+        });
+      }
+    );
+
+    expect(logs).toStrictEqual([
+      {
+        annotations: {
+          authEvent: "expected_auth_failure",
+          authFailureBucket: "user_not_found",
+          betterAuthLevel: "error",
+        },
+        level: "info",
+        message: "Better Auth expected authentication failure",
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("codex-e2e@example.com");
+  }, 10_000);
+
+  it("redacts Better Auth background task failure details", async () => {
+    const logs: unknown[] = [];
+    const logger = makeCeirdBetterAuthLogger();
+
+    await withApiEffectLogSinkForTest(
+      (entry) =>
+        Effect.sync(() => {
+          logs.push(entry);
+        }),
+      () => {
+        logger.log?.(
+          "error",
+          "Failed to run background task:",
+          new Error(
+            "reset failed for codex-e2e@example.com at https://app.ceird.app/reset-password?token=super-secret-token"
+          )
+        );
+      }
+    );
+
+    expect(logs).toStrictEqual([
+      {
+        annotations: expect.objectContaining({
+          authEvent: "background_task_failed",
+          betterAuthLevel: "error",
+        }),
+        level: "warning",
+        message: "Better Auth background task failed",
+      },
+    ]);
+    const calls = JSON.stringify(logs);
+    expect(calls).not.toContain("codex-e2e@example.com");
+    expect(calls).not.toContain("super-secret-token");
+  }, 10_000);
+
+  it("redacts arbitrary Better Auth error logs before writing stderr", async () => {
+    const logs: unknown[] = [];
+    const logger = makeCeirdBetterAuthLogger();
+    const cyclic: Record<string, unknown> = {
+      nested: {
+        token: "nested-token-secret",
+      },
+    };
+    cyclic.self = cyclic;
+
+    await withApiEffectLogSinkForTest(
+      (entry) =>
+        Effect.sync(() => {
+          logs.push(entry);
+        }),
+      () => {
+        logger.log?.(
+          "error",
+          "Failed to create user codex-e2e@example.com Authorization: Bearer raw-bearer-token Cookie: better-auth.session_token=raw-session-token Password=hunter2 Token=raw-token",
+          {
+            authorization: "Bearer header-token",
+            callbackURL: "https://app.ceird.app/login?token=super-secret-token",
+            cookie: "better-auth.session_token=cookie-token",
+            email: "codex-e2e@example.com",
+            nested: {
+              reason: "sent to codex-e2e@example.com",
+              Token: "mixed-case-token-secret",
+            },
+            cyclic,
+          }
+        );
+      }
+    );
+
+    expect(logs).toStrictEqual([
+      {
+        annotations: expect.objectContaining({
+          authEvent: "better_auth_log",
+          betterAuthLevel: "error",
+          message: expect.stringContaining(
+            "Failed to create user [redacted-email]"
+          ),
+        }),
+        level: "error",
+        message: "Better Auth log",
+      },
+    ]);
+    const calls = JSON.stringify(logs);
+    expect(calls).not.toContain("codex-e2e@example.com");
+    expect(calls).not.toContain("super-secret-token");
+    expect(calls).not.toContain("raw-bearer-token");
+    expect(calls).not.toContain("raw-session-token");
+    expect(calls).not.toContain("hunter2");
+    expect(calls).not.toContain("raw-token");
+    expect(calls).not.toContain("header-token");
+    expect(calls).not.toContain("cookie-token");
+    expect(calls).not.toContain("nested-token-secret");
+    expect(calls).not.toContain("mixed-case-token-secret");
+    expect(calls).toContain("[circular]");
   }, 10_000);
 
   it("configures organization invitation delivery through the Better Auth organization plugin", async () => {
@@ -517,6 +684,7 @@ describe("createAuthentication()", () => {
         | undefined;
 
       expect(organizationPlugin).toBeDefined();
+      expect(auth.options.logger?.log).toStrictEqual(expect.any(Function));
       if (!organizationPlugin?.options?.cancelPendingInvitationsOnReInvite) {
         throw new Error(
           "Expected invite re-sends to cancel pending invitations"
