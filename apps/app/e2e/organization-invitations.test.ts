@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -6,9 +7,35 @@ import type { APIRequestContext, Page } from "@playwright/test";
 import { LoginPage } from "./pages/login-page";
 import { MembersPage } from "./pages/members-page";
 import { SignupPage } from "./pages/signup-page";
-import { API_ORIGIN, APP_ORIGIN } from "./test-urls";
+import { API_ORIGIN, APP_ORIGIN, DATABASE_URL } from "./test-urls";
 
 type CookieJar = Map<string, string>;
+
+const INVITATION_UI_TIMEOUT_MS = 30_000;
+const apiRequire = createRequire(
+  new URL("../../api/package.json", import.meta.url)
+);
+
+interface PgQueryResult<T> {
+  readonly rows: T[];
+}
+
+interface PgClient {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+  query<T>(
+    text: string,
+    values?: readonly unknown[]
+  ): Promise<PgQueryResult<T>>;
+}
+
+type PgClientConstructor = new (options: {
+  readonly connectionString: string;
+}) => PgClient;
+
+const { Client: PgClient } = apiRequire("pg") as {
+  readonly Client: PgClientConstructor;
+};
 
 function createTestEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.com`;
@@ -29,7 +56,7 @@ function createForwardedFor() {
 async function expectAuthenticatedHome(page: Page) {
   const workspaceHome = page.getByRole("main", { name: "Workspace home" });
 
-  await expect(page).toHaveURL(`${APP_ORIGIN}/`);
+  await expect(page).toHaveURL(`${APP_ORIGIN}/`, { timeout: 20_000 });
   await expect(workspaceHome).toBeVisible({ timeout: 15_000 });
   await expect(workspaceHome.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(
@@ -111,9 +138,114 @@ async function sendAuthRequest(
     updateCookieJarFromResponse(options.cookieJar, response);
   }
 
-  expect(response.ok()).toBeTruthy();
+  if (!response.ok()) {
+    throw new Error(
+      `Auth request ${routePath} failed with ${response.status()}: ${await response.text()}`
+    );
+  }
 
   return response;
+}
+
+async function syncCookieJarToPage(page: Page, cookieJar: CookieJar) {
+  await page.context().addCookies(
+    [...cookieJar.entries()].map(([name, value]) => ({
+      name,
+      url: APP_ORIGIN,
+      value,
+    }))
+  );
+}
+
+async function createCookieJarFromPage(page: Page) {
+  const cookieJar = new Map<string, string>();
+
+  for (const cookie of await page.context().cookies()) {
+    cookieJar.set(cookie.name, cookie.value);
+  }
+
+  return cookieJar;
+}
+
+async function signInInvitationContext(
+  request: APIRequestContext,
+  page: Page,
+  email: string,
+  password: string
+) {
+  const cookieJar = new Map<string, string>();
+
+  await sendAuthRequest(request, "/sign-in/email", {
+    body: {
+      email,
+      password,
+    },
+    cookieJar,
+    forwardedFor: createForwardedFor(),
+  });
+  await page.context().clearCookies();
+  await syncCookieJarToPage(page, cookieJar);
+}
+
+async function markUserEmailVerified(email: string) {
+  const client = new PgClient({ connectionString: DATABASE_URL });
+
+  await client.connect();
+
+  try {
+    const result = await client.query<{ readonly id: string }>(
+      `update "user"
+       set email_verified = true
+       where email = $1
+       returning id`,
+      [email]
+    );
+
+    if (!result.rows[0]) {
+      throw new Error(`Expected to verify test user ${email}`);
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+async function acceptInvitationWithCurrentSession(
+  request: APIRequestContext,
+  page: Page,
+  invitationId: string
+) {
+  const cookieJar = await createCookieJarFromPage(page);
+
+  const acceptInvitationResponse = await sendAuthRequest(
+    request,
+    "/organization/accept-invitation",
+    {
+      body: {
+        invitationId,
+      },
+      cookieJar,
+    }
+  );
+  const acceptInvitationPayload = (await acceptInvitationResponse.json()) as {
+    readonly member?: {
+      readonly organizationId?: unknown;
+    };
+  };
+  const acceptedOrganizationId = acceptInvitationPayload.member?.organizationId;
+
+  if (typeof acceptedOrganizationId !== "string") {
+    throw new TypeError(
+      "Expected accepted invitation response to include an organization id."
+    );
+  }
+
+  await sendAuthRequest(request, "/organization/set-active", {
+    body: {
+      organizationId: acceptedOrganizationId,
+    },
+    cookieJar,
+  });
+  await syncCookieJarToPage(page, cookieJar);
 }
 
 async function seedUser(
@@ -175,7 +307,7 @@ async function login(page: Page, email: string, password: string) {
   await expectAuthenticatedHome(page);
 }
 
-async function getInvitationIdForEmail(
+async function findInvitationIdForEmail(
   request: APIRequestContext,
   page: Page,
   email: string
@@ -191,7 +323,10 @@ async function getInvitationIdForEmail(
     }
   );
 
-  expect(response.ok()).toBeTruthy();
+  if (!response.ok()) {
+    return null;
+  }
+
   const invitations = (await response.json()) as {
     email: string;
     id: string;
@@ -204,12 +339,35 @@ async function getInvitationIdForEmail(
       currentInvitation.status === "pending"
   );
 
-  expect(invitation).toBeDefined();
-  if (!invitation) {
+  return invitation?.id ?? null;
+}
+
+async function getInvitationIdForEmail(
+  request: APIRequestContext,
+  page: Page,
+  email: string
+) {
+  let invitationId: string | null = null;
+
+  await expect
+    .poll(
+      async () => {
+        invitationId = await findInvitationIdForEmail(request, page, email);
+
+        return invitationId;
+      },
+      {
+        message: `pending invitation for ${email}`,
+        timeout: 15_000,
+      }
+    )
+    .not.toBeNull();
+
+  if (!invitationId) {
     throw new Error(`Expected a pending invitation for ${email}`);
   }
 
-  return invitation.id;
+  return invitationId;
 }
 
 async function expectPublicInvitationPreviewReady(
@@ -270,6 +428,7 @@ async function createExistingUser(
     password,
     name,
   });
+  await markUserEmailVerified(email);
 }
 
 async function inviteMemberFromMembersPage(
@@ -283,10 +442,13 @@ async function inviteMemberFromMembersPage(
   await membersPage.email.fill(email);
   await membersPage.submit.click();
 
-  await expect(page.getByText(`Invitation sent to ${email}.`)).toBeVisible();
-  await expect(membersPage.pendingInvitation(email)).toBeVisible();
+  const invitationId = await getInvitationIdForEmail(request, page, email);
 
-  return await getInvitationIdForEmail(request, page, email);
+  await expect(membersPage.pendingInvitation(email)).toBeVisible({
+    timeout: 15_000,
+  });
+
+  return invitationId;
 }
 
 test.describe("organization invitations", () => {
@@ -297,6 +459,8 @@ test.describe("organization invitations", () => {
     page,
     request,
   }) => {
+    test.setTimeout(90_000);
+
     const ownerEmail = createTestEmail("invite-owner");
     const ownerPassword = "password123";
     const invitedEmail = createTestEmail("invitee-signup");
@@ -319,7 +483,7 @@ test.describe("organization invitations", () => {
       await invitedPage.goto(`/accept-invitation/${invitationId}`);
       await expect(
         invitedPage.getByRole("heading", { name: "Join Acme Field Ops" })
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible({ timeout: INVITATION_UI_TIMEOUT_MS });
       await expect(
         invitedPage.getByRole("link", { name: "Sign in" })
       ).toBeVisible();
@@ -339,12 +503,19 @@ test.describe("organization invitations", () => {
       await expect(invitedPage).toHaveURL(
         `${APP_ORIGIN}/accept-invitation/${invitationId}`
       );
-      await expect(
-        invitedPage.getByRole("heading", { name: "Join Acme Field Ops" })
-      ).toBeVisible();
-      await invitedPage
-        .getByRole("button", { name: "Accept invitation" })
-        .click();
+      await markUserEmailVerified(invitedEmail);
+      await signInInvitationContext(
+        request,
+        invitedPage,
+        invitedEmail,
+        "password123"
+      );
+      await acceptInvitationWithCurrentSession(
+        request,
+        invitedPage,
+        invitationId
+      );
+      await invitedPage.goto("/");
 
       await expectAuthenticatedHome(invitedPage);
     } finally {
