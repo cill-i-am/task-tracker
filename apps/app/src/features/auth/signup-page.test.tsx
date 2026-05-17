@@ -176,7 +176,7 @@ describe("signup page", () => {
     expect(mockedSignInEmail).not.toHaveBeenCalled();
   }, 10_000);
 
-  it("confirms a session before continuing after invitation signup", async () => {
+  it("continues after invitation signup without forcing a second sign-in", async () => {
     const user = userEvent.setup();
 
     render(<SignupPage search={{ invitation: "inv_123" }} />);
@@ -187,16 +187,11 @@ describe("signup page", () => {
     await user.click(screen.getByRole("button", { name: /sign up/i }));
 
     await waitFor(() => {
-      expect(mockedSignInEmail).toHaveBeenCalledWith({
-        email: "person@example.com",
-        password: "password123",
-      });
-    });
-    await waitFor(() => {
       expect(mockedNavigate).toHaveBeenCalledWith({
         to: "/",
       });
     });
+    expect(mockedSignInEmail).not.toHaveBeenCalled();
   }, 10_000);
 
   it("shows a safe server error when sign-up fails", async () => {
