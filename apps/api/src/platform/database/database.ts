@@ -1,5 +1,4 @@
 /* eslint-disable max-classes-per-file */
-import * as PgDrizzle from "@effect/sql-drizzle/Pg";
 import { PgClient } from "@effect/sql-pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -9,7 +8,6 @@ import { Pool } from "pg";
 import { authSchema } from "../../domains/identity/authentication/schema.js";
 import { nodeDatabaseUrl } from "./database-url.js";
 import { AppDatabaseConnectionError } from "./errors.js";
-import { appSchema } from "./schema.js";
 
 export interface AppDatabaseService {
   readonly authDb: NodePgDatabase<typeof authSchema>;
@@ -70,23 +68,6 @@ export const AppEffectSqlLive = Layer.unwrapEffect(
   })
 );
 
-const makeAppEffectDrizzle = PgDrizzle.make<typeof appSchema>({
-  schema: appSchema,
-});
-
-export interface AppEffectDrizzleService {
-  readonly db: Effect.Effect.Success<typeof makeAppEffectDrizzle>;
-}
-
-export const AppEffectDrizzle = Context.GenericTag<AppEffectDrizzleService>(
-  "@ceird/platform/database/AppEffectDrizzle"
-);
-
-export const AppEffectDrizzleLive = Layer.effect(
-  AppEffectDrizzle,
-  makeAppEffectDrizzle.pipe(Effect.map((db) => ({ db })))
-);
-
 export const makeAppEffectSqlRuntimeLive = <Error, Requirements>(
   appDatabaseLive: Layer.Layer<AppDatabase, Error, Requirements>
 ) =>
@@ -97,19 +78,10 @@ export const makeAppEffectSqlRuntimeLive = <Error, Requirements>(
 
 export const makeAppDatabaseRuntimeLive = <Error, Requirements>(
   appDatabaseLive: Layer.Layer<AppDatabase, Error, Requirements>
-) => {
-  const appEffectSqlRuntimeLive = makeAppEffectSqlRuntimeLive(appDatabaseLive);
-
-  return Layer.mergeAll(
-    appEffectSqlRuntimeLive,
-    AppEffectDrizzleLive.pipe(Layer.provide(appEffectSqlRuntimeLive))
-  );
-};
+) => makeAppEffectSqlRuntimeLive(appDatabaseLive);
 
 export const AppEffectSqlRuntimeLive =
   makeAppEffectSqlRuntimeLive(AppDatabaseLive);
 
 export const AppDatabaseRuntimeLive =
   makeAppDatabaseRuntimeLive(AppDatabaseLive);
-
-export const AppEffectDrizzleRuntimeLive = AppDatabaseRuntimeLive;

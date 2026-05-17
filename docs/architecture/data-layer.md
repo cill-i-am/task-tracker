@@ -5,7 +5,7 @@
 The authentication slice uses two closely related database paths:
 
 - regular Drizzle for Better Auth's adapter
-- Effect SQL plus `@effect/sql-drizzle` for future Effect-native slice code
+- Effect SQL for app-owned repository code
 
 Both target the same Postgres database, but they serve different jobs.
 
@@ -21,16 +21,20 @@ Because of that, the auth slice creates:
 
 This keeps the Better Auth boundary conventional and easy to reason about.
 
-## Why We Also Added Effect SQL And SQL-Drizzle
+## Why We Also Added Effect SQL
 
 The project is Effect-first, so it still helps to establish an Effect-native database path for future app code.
 
 The auth slice exposes:
 
 - `@effect/sql-pg` for Effect-native Postgres access
-- `@effect/sql-drizzle` for Drizzle-flavored queries inside Effect code
 
-That gives later slices an Effect-compatible way to access the same Postgres backend without forcing Better Auth itself through a custom abstraction.
+That gives repository slices an Effect-compatible way to access the same
+Postgres backend without forcing Better Auth itself through a custom
+abstraction. We intentionally do not keep an `@effect/sql-drizzle` runtime
+layer: app-owned repositories already use Effect SQL directly, and the v4
+Effect migration path does not have a matching SQL-Drizzle package to carry
+forward.
 
 ## Current Guidance
 

@@ -80,12 +80,3 @@ export const databaseSchema = {
   ...sitesSchema,
   ...jobsSchema,
 };
-
-export const appSchema = {
-  ...commentsSchema,
-  ...labelsSchema,
-  ...sitesSchema,
-  ...jobsSchema,
-} as const;
-
-export type AppSchema = typeof appSchema;

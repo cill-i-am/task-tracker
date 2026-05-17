@@ -93,8 +93,8 @@ The API exports a combined Drizzle schema from
   labels, collaborators, and cost lines.
 - `sitesSchema` contains sites and service areas. Site access notes remain on
   the site record; site comments are separate internal collaboration records.
-- `databaseSchema` merges both for the full database runtime.
-- `appSchema` exposes the app-domain subset for app-specific repositories.
+- `databaseSchema` merges authentication, comments, labels, sites, and jobs for
+  the full database runtime.
 
 Migrations live in `apps/api/drizzle`. The native Alchemy Neon branch resource
 applies checked-in SQL migrations for each stage.
