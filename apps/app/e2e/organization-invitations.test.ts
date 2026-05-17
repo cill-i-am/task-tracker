@@ -77,7 +77,7 @@ async function getInvitationActionState(page: Page) {
 
   if (
     await page
-      .getByRole("button", { name: "Sign out and try another account" })
+      .getByText("Sign out and try another account", { exact: true })
       .isVisible()
       .catch(() => false)
   ) {
@@ -131,7 +131,7 @@ async function ensureInvitationAcceptAction(
 
   if (state === "switch-account") {
     await page
-      .getByRole("button", { name: "Sign out and try another account" })
+      .getByText("Sign out and try another account", { exact: true })
       .click();
   } else if (state === "signed-out") {
     await page.getByRole("link", { name: "Sign in" }).click();
