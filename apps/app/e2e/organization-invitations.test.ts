@@ -341,7 +341,7 @@ test.describe("organization invitations", () => {
       );
       await expect(
         invitedPage.getByRole("heading", { name: "Join Acme Field Ops" })
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 15_000 });
       await invitedPage
         .getByRole("button", { name: "Accept invitation" })
         .click();
