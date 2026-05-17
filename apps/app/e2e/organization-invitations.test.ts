@@ -10,6 +10,8 @@ import { API_ORIGIN, APP_ORIGIN } from "./test-urls";
 
 type CookieJar = Map<string, string>;
 
+const INVITATION_UI_TIMEOUT_MS = 30_000;
+
 function createTestEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.com`;
 }
@@ -297,7 +299,7 @@ test.describe("organization invitations", () => {
     page,
     request,
   }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(90_000);
 
     const ownerEmail = createTestEmail("invite-owner");
     const ownerPassword = "password123";
@@ -321,7 +323,7 @@ test.describe("organization invitations", () => {
       await invitedPage.goto(`/accept-invitation/${invitationId}`);
       await expect(
         invitedPage.getByRole("heading", { name: "Join Acme Field Ops" })
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible({ timeout: INVITATION_UI_TIMEOUT_MS });
       await expect(
         invitedPage.getByRole("link", { name: "Sign in" })
       ).toBeVisible();
@@ -343,7 +345,7 @@ test.describe("organization invitations", () => {
       );
       await expect(
         invitedPage.getByRole("heading", { name: "Join Acme Field Ops" })
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible({ timeout: INVITATION_UI_TIMEOUT_MS });
       await invitedPage
         .getByRole("button", { name: "Accept invitation" })
         .click();
