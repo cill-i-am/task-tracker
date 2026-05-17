@@ -70,6 +70,24 @@ export function SignupPage({
         return;
       }
 
+      if (search?.invitation) {
+        const signInResult = await authClient.signIn.email({
+          email: credentials.email,
+          password: credentials.password,
+        });
+
+        if (signInResult.error) {
+          formApi.setErrorMap({
+            onSubmit: {
+              form: getAuthFailureMessage("signIn", signInResult.error),
+              fields: {},
+            },
+          });
+
+          return;
+        }
+      }
+
       await mutationFeedback.waitForSuccess();
       await navigateOnSuccess();
     },

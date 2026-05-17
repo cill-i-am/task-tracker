@@ -6,42 +6,55 @@ import type * as AuthClientModule from "#/lib/auth-client";
 
 import { SignupPage } from "./signup-page";
 
-const { mockedGetSession, mockedNavigate, mockedSignUpEmail } = vi.hoisted(
-  () => ({
-    mockedGetSession: vi.fn<
-      () => Promise<{
-        data: null;
-        error: null;
-      }>
-    >(),
-    mockedNavigate: vi.fn<(options: { to: string }) => Promise<void>>(),
-    mockedSignUpEmail: vi.fn<
-      (input: {
-        name: string;
-        email: string;
-        password: string;
-        callbackURL: string;
-      }) => Promise<{
-        data: {
-          token: string | null;
-          user: {
-            id: string;
-            email: string;
-            name: string;
-            emailVerified: boolean;
-            createdAt: Date;
-            updatedAt: Date;
-          };
-        } | null;
-        error: {
-          message: string;
-          status: number;
-          statusText: string;
-        } | null;
-      }>
-    >(),
-  })
-);
+const {
+  mockedGetSession,
+  mockedNavigate,
+  mockedSignInEmail,
+  mockedSignUpEmail,
+} = vi.hoisted(() => ({
+  mockedGetSession: vi.fn<
+    () => Promise<{
+      data: null;
+      error: null;
+    }>
+  >(),
+  mockedNavigate: vi.fn<(options: { to: string }) => Promise<void>>(),
+  mockedSignInEmail: vi.fn<
+    (input: { email: string; password: string }) => Promise<{
+      data: unknown;
+      error: {
+        message: string;
+        status: number;
+        statusText: string;
+      } | null;
+    }>
+  >(),
+  mockedSignUpEmail: vi.fn<
+    (input: {
+      name: string;
+      email: string;
+      password: string;
+      callbackURL: string;
+    }) => Promise<{
+      data: {
+        token: string | null;
+        user: {
+          id: string;
+          email: string;
+          name: string;
+          emailVerified: boolean;
+          createdAt: Date;
+          updatedAt: Date;
+        };
+      } | null;
+      error: {
+        message: string;
+        status: number;
+        statusText: string;
+      } | null;
+    }>
+  >(),
+}));
 
 vi.mock(import("./auth-navigation"), async (importActual) => {
   const actual = await importActual();
@@ -93,6 +106,9 @@ vi.mock(import("#/lib/auth-client"), async () => {
   return {
     authClient: {
       getSession: mockedGetSession,
+      signIn: {
+        email: mockedSignInEmail,
+      },
       signUp: {
         email: mockedSignUpEmail,
       },
@@ -106,6 +122,14 @@ describe("signup page", () => {
     window.history.replaceState({}, "", "http://localhost:3000/signup");
     mockedGetSession.mockResolvedValue({ data: null, error: null });
     mockedNavigate.mockResolvedValue();
+    mockedSignInEmail.mockResolvedValue({
+      data: {
+        session: {
+          id: "session_123",
+        },
+      },
+      error: null,
+    });
     mockedSignUpEmail.mockResolvedValue({
       data: {
         token: null,
@@ -142,6 +166,30 @@ describe("signup page", () => {
         email: "person@example.com",
         password: "password123",
         callbackURL: "http://localhost:3000/verify-email?status=success",
+      });
+    });
+    await waitFor(() => {
+      expect(mockedNavigate).toHaveBeenCalledWith({
+        to: "/",
+      });
+    });
+    expect(mockedSignInEmail).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it("confirms a session before continuing after invitation signup", async () => {
+    const user = userEvent.setup();
+
+    render(<SignupPage search={{ invitation: "inv_123" }} />);
+
+    await user.type(screen.getByLabelText("Name"), "Taylor Example");
+    await user.type(screen.getByLabelText("Email"), "person@example.com");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: /sign up/i }));
+
+    await waitFor(() => {
+      expect(mockedSignInEmail).toHaveBeenCalledWith({
+        email: "person@example.com",
+        password: "password123",
       });
     });
     await waitFor(() => {
