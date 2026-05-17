@@ -33,8 +33,7 @@ export const DrizzleMigrations =
 
 export const DrizzleMigrationsProvider = () =>
   Provider.succeed(DrizzleMigrations, {
-    create: ({ news }) => applyMigrations(news),
-    update: ({ news }) => applyMigrations(news),
+    reconcile: ({ news }) => applyMigrations(news),
     delete: () => Effect.void,
   });
 
@@ -60,7 +59,7 @@ export function runDrizzleMigrations(input: RunDrizzleMigrationsInput) {
     (pool) =>
       Effect.tryPromise({
         try: () =>
-          migrate(drizzle(pool), {
+          migrate(drizzle({ client: pool }), {
             migrationsFolder: input.migrationsFolder,
           }),
         catch: (error) =>

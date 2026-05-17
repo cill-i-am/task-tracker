@@ -153,7 +153,7 @@ Defines production infrastructure with Alchemy v2:
 
 - stage config and resource naming in `src/stages.ts`
 - Neon Postgres connection inputs for Hyperdrive and migrations
-- Cloudflare Hyperdrive wrapper in `src/cloudflare-hyperdrive.ts`
+- native Alchemy Cloudflare Hyperdrive resources
 - Drizzle migration resource in `src/drizzle-migrations.ts`
 - Cloudflare app/API/queue stack in `src/cloudflare-stack.ts`
 - stack entrypoint in `alchemy.run.ts`

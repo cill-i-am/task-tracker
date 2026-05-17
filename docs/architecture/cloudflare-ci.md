@@ -91,10 +91,10 @@ for direct migration connections and provider control-plane checks. The
 migration resource retries transient PostgreSQL slot exhaustion, but unrelated
 SQL or schema failures still fail immediately.
 
-The infra package currently pins `alchemy@2.0.0-beta.28` with a pnpm patch that
-adds missing `.js` extensions to the package's published CLI imports. Without
-that patch, the Node-based GitHub Actions deploy job fails while loading the
-Alchemy CLI before it can bootstrap the Cloudflare state store.
+The infra package tracks the current Alchemy v2 beta line documented by
+v2.alchemy.run. Older local patches for beta.28 and
+`@distilled.cloud/cloudflare@0.15.2` were removed after beta.40 published native
+ESM-safe CLI imports and Cloudflare observability support.
 
 ## Alchemy Docs Notes
 

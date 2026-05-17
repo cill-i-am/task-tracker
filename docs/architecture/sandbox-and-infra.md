@@ -119,7 +119,7 @@ blank, the API uses deterministic development geocoding.
 The stack provisions:
 
 - Neon Postgres connectivity from deploy-time connection URL secrets
-- Cloudflare Hyperdrive for Postgres connectivity
+- native Alchemy Cloudflare Hyperdrive for Postgres connectivity
 - Cloudflare Worker API from `apps/api/src/worker.ts`
 - Cloudflare Vite app from `apps/app`
 - Cloudflare Queue for auth email

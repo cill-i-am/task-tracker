@@ -74,9 +74,6 @@ describe("Neon Postgres config", () => {
       scheme: "postgres",
       user: "app",
     });
-    expect(config.hyperdriveOriginCredentialFingerprint).toMatch(
-      /^sha256:[a-f0-9]{64}$/
-    );
     expect(Redacted.value(config.appRole.connectionUrl)).toBe(
       "postgresql://app:secret@ep-white-field.eu-west-2.aws.neon.tech/ceird?sslmode=require"
     );
@@ -97,31 +94,6 @@ describe("Neon Postgres config", () => {
         })
       )
     ).toThrow(/NEON_MIGRATION_DATABASE_URL is required/);
-  });
-
-  it("uses a distinct credential fingerprint when the app password changes", () => {
-    const first = Effect.runSync(
-      makeNeonPostgresConfig({
-        appDatabaseUrl: neonDatabaseUrl(
-          "postgresql://app:first@ep-white-field.eu-west-2.aws.neon.tech/ceird?sslmode=require"
-        ),
-        migrationDatabaseUrl: undefined,
-        requireMigrationDatabaseUrl: false,
-      })
-    );
-    const second = Effect.runSync(
-      makeNeonPostgresConfig({
-        appDatabaseUrl: neonDatabaseUrl(
-          "postgresql://app:second@ep-white-field.eu-west-2.aws.neon.tech/ceird?sslmode=require"
-        ),
-        migrationDatabaseUrl: undefined,
-        requireMigrationDatabaseUrl: false,
-      })
-    );
-
-    expect(first.hyperdriveOriginCredentialFingerprint).not.toBe(
-      second.hyperdriveOriginCredentialFingerprint
-    );
   });
 
   it("decodes percent-encoded origin credentials without including query params", () => {

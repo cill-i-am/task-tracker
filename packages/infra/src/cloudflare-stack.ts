@@ -5,7 +5,6 @@ import type { Input } from "alchemy/Input";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
-import { Hyperdrive } from "./cloudflare-hyperdrive.ts";
 import type { NeonPostgresResources } from "./neon.ts";
 import type { InfraStageConfig } from "./stages.ts";
 import { resourceName } from "./stages.ts";
@@ -18,7 +17,7 @@ const workerCompatibility = {
 export interface CloudflareStackInput {
   readonly config: InfraStageConfig;
   readonly database: NeonPostgresResources;
-  readonly hyperdrive: Hyperdrive;
+  readonly hyperdrive: Cloudflare.Hyperdrive;
   readonly migrationRunId?: Input<string>;
 }
 
@@ -26,14 +25,11 @@ export function makeCloudflareHyperdrive(input: {
   readonly config: InfraStageConfig;
   readonly database: NeonPostgresResources;
 }) {
-  return Hyperdrive("PostgresHyperdrive", {
+  return Cloudflare.Hyperdrive("PostgresHyperdrive", {
     name: resourceName(input.config, "postgres"),
     origin: input.database.hyperdriveOrigin,
-    originCredentialFingerprint:
-      input.database.hyperdriveOriginCredentialFingerprint,
     originConnectionLimit: input.config.hyperdriveOriginConnectionLimit,
     caching: { disabled: true },
-    delete: false,
   });
 }
 

@@ -1,10 +1,7 @@
-import { createHash } from "node:crypto";
-
+import type { HyperdriveOrigin } from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-
-import type { HyperdriveOrigin } from "./cloudflare-hyperdrive.ts";
 
 export const NeonDirectDatabaseUrl = Schema.NonEmptyString.pipe(
   Schema.check(
@@ -28,7 +25,6 @@ export interface NeonPostgresResources {
   readonly databaseName: string;
   readonly appRole: NeonPostgresConnectionRole;
   readonly hyperdriveOrigin: HyperdriveOrigin;
-  readonly hyperdriveOriginCredentialFingerprint: string;
   readonly migrationRole: NeonPostgresConnectionRole;
 }
 
@@ -88,8 +84,6 @@ export function makeNeonPostgresConfig(
       },
       databaseName: appConnection.databaseName,
       hyperdriveOrigin: appConnection.hyperdriveOrigin,
-      hyperdriveOriginCredentialFingerprint:
-        appConnection.credentialFingerprint,
       migrationRole: {
         connectionUrl:
           input.migrationDatabaseUrl ?? Redacted.make(migrationDatabaseUrl),
@@ -118,7 +112,6 @@ function assertSameNeonDatabase(
 }
 
 interface ParsedNeonDirectDatabaseUrl {
-  readonly credentialFingerprint: string;
   readonly databaseName: string;
   readonly hyperdriveOrigin: HyperdriveOrigin;
   readonly url: URL;
@@ -170,7 +163,6 @@ function parseNeonDirectDatabaseUrl(
     }
 
     return {
-      credentialFingerprint: makeCredentialFingerprint(url),
       databaseName,
       hyperdriveOrigin: {
         database: databaseName,
@@ -224,17 +216,6 @@ function isNeonDirectDatabaseUrl(connectionUrl: string) {
 function hasApprovedSslMode(url: URL) {
   const sslMode = url.searchParams.get("sslmode")?.toLowerCase();
   return sslMode === "require" || sslMode === "verify-full";
-}
-
-function makeCredentialFingerprint(url: URL) {
-  const hash = createHash("sha256")
-    .update(url.hostname)
-    .update("\0")
-    .update(decodeURIComponent(url.username))
-    .update("\0")
-    .update(decodeURIComponent(url.password))
-    .digest("hex");
-  return `sha256:${hash}`;
 }
 
 function neonConfigError(envName: string, message: string) {

@@ -6,7 +6,6 @@ import type { StackServices } from "alchemy/Stack";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { HyperdriveProvider } from "./src/cloudflare-hyperdrive.ts";
 import {
   makeCloudflareHyperdrive,
   makeCloudflareStack,
@@ -22,14 +21,9 @@ const stackName = process.env.CEIRD_ALCHEMY_STACK_NAME ?? "ceird";
 
 const providers = (() => {
   const cloudflareProviders = Cloudflare.providers();
-  // Alchemy beta provider inference keeps the Cloudflare environment service in
-  // the merged layer's input even after it has been provided to Hyperdrive.
-  // Keep the cast isolated at the provider assembly boundary.
-  return Layer.mergeAll(
-    cloudflareProviders,
-    HyperdriveProvider().pipe(Layer.provide(cloudflareProviders)),
-    DrizzleMigrationsProvider()
-  ).pipe(Layer.orDie) as Layer.Layer<unknown, never, StackServices>;
+  return Layer.mergeAll(cloudflareProviders, DrizzleMigrationsProvider()).pipe(
+    Layer.orDie
+  ) as Layer.Layer<unknown, never, StackServices>;
 })();
 
 export default Alchemy.Stack(
