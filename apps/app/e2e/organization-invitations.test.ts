@@ -428,6 +428,7 @@ async function createExistingUser(
     password,
     name,
   });
+  await markUserEmailVerified(email);
 }
 
 async function inviteMemberFromMembersPage(
