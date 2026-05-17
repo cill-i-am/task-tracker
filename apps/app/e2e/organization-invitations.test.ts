@@ -65,6 +65,12 @@ async function expectVisibleWithPageSnapshot(
   }
 }
 
+function getSwitchAccountButton(page: Page) {
+  return page
+    .getByRole("button")
+    .filter({ hasText: "Sign out and try another account" });
+}
+
 async function getInvitationActionState(page: Page) {
   if (
     await page
@@ -77,7 +83,8 @@ async function getInvitationActionState(page: Page) {
 
   if (
     await page
-      .getByText("Sign out and try another account", { exact: true })
+      .locator("body")
+      .getByText("Sign out and try another account")
       .isVisible()
       .catch(() => false)
   ) {
@@ -127,19 +134,38 @@ async function ensureInvitationAcceptAction(
   email: string,
   password: string
 ) {
-  const state = await waitForInvitationActionState(page);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const state = await waitForInvitationActionState(page);
 
-  if (state === "switch-account") {
-    await page
-      .getByText("Sign out and try another account", { exact: true })
-      .click();
-  } else if (state === "signed-out") {
-    await page.getByRole("link", { name: "Sign in" }).click();
-  }
+    if (state === "ready") {
+      const acceptInvitationButton = page.getByRole("button", {
+        name: "Accept invitation",
+      });
+      await expectVisibleWithPageSnapshot(
+        page,
+        acceptInvitationButton,
+        "Invitation accept action",
+        1
+      );
 
-  if (state !== "ready") {
+      return acceptInvitationButton;
+    }
+
+    if (state === "switch-account") {
+      const switchAccountButton = getSwitchAccountButton(page);
+
+      await expectVisibleWithPageSnapshot(
+        page,
+        switchAccountButton,
+        "Invitation switch-account action",
+        INVITATION_UI_TIMEOUT_MS
+      );
+      await switchAccountButton.click();
+    } else {
+      await page.getByRole("link", { name: "Sign in" }).click();
+    }
+
     const loginPage = new LoginPage(page);
-
     await expect(page).toHaveURL(
       `${APP_ORIGIN}/login?invitation=${invitationId}`
     );
