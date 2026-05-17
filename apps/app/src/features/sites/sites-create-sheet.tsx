@@ -3,7 +3,6 @@ import {
   SERVICE_AREA_NOT_FOUND_ERROR_TAG,
   SITE_GEOCODING_FAILED_ERROR_TAG,
 } from "@ceird/sites-core";
-import { Result, useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 import {
   Add01Icon,
   Cancel01Icon,
@@ -40,7 +39,12 @@ import type {
   SiteCreateDraft,
   SiteCreateFieldErrors as SiteCreateDraftFieldErrors,
 } from "./site-create-form";
-import { createSiteMutationAtom, sitesOptionsStateAtom } from "./sites-state";
+import {
+  getSitesAsyncErrorMessage,
+  isSitesAsyncFailure,
+  useCreateSiteMutation,
+  useSitesOptions,
+} from "./sites-state";
 
 export type SitesCreateFieldErrors = SiteCreateDraftFieldErrors;
 
@@ -49,11 +53,8 @@ export function SitesCreateSheet() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const options = useAtomValue(sitesOptionsStateAtom).data;
-  const createSite = useAtomSet(createSiteMutationAtom, {
-    mode: "promiseExit",
-  });
-  const createResult = useAtomValue(createSiteMutationAtom);
+  const options = useSitesOptions();
+  const [createResult, createSite] = useCreateSiteMutation();
   const [fieldErrors, setFieldErrors] = React.useState<SitesCreateFieldErrors>(
     {}
   );
@@ -208,17 +209,16 @@ export function SitesCreateSheet() {
           onSubmit={(event) => submitClientForm(event, handleSubmit)}
         >
           <div className="flex flex-1 flex-col overflow-y-auto px-5 py-2 sm:px-6">
-            {Result.builder(createResult)
-              .onError((error) =>
-                isHandledCreateSiteError(error) ? null : (
-                  <Alert variant="destructive">
-                    <HugeiconsIcon icon={Location01Icon} strokeWidth={2} />
-                    <AlertTitle>We couldn&apos;t create that site.</AlertTitle>
-                    <AlertDescription>{error.message}</AlertDescription>
-                  </Alert>
-                )
-              )
-              .render()}
+            {isSitesAsyncFailure(createResult) &&
+            !isHandledCreateSiteError(createResult.error) ? (
+              <Alert variant="destructive">
+                <HugeiconsIcon icon={Location01Icon} strokeWidth={2} />
+                <AlertTitle>We couldn&apos;t create that site.</AlertTitle>
+                <AlertDescription>
+                  {getSitesAsyncErrorMessage(createResult.error)}
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
             <SiteCreateDrawerFields
               draft={values}

@@ -15,261 +15,751 @@ import type {
   UpdateSiteInput,
   UpdateSiteResponse,
 } from "@ceird/sites-core";
-import { Atom } from "@effect-atom/atom-react";
-import { Effect, Option } from "effect";
+import { SiteCommentSchema, SiteOptionSchema } from "@ceird/sites-core";
+import {
+  createCollection,
+  localOnlyCollectionOptions,
+} from "@tanstack/react-db";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { use } from "react";
+import * as React from "react";
 
 import { runBrowserAppApiRequest } from "#/features/api/app-api-client";
 import type { AppApiError } from "#/features/api/app-api-errors";
 import { createBrowserLabel } from "#/features/labels/labels-state";
 import { withMinimumMutationPendingDurationEffect } from "#/lib/mutation-feedback-effect";
 
-export interface SitesNotice {
+type SitesCollection = ReturnType<typeof makeSitesCollection>;
+type SiteCommentsCollection = ReturnType<typeof makeSiteCommentsCollection>;
+
+interface SitesNotice {
   readonly kind: "created" | "updated";
   readonly name: string;
 }
 
-export interface SitesOptionsState {
-  readonly data: SitesOptionsResponse;
-  readonly organizationId: OrganizationId | null;
+export interface SitesAsyncResult {
+  readonly error: unknown | null;
+  readonly waiting: boolean;
 }
 
-const emptySiteOptions: SitesOptionsResponse = {
-  serviceAreas: [],
-  sites: [],
+interface SitesStateStore {
+  readonly commentsBySiteId: Map<SiteIdType, SiteCommentsCollection>;
+  readonly initialCommentsBySiteId: Map<SiteIdType, readonly SiteComment[]>;
+  readonly organizationIdRef: React.MutableRefObject<OrganizationId>;
+  readonly refreshVersionsBySiteId: Map<SiteIdType, number>;
+  readonly sites: SitesCollection;
+}
+
+interface SitesStateContextValue {
+  readonly addSiteComment: (
+    siteId: SiteIdType,
+    input: AddSiteCommentInput
+  ) => Promise<Exit.Exit<AddSiteCommentResponse, AppApiError>>;
+  readonly assignSiteLabel: (
+    siteId: SiteIdType,
+    input: AssignSiteLabelInput
+  ) => Promise<Exit.Exit<SiteDetail, AppApiError>>;
+  readonly clearNotice: () => void;
+  readonly createAndAssignSiteLabel: (
+    siteId: SiteIdType,
+    input: CreateLabelInput
+  ) => Promise<Exit.Exit<SiteDetail, AppApiError>>;
+  readonly createSite: (
+    input: CreateSiteInput
+  ) => Promise<Exit.Exit<CreateSiteResponse, AppApiError>>;
+  readonly createSiteResult: SitesAsyncResult;
+  readonly notice: SitesNotice | null;
+  readonly refreshSiteComments: (
+    siteId: SiteIdType
+  ) => Promise<Exit.Exit<readonly SiteComment[], AppApiError>>;
+  readonly removeSiteLabel: (
+    siteId: SiteIdType,
+    labelId: LabelIdType
+  ) => Promise<Exit.Exit<SiteDetail, AppApiError>>;
+  readonly replaceSitesOptionsState: (
+    organizationId: OrganizationId,
+    response: SitesOptionsResponse
+  ) => Promise<void>;
+  readonly serviceAreas: SitesOptionsResponse["serviceAreas"];
+  readonly store: SitesStateStore;
+  readonly updateSite: (
+    siteId: SiteIdType,
+    input: UpdateSiteInput
+  ) => Promise<Exit.Exit<UpdateSiteResponse, AppApiError>>;
+  readonly updateSiteResults: Readonly<
+    Partial<Record<SiteIdType, SitesAsyncResult>>
+  >;
+}
+
+interface SitesState {
+  readonly createSiteResult: SitesAsyncResult;
+  readonly notice: SitesNotice | null;
+  readonly serviceAreas: SitesOptionsResponse["serviceAreas"];
+  readonly updateSiteResults: Readonly<
+    Partial<Record<SiteIdType, SitesAsyncResult>>
+  >;
+}
+
+type SitesStateAction =
+  | {
+      readonly notice: SitesNotice | null;
+      readonly type: "set-notice";
+    }
+  | {
+      readonly result: SitesAsyncResult;
+      readonly type: "set-create-site-result";
+    }
+  | {
+      readonly result: SitesAsyncResult;
+      readonly siteId: SiteIdType;
+      readonly type: "set-update-site-result";
+    }
+  | {
+      readonly serviceAreas: SitesOptionsResponse["serviceAreas"];
+      readonly type: "replace-options-state";
+    };
+
+const SitesStateContext = React.createContext<SitesStateContextValue | null>(
+  null
+);
+
+const idleSitesAsyncResult: SitesAsyncResult = {
+  error: null,
+  waiting: false,
 };
 
-export const sitesOptionsStateAtom = Atom.make<SitesOptionsState>({
-  data: emptySiteOptions,
-  organizationId: null,
-}).pipe(Atom.keepAlive);
+const waitingSitesAsyncResult: SitesAsyncResult = {
+  error: null,
+  waiting: true,
+};
 
-export const sitesNoticeAtom = Atom.make<SitesNotice | null>(null).pipe(
-  Atom.keepAlive
-);
+export function SitesStateProvider({
+  activeOrganizationId,
+  children,
+  initialSiteComments,
+  options,
+}: {
+  readonly activeOrganizationId: OrganizationId;
+  readonly children: React.ReactNode;
+  readonly initialSiteComments?: ReadonlyMap<
+    SiteIdType,
+    readonly SiteComment[]
+  >;
+  readonly options: SitesOptionsResponse;
+}) {
+  const organizationIdRef = React.useRef(activeOrganizationId);
+  const [store] = React.useState(() =>
+    makeSitesStateStore(
+      organizationIdRef,
+      activeOrganizationId,
+      options.sites,
+      initialSiteComments
+    )
+  );
+  const previousOptionsRef = React.useRef(options);
+  const [state, dispatch] = React.useReducer(sitesStateReducer, {
+    createSiteResult: idleSitesAsyncResult,
+    notice: null,
+    serviceAreas: options.serviceAreas,
+    updateSiteResults: {},
+  } satisfies SitesState);
+  const { createSiteResult, notice, serviceAreas, updateSiteResults } = state;
 
-export const siteCommentsStateAtomFamily = Atom.family((siteId: SiteIdType) => {
-  void siteId;
+  React.useEffect(() => {
+    organizationIdRef.current = activeOrganizationId;
+  }, [activeOrganizationId, organizationIdRef]);
 
-  return Atom.make<readonly SiteComment[]>([]);
-});
+  React.useEffect(
+    () => () => {
+      void store.sites.cleanup();
 
-const siteCommentsRefreshVersionAtomFamily = Atom.family(
-  (siteId: SiteIdType) => {
-    void siteId;
+      for (const collection of store.commentsBySiteId.values()) {
+        void collection.cleanup();
+      }
+    },
+    [store]
+  );
 
-    return Atom.make(0);
-  }
-);
+  const replaceSitesOptionsState = React.useCallback(
+    async (organizationId: OrganizationId, response: SitesOptionsResponse) => {
+      organizationIdRef.current = organizationId;
+      store.refreshVersionsBySiteId.clear();
 
-export const refreshSiteCommentsAtomFamily = Atom.family((siteId: SiteIdType) =>
-  Atom.fn<AppApiError, readonly SiteComment[]>((_, get) =>
-    Effect.gen(function* () {
-      const refreshVersion = yield* Effect.sync(() =>
-        beginSiteCommentsRefresh(get, siteId)
-      );
-      const response = yield* listBrowserSiteComments(siteId);
+      for (const collection of store.commentsBySiteId.values()) {
+        await collection.cleanup();
+      }
 
-      yield* Effect.sync(() => {
-        replaceSiteCommentsIfCurrent(
-          get,
-          siteId,
-          refreshVersion,
-          response.comments
-        );
+      store.commentsBySiteId.clear();
+      store.initialCommentsBySiteId.clear();
+      await replaceSites(store.sites, response.sites);
+      dispatch({
+        serviceAreas: response.serviceAreas,
+        type: "replace-options-state",
       });
+    },
+    [organizationIdRef, store]
+  );
 
-      return response.comments.toSorted(compareSiteComments);
+  React.useEffect(() => {
+    if (previousOptionsRef.current === options) {
+      return;
+    }
+
+    previousOptionsRef.current = options;
+    void replaceSitesOptionsState(activeOrganizationId, options);
+  }, [activeOrganizationId, options, replaceSitesOptionsState]);
+
+  const createSite = React.useCallback(
+    (input: CreateSiteInput) => {
+      const expectedOrganizationId = organizationIdRef.current;
+
+      return runTrackedSitesOperation(
+        withMinimumMutationPendingDurationEffect(createBrowserSite(input)),
+        (result) =>
+          dispatch({
+            result,
+            type: "set-create-site-result",
+          }),
+        async (createdSite) => {
+          await syncChangedSiteDetail(
+            store,
+            createdSite,
+            expectedOrganizationId
+          );
+          dispatch({
+            notice: {
+              kind: "created",
+              name: createdSite.name,
+            },
+            type: "set-notice",
+          });
+        }
+      );
+    },
+    [organizationIdRef, store]
+  );
+
+  const updateSite = React.useCallback(
+    (siteId: SiteIdType, input: UpdateSiteInput) => {
+      const expectedOrganizationId = organizationIdRef.current;
+
+      return runTrackedSitesOperation(
+        withMinimumMutationPendingDurationEffect(
+          updateBrowserSite(siteId, input)
+        ),
+        (result) =>
+          dispatch({
+            result,
+            siteId,
+            type: "set-update-site-result",
+          }),
+        async (response) => {
+          await syncChangedSiteDetail(store, response, expectedOrganizationId);
+          dispatch({
+            notice: {
+              kind: "updated",
+              name: response.name,
+            },
+            type: "set-notice",
+          });
+        }
+      );
+    },
+    [organizationIdRef, store]
+  );
+
+  const refreshSiteComments = React.useCallback(
+    (siteId: SiteIdType) => refreshSiteCommentsState(store, siteId),
+    [store]
+  );
+
+  const addSiteComment = React.useCallback(
+    (siteId: SiteIdType, input: AddSiteCommentInput) =>
+      addSiteCommentState(store, siteId, input),
+    [store]
+  );
+
+  const assignSiteLabel = React.useCallback(
+    (siteId: SiteIdType, input: AssignSiteLabelInput) => {
+      const expectedOrganizationId = organizationIdRef.current;
+
+      return runSitesOperation(
+        withMinimumMutationPendingDurationEffect(
+          assignBrowserSiteLabel(siteId, input)
+        ),
+        async (site) => {
+          await syncChangedSiteDetail(store, site, expectedOrganizationId);
+        }
+      );
+    },
+    [organizationIdRef, store]
+  );
+
+  const createAndAssignSiteLabel = React.useCallback(
+    (siteId: SiteIdType, input: CreateLabelInput) => {
+      const expectedOrganizationId = organizationIdRef.current;
+
+      return runSitesOperation(
+        withMinimumMutationPendingDurationEffect(
+          createBrowserLabel(input).pipe(
+            Effect.flatMap((label) =>
+              assignBrowserSiteLabel(siteId, { labelId: label.id })
+            )
+          )
+        ),
+        async (site) => {
+          await syncChangedSiteDetail(store, site, expectedOrganizationId);
+        }
+      );
+    },
+    [organizationIdRef, store]
+  );
+
+  const removeSiteLabel = React.useCallback(
+    (siteId: SiteIdType, labelId: LabelIdType) => {
+      const expectedOrganizationId = organizationIdRef.current;
+
+      return runSitesOperation(
+        withMinimumMutationPendingDurationEffect(
+          removeBrowserSiteLabel(siteId, labelId)
+        ),
+        async (site) => {
+          await syncChangedSiteDetail(store, site, expectedOrganizationId);
+        }
+      );
+    },
+    [organizationIdRef, store]
+  );
+
+  const clearNotice = React.useCallback(() => {
+    dispatch({
+      notice: null,
+      type: "set-notice",
+    });
+  }, []);
+
+  const value = React.useMemo<SitesStateContextValue>(
+    () => ({
+      addSiteComment,
+      assignSiteLabel,
+      clearNotice,
+      createAndAssignSiteLabel,
+      createSite,
+      createSiteResult,
+      notice,
+      refreshSiteComments,
+      removeSiteLabel,
+      replaceSitesOptionsState,
+      serviceAreas,
+      store,
+      updateSite,
+      updateSiteResults,
+    }),
+    [
+      addSiteComment,
+      assignSiteLabel,
+      clearNotice,
+      createAndAssignSiteLabel,
+      createSite,
+      createSiteResult,
+      notice,
+      refreshSiteComments,
+      removeSiteLabel,
+      replaceSitesOptionsState,
+      serviceAreas,
+      store,
+      updateSite,
+      updateSiteResults,
+    ]
+  );
+
+  return React.createElement(SitesStateContext.Provider, { value }, children);
+}
+
+export function useSitesOptions(): SitesOptionsResponse {
+  const { serviceAreas, store } = useSitesStateContext();
+  const sites = useSitesCollectionItems(store.sites);
+
+  return React.useMemo(
+    () => ({
+      serviceAreas,
+      sites: sortSiteOptions(sites),
+    }),
+    [serviceAreas, sites]
+  );
+}
+
+export function useSitesNotice() {
+  const { clearNotice, notice } = useSitesStateContext();
+
+  return [notice, clearNotice] as const;
+}
+
+export function useCreateSiteMutation() {
+  const { createSite, createSiteResult } = useSitesStateContext();
+
+  return [createSiteResult, createSite] as const;
+}
+
+export function useUpdateSiteMutation(siteId: SiteIdType) {
+  const { updateSite, updateSiteResults } = useSitesStateContext();
+
+  return [
+    updateSiteResults[siteId] ?? idleSitesAsyncResult,
+    React.useCallback(
+      (input: UpdateSiteInput) => updateSite(siteId, input),
+      [siteId, updateSite]
+    ),
+  ] as const;
+}
+
+export function useSiteComments(siteId: SiteIdType) {
+  const { store } = useSitesStateContext();
+  const collection = React.useMemo(
+    () => getOrCreateSiteCommentsCollection(store, siteId),
+    [siteId, store]
+  );
+  const comments = useSiteCommentCollectionItems(collection);
+
+  return React.useMemo(() => sortSiteComments(comments), [comments]);
+}
+
+export function useRefreshSiteCommentsMutation(siteId: SiteIdType) {
+  const { refreshSiteComments } = useSitesStateContext();
+
+  return React.useCallback(
+    () => refreshSiteComments(siteId),
+    [refreshSiteComments, siteId]
+  );
+}
+
+export function useAddSiteCommentMutation(siteId: SiteIdType) {
+  const { addSiteComment } = useSitesStateContext();
+
+  return React.useCallback(
+    (input: AddSiteCommentInput) => addSiteComment(siteId, input),
+    [addSiteComment, siteId]
+  );
+}
+
+export function useAssignSiteLabelMutation(siteId: SiteIdType) {
+  const { assignSiteLabel } = useSitesStateContext();
+
+  return React.useCallback(
+    (input: AssignSiteLabelInput) => assignSiteLabel(siteId, input),
+    [assignSiteLabel, siteId]
+  );
+}
+
+export function useCreateAndAssignSiteLabelMutation(siteId: SiteIdType) {
+  const { createAndAssignSiteLabel } = useSitesStateContext();
+
+  return React.useCallback(
+    (input: CreateLabelInput) => createAndAssignSiteLabel(siteId, input),
+    [createAndAssignSiteLabel, siteId]
+  );
+}
+
+export function useRemoveSiteLabelMutation(siteId: SiteIdType) {
+  const { removeSiteLabel } = useSitesStateContext();
+
+  return React.useCallback(
+    (labelId: LabelIdType) => removeSiteLabel(siteId, labelId),
+    [removeSiteLabel, siteId]
+  );
+}
+
+export function useReplaceSitesOptionsState() {
+  const { replaceSitesOptionsState } = useSitesStateContext();
+
+  return replaceSitesOptionsState;
+}
+
+export function isSitesAsyncFailure(result: SitesAsyncResult): boolean {
+  return result.error !== null;
+}
+
+export function getSitesAsyncErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function makeSitesStateStore(
+  organizationIdRef: React.MutableRefObject<OrganizationId>,
+  organizationId: OrganizationId,
+  sites: readonly SiteOption[],
+  initialComments?: ReadonlyMap<SiteIdType, readonly SiteComment[]>
+): SitesStateStore {
+  return {
+    commentsBySiteId: new Map(),
+    initialCommentsBySiteId: new Map(initialComments),
+    organizationIdRef,
+    refreshVersionsBySiteId: new Map(),
+    sites: makeSitesCollection(organizationId, sites),
+  };
+}
+
+function makeSitesCollection(
+  organizationId: OrganizationId,
+  sites: readonly SiteOption[]
+) {
+  return createCollection(
+    localOnlyCollectionOptions({
+      getKey: (site) => site.id,
+      id: `organization:${organizationId}:sites`,
+      initialData: [...sites],
+      schema: Schema.standardSchemaV1(SiteOptionSchema),
     })
-  )
-);
+  );
+}
 
-function beginSiteCommentsRefresh(get: Atom.FnContext, siteId: SiteIdType) {
-  const nextVersion = get(siteCommentsRefreshVersionAtomFamily(siteId)) + 1;
-  get.set(siteCommentsRefreshVersionAtomFamily(siteId), nextVersion);
+function makeSiteCommentsCollection(
+  organizationId: OrganizationId,
+  siteId: SiteIdType,
+  comments: readonly SiteComment[]
+) {
+  return createCollection(
+    localOnlyCollectionOptions({
+      getKey: (comment) => comment.id,
+      id: `organization:${organizationId}:site:${siteId}:comments`,
+      initialData: [...comments],
+      schema: Schema.standardSchemaV1(SiteCommentSchema),
+    })
+  );
+}
+
+function useSitesStateContext() {
+  const context = use(SitesStateContext);
+
+  if (!context) {
+    throw new Error("Sites state must be used inside SitesStateProvider.");
+  }
+
+  return context;
+}
+
+function sitesStateReducer(
+  state: SitesState,
+  action: SitesStateAction
+): SitesState {
+  switch (action.type) {
+    case "replace-options-state": {
+      return {
+        ...state,
+        serviceAreas: action.serviceAreas,
+      };
+    }
+
+    case "set-create-site-result": {
+      return {
+        ...state,
+        createSiteResult: action.result,
+      };
+    }
+
+    case "set-notice": {
+      return {
+        ...state,
+        notice: action.notice,
+      };
+    }
+
+    case "set-update-site-result": {
+      return {
+        ...state,
+        updateSiteResults: {
+          ...state.updateSiteResults,
+          [action.siteId]: action.result,
+        },
+      };
+    }
+
+    default: {
+      const exhaustiveAction: never = action;
+      return exhaustiveAction;
+    }
+  }
+}
+
+function useSitesCollectionItems(
+  collection: SitesCollection
+): readonly SiteOption[] {
+  const [items, setItems] = React.useState(() =>
+    sitesFromCollection(collection)
+  );
+
+  React.useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      if (active) {
+        setItems(sitesFromCollection(collection));
+      }
+    };
+    const subscription = collection.subscribeChanges(refresh);
+
+    refresh();
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [collection]);
+
+  return items;
+}
+
+function useSiteCommentCollectionItems(
+  collection: SiteCommentsCollection
+): readonly SiteComment[] {
+  const [items, setItems] = React.useState(() =>
+    siteCommentsFromCollection(collection)
+  );
+
+  React.useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      if (active) {
+        setItems(siteCommentsFromCollection(collection));
+      }
+    };
+    const subscription = collection.subscribeChanges(refresh);
+
+    refresh();
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [collection]);
+
+  return items;
+}
+
+async function runTrackedSitesOperation<Success>(
+  effect: Effect.Effect<Success, AppApiError>,
+  setResult: (result: SitesAsyncResult) => void,
+  onSuccess: (value: Success) => Promise<void>
+): Promise<Exit.Exit<Success, AppApiError>> {
+  setResult(waitingSitesAsyncResult);
+  const exit = await Effect.runPromiseExit(effect);
+
+  if (Exit.isSuccess(exit)) {
+    await onSuccess(exit.value);
+    setResult(idleSitesAsyncResult);
+    return exit;
+  }
+
+  setResult({
+    error: failureFromCause(exit.cause),
+    waiting: false,
+  });
+
+  return exit;
+}
+
+async function runSitesOperation<Success>(
+  effect: Effect.Effect<Success, AppApiError>,
+  onSuccess: (value: Success) => Promise<void>
+): Promise<Exit.Exit<Success, AppApiError>> {
+  const exit = await Effect.runPromiseExit(effect);
+
+  if (Exit.isSuccess(exit)) {
+    await onSuccess(exit.value);
+  }
+
+  return exit;
+}
+
+async function refreshSiteCommentsState(
+  store: SitesStateStore,
+  siteId: SiteIdType
+): Promise<Exit.Exit<readonly SiteComment[], AppApiError>> {
+  const refreshVersion = beginSiteCommentsRefresh(store, siteId);
+  const exit = await Effect.runPromiseExit(
+    listBrowserSiteComments(siteId).pipe(
+      Effect.map((response) => sortSiteComments(response.comments))
+    )
+  );
+
+  if (Exit.isSuccess(exit)) {
+    await replaceSiteCommentsIfCurrent(
+      store,
+      siteId,
+      refreshVersion,
+      exit.value
+    );
+  }
+
+  return exit;
+}
+
+async function addSiteCommentState(
+  store: SitesStateStore,
+  siteId: SiteIdType,
+  input: AddSiteCommentInput
+): Promise<Exit.Exit<AddSiteCommentResponse, AppApiError>> {
+  const exit = await Effect.runPromiseExit(
+    withMinimumMutationPendingDurationEffect(
+      addBrowserSiteComment(siteId, input)
+    )
+  );
+
+  if (Exit.isSuccess(exit)) {
+    await upsertSiteCommentCollectionItem(store, siteId, exit.value);
+    await refreshSiteCommentsIfPossible(store, siteId);
+  }
+
+  return exit;
+}
+
+async function refreshSiteCommentsIfPossible(
+  store: SitesStateStore,
+  siteId: SiteIdType
+) {
+  const refreshVersion = beginSiteCommentsRefresh(store, siteId);
+  const exit = await Effect.runPromiseExit(listBrowserSiteComments(siteId));
+
+  if (Exit.isSuccess(exit)) {
+    await replaceSiteCommentsIfCurrent(
+      store,
+      siteId,
+      refreshVersion,
+      exit.value.comments
+    );
+    return;
+  }
+
+  await Effect.runPromise(
+    Effect.logWarning(
+      "Site comments refresh failed; keeping optimistic state",
+      {
+        error: getSitesAsyncErrorMessage(failureFromCause(exit.cause)),
+        siteId,
+      }
+    )
+  );
+}
+
+function beginSiteCommentsRefresh(store: SitesStateStore, siteId: SiteIdType) {
+  const nextVersion = (store.refreshVersionsBySiteId.get(siteId) ?? 0) + 1;
+  store.refreshVersionsBySiteId.set(siteId, nextVersion);
 
   return nextVersion;
 }
 
-function replaceSiteCommentsIfCurrent(
-  get: Atom.FnContext,
+async function replaceSiteCommentsIfCurrent(
+  store: SitesStateStore,
   siteId: SiteIdType,
   refreshVersion: number,
   comments: readonly SiteComment[]
 ) {
-  if (get(siteCommentsRefreshVersionAtomFamily(siteId)) === refreshVersion) {
-    get.set(
-      siteCommentsStateAtomFamily(siteId),
-      comments.toSorted(compareSiteComments)
-    );
+  if (store.refreshVersionsBySiteId.get(siteId) !== refreshVersion) {
+    return;
   }
-}
 
-function refreshSiteCommentsIfPossible(
-  get: Atom.FnContext,
-  siteId: SiteIdType
-) {
-  return Effect.gen(function* () {
-    const refreshVersion = yield* Effect.sync(() =>
-      beginSiteCommentsRefresh(get, siteId)
-    );
-    const response = yield* listBrowserSiteComments(siteId).pipe(
-      Effect.tapError((error) =>
-        Effect.logWarning(
-          "Site comments refresh failed; keeping optimistic state",
-          {
-            error: error.message,
-            siteId,
-          }
-        )
-      ),
-      Effect.option
-    );
-
-    yield* Option.match(response, {
-      onNone: () => Effect.void,
-      onSome: (freshComments) =>
-        Effect.sync(() => {
-          replaceSiteCommentsIfCurrent(
-            get,
-            siteId,
-            refreshVersion,
-            freshComments.comments
-          );
-        }),
-    });
-  });
-}
-
-export const createSiteMutationAtom = Atom.fn<
-  AppApiError,
-  CreateSiteResponse,
-  CreateSiteInput
->((input, get) =>
-  withMinimumMutationPendingDurationEffect(createBrowserSite(input)).pipe(
-    Effect.tap((createdSite) =>
-      Effect.gen(function* () {
-        yield* refreshSiteOptionsOrUpsert(get, createdSite);
-
-        yield* Effect.sync(() => {
-          get.set(sitesNoticeAtom, {
-            kind: "created",
-            name: createdSite.name,
-          });
-        });
-      })
-    )
-  )
-);
-
-export const updateSiteMutationAtomFamily = Atom.family((siteId: SiteIdType) =>
-  Atom.fn<AppApiError, UpdateSiteResponse, UpdateSiteInput>((input, get) =>
-    withMinimumMutationPendingDurationEffect(
-      updateBrowserSite(siteId, input)
-    ).pipe(
-      Effect.tap((response) =>
-        Effect.gen(function* () {
-          yield* refreshSiteOptionsOrUpsert(get, response);
-
-          yield* Effect.sync(() => {
-            get.set(sitesNoticeAtom, {
-              kind: "updated",
-              name: response.name,
-            });
-          });
-        })
-      )
-    )
-  )
-);
-
-export const addSiteCommentMutationAtomFamily = Atom.family(
-  (siteId: SiteIdType) =>
-    Atom.fn<AppApiError, AddSiteCommentResponse, AddSiteCommentInput>(
-      (input, get) =>
-        withMinimumMutationPendingDurationEffect(
-          addBrowserSiteComment(siteId, input)
-        ).pipe(
-          Effect.tap((comment) =>
-            Effect.gen(function* () {
-              yield* Effect.sync(() => {
-                upsertSiteComment(get, siteId, comment);
-              });
-
-              yield* refreshSiteCommentsIfPossible(get, siteId);
-            })
-          )
-        )
-    )
-);
-
-export const assignSiteLabelMutationAtomFamily = Atom.family(
-  (siteId: SiteIdType) =>
-    Atom.fn<AppApiError, SiteDetail, AssignSiteLabelInput>((input, get) => {
-      const expectedOrganizationId = get(sitesOptionsStateAtom).organizationId;
-
-      return withMinimumMutationPendingDurationEffect(
-        assignBrowserSiteLabel(siteId, input)
-      ).pipe(
-        Effect.tap((site) =>
-          Effect.sync(() =>
-            syncChangedSiteDetail(get, site, expectedOrganizationId)
-          )
-        )
-      );
-    })
-);
-
-export const createAndAssignSiteLabelMutationAtomFamily = Atom.family(
-  (siteId: SiteIdType) =>
-    Atom.fn<AppApiError, SiteDetail, CreateLabelInput>((input, get) => {
-      const expectedSitesOrganizationId = get(
-        sitesOptionsStateAtom
-      ).organizationId;
-
-      return withMinimumMutationPendingDurationEffect(
-        createBrowserLabel(input).pipe(
-          Effect.flatMap((label) =>
-            assignBrowserSiteLabel(siteId, { labelId: label.id })
-          )
-        )
-      ).pipe(
-        Effect.tap((site) =>
-          Effect.sync(() =>
-            syncChangedSiteDetail(get, site, expectedSitesOrganizationId)
-          )
-        )
-      );
-    })
-);
-
-export const removeSiteLabelMutationAtomFamily = Atom.family(
-  (siteId: SiteIdType) =>
-    Atom.fn<AppApiError, SiteDetail, LabelIdType>((labelId, get) => {
-      const expectedOrganizationId = get(sitesOptionsStateAtom).organizationId;
-
-      return withMinimumMutationPendingDurationEffect(
-        removeBrowserSiteLabel(siteId, labelId)
-      ).pipe(
-        Effect.tap((site) =>
-          Effect.sync(() =>
-            syncChangedSiteDetail(get, site, expectedOrganizationId)
-          )
-        )
-      );
-    })
-);
-
-function upsertSiteOption(
-  options: SitesOptionsResponse,
-  site: SiteOption
-): SitesOptionsResponse {
-  return {
-    ...options,
-    sites: [
-      site,
-      ...options.sites.filter((existingSite) => existingSite.id !== site.id),
-    ].toSorted(compareSiteOptions),
-  };
+  await replaceSiteComments(
+    getOrCreateSiteCommentsCollection(store, siteId),
+    sortSiteComments(comments)
+  );
 }
 
 function createBrowserSite(input: CreateSiteInput) {
@@ -324,35 +814,127 @@ function removeBrowserSiteLabel(siteId: SiteIdType, labelId: LabelIdType) {
   );
 }
 
-function syncChangedSiteDetail(
-  get: Atom.FnContext,
+async function syncChangedSiteDetail(
+  store: SitesStateStore,
   site: SiteDetail,
-  expectedOrganizationId?: OrganizationId | null
+  expectedOrganizationId: OrganizationId
 ) {
-  const currentOptionsState = get(sitesOptionsStateAtom);
-
-  if (
-    expectedOrganizationId !== undefined &&
-    currentOptionsState.organizationId !== expectedOrganizationId
-  ) {
+  if (store.organizationIdRef.current !== expectedOrganizationId) {
     return;
   }
 
-  get.set(sitesOptionsStateAtom, {
-    data: upsertSiteOption(currentOptionsState.data, site),
-    organizationId: currentOptionsState.organizationId,
-  });
+  await upsertSiteCollectionItem(store.sites, site);
 }
 
-function refreshSiteOptionsOrUpsert(get: Atom.FnContext, site: SiteOption) {
-  return Effect.sync(() => {
-    const currentOptionsState = get(sitesOptionsStateAtom);
+async function replaceSites(
+  collection: SitesCollection,
+  sites: readonly SiteOption[]
+) {
+  const existingKeys = [...collection.keys()];
 
-    get.set(sitesOptionsStateAtom, {
-      data: upsertSiteOption(currentOptionsState.data, site),
-      organizationId: currentOptionsState.organizationId,
-    });
-  });
+  if (existingKeys.length > 0) {
+    await collection.delete(existingKeys).isPersisted.promise;
+  }
+
+  if (sites.length > 0) {
+    await collection.insert([...sites]).isPersisted.promise;
+  }
+}
+
+async function replaceSiteComments(
+  collection: SiteCommentsCollection,
+  comments: readonly SiteComment[]
+) {
+  const existingKeys = [...collection.keys()];
+
+  if (existingKeys.length > 0) {
+    await collection.delete(existingKeys).isPersisted.promise;
+  }
+
+  if (comments.length > 0) {
+    await collection.insert([...comments]).isPersisted.promise;
+  }
+}
+
+async function upsertSiteCollectionItem(
+  collection: SitesCollection,
+  site: SiteOption
+) {
+  if (collection.has(site.id)) {
+    await collection.update(site.id, (draft) => {
+      draft.accessNotes = site.accessNotes;
+      draft.addressLine1 = site.addressLine1;
+      draft.addressLine2 = site.addressLine2;
+      draft.country = site.country;
+      draft.county = site.county;
+      draft.eircode = site.eircode;
+      draft.labels = [...site.labels];
+      draft.latitude = site.latitude;
+      draft.longitude = site.longitude;
+      draft.name = site.name;
+      draft.serviceAreaId = site.serviceAreaId;
+      draft.serviceAreaName = site.serviceAreaName;
+    }).isPersisted.promise;
+    return;
+  }
+
+  await collection.insert(site).isPersisted.promise;
+}
+
+async function upsertSiteCommentCollectionItem(
+  store: SitesStateStore,
+  siteId: SiteIdType,
+  comment: AddSiteCommentResponse
+) {
+  const collection = getOrCreateSiteCommentsCollection(store, siteId);
+
+  if (collection.has(comment.id)) {
+    await collection.update(comment.id, (draft) => {
+      draft.authorName = comment.authorName;
+      draft.body = comment.body;
+      draft.createdAt = comment.createdAt;
+      draft.siteId = comment.siteId;
+    }).isPersisted.promise;
+    return;
+  }
+
+  await collection.insert(comment).isPersisted.promise;
+}
+
+function getOrCreateSiteCommentsCollection(
+  store: SitesStateStore,
+  siteId: SiteIdType
+) {
+  const existing = store.commentsBySiteId.get(siteId);
+
+  if (existing) {
+    return existing;
+  }
+
+  const collection = makeSiteCommentsCollection(
+    store.organizationIdRef.current,
+    siteId,
+    store.initialCommentsBySiteId.get(siteId) ?? []
+  );
+  store.commentsBySiteId.set(siteId, collection);
+
+  return collection;
+}
+
+function sitesFromCollection(
+  collection: SitesCollection
+): readonly SiteOption[] {
+  return collection.toArray.map(withoutVirtualProps);
+}
+
+function siteCommentsFromCollection(
+  collection: SiteCommentsCollection
+): readonly SiteComment[] {
+  return collection.toArray.map(withoutVirtualProps);
+}
+
+function sortSiteOptions(sites: readonly SiteOption[]) {
+  return sites.toSorted(compareSiteOptions);
 }
 
 function compareSiteOptions(left: SiteOption, right: SiteOption) {
@@ -363,20 +945,8 @@ function compareSiteOptions(left: SiteOption, right: SiteOption) {
     : nameComparison;
 }
 
-function upsertSiteComment(
-  get: Atom.FnContext,
-  siteId: SiteIdType,
-  comment: AddSiteCommentResponse
-) {
-  const comments = get(siteCommentsStateAtomFamily(siteId));
-
-  get.set(
-    siteCommentsStateAtomFamily(siteId),
-    [
-      ...comments.filter((current) => current.id !== comment.id),
-      comment,
-    ].toSorted(compareSiteComments)
-  );
+function sortSiteComments(comments: readonly SiteComment[]) {
+  return comments.toSorted(compareSiteComments);
 }
 
 function compareSiteComments(left: SiteComment, right: SiteComment) {
@@ -387,12 +957,30 @@ function compareSiteComments(left: SiteComment, right: SiteComment) {
     : createdAtComparison;
 }
 
-export function seedSitesOptionsState(
-  organizationId: OrganizationId,
-  response: SitesOptionsResponse
-): SitesOptionsState {
-  return {
-    data: response,
-    organizationId,
+function failureFromCause(cause: Cause.Cause<AppApiError>): unknown {
+  const failure = Cause.failureOption(cause);
+
+  return Option.isSome(failure) ? failure.value : Cause.squash(cause);
+}
+
+function withoutVirtualProps<Item extends object>(item: Item): Item {
+  const {
+    $collectionId: _collectionId,
+    $key: _key,
+    $origin: _origin,
+    $synced: _synced,
+    ...data
+  } = item as Item & {
+    readonly $collectionId?: unknown;
+    readonly $key?: unknown;
+    readonly $origin?: unknown;
+    readonly $synced?: unknown;
   };
+
+  void _collectionId;
+  void _key;
+  void _origin;
+  void _synced;
+
+  return data as Item;
 }

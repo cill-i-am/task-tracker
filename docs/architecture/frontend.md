@@ -175,12 +175,17 @@ as `jobs-state.ts`, `jobs-detail-state.ts`, `sites-state.ts`, and
 New API-backed feature state should prefer TanStack DB collections for
 reactive client-side entity state. Collections use shared Effect schemas through
 `Schema.standardSchemaV1(...)` at the collection boundary, then call the typed
-Effect HTTP client for server reads and writes. The current pilot is
-`features/organizations/organization-configuration-state.tsx`, which keeps
-service areas and rate cards in route-scoped local collections while preserving
-pending/error mutation state for the existing UI. Existing Effect Atom state in
-jobs and sites should move to the same pattern as those slices are touched,
-rather than adding new atom surfaces.
+Effect HTTP client for server reads and writes. The current migrated slices are:
+
+- `features/organizations/organization-configuration-state.tsx`, which keeps
+  service areas and rate cards in route-scoped local collections while
+  preserving pending/error mutation state for the existing UI.
+- `features/sites/sites-state.ts`, which keeps route-loaded site options and
+  per-site comments in scoped local collections, including optimistic comment
+  state and organization-switch guards for in-flight mutations.
+
+Existing Effect Atom state in jobs should move to the same pattern as that
+slice is touched, rather than adding new atom surfaces.
 
 ## Hotkeys
 

@@ -1,12 +1,11 @@
 import type { OrganizationId } from "@ceird/identity-core";
 import type { SitesOptionsResponse } from "@ceird/sites-core";
-import { RegistryProvider } from "@effect-atom/atom-react";
 import type { ReactNode } from "react";
 
 import type { OrganizationViewer } from "#/features/organizations/organization-viewer";
 import { SitesPage } from "#/features/sites/sites-page";
 
-import { seedSitesOptionsState, sitesOptionsStateAtom } from "./sites-state";
+import { SitesStateProvider } from "./sites-state";
 
 export function SitesRouteContent({
   activeOrganizationId,
@@ -20,16 +19,12 @@ export function SitesRouteContent({
   readonly viewer: OrganizationViewer;
 }) {
   return (
-    <RegistryProvider
+    <SitesStateProvider
       key={activeOrganizationId}
-      initialValues={[
-        [
-          sitesOptionsStateAtom,
-          seedSitesOptionsState(activeOrganizationId, options),
-        ],
-      ]}
+      activeOrganizationId={activeOrganizationId}
+      options={options}
     >
       <SitesPage viewer={viewer}>{children}</SitesPage>
-    </RegistryProvider>
+    </SitesStateProvider>
   );
 }

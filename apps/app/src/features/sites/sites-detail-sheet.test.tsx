@@ -6,7 +6,6 @@ import type {
   SiteIdType,
   SitesOptionsResponse,
 } from "@ceird/sites-core";
-import { RegistryProvider } from "@effect-atom/atom-react";
 import {
   fireEvent,
   render,
@@ -17,7 +16,7 @@ import {
 import type { ComponentProps } from "react";
 
 import { SitesDetailSheet } from "./sites-detail-sheet";
-import { seedSitesOptionsState, sitesOptionsStateAtom } from "./sites-state";
+import { SitesStateProvider } from "./sites-state";
 
 const organizationId = decodeOrganizationId("org_123");
 const userId = "user_123" as UserIdType;
@@ -264,11 +263,7 @@ function renderSiteDetailSheet({
   }
 
   render(
-    <RegistryProvider
-      initialValues={[
-        [sitesOptionsStateAtom, seedSitesOptionsState(organizationId, options)],
-      ]}
-    >
+    <SitesStateProvider activeOrganizationId={organizationId} options={options}>
       <SitesDetailSheet
         hasMoreRelatedJobs={hasMoreRelatedJobs}
         initialSite={site}
@@ -279,7 +274,7 @@ function renderSiteDetailSheet({
           userId,
         }}
       />
-    </RegistryProvider>
+    </SitesStateProvider>
   );
 }
 

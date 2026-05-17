@@ -12,11 +12,6 @@ import type {
   UpdateSiteResponse,
 } from "@ceird/sites-core";
 /* oxlint-disable vitest/prefer-import-in-mock */
-import {
-  RegistryProvider,
-  useAtomSet,
-  useAtomValue,
-} from "@effect-atom/atom-react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Effect, Exit, Schema } from "effect";
@@ -24,17 +19,18 @@ import type * as EffectPackage from "effect";
 import { useState } from "react";
 
 import {
-  addSiteCommentMutationAtomFamily,
-  assignSiteLabelMutationAtomFamily,
-  createSiteMutationAtom,
-  createAndAssignSiteLabelMutationAtomFamily,
-  refreshSiteCommentsAtomFamily,
-  removeSiteLabelMutationAtomFamily,
-  seedSitesOptionsState,
-  siteCommentsStateAtomFamily,
-  sitesNoticeAtom,
-  sitesOptionsStateAtom,
-  updateSiteMutationAtomFamily,
+  SitesStateProvider,
+  useAddSiteCommentMutation,
+  useAssignSiteLabelMutation,
+  useCreateAndAssignSiteLabelMutation,
+  useCreateSiteMutation,
+  useRefreshSiteCommentsMutation,
+  useRemoveSiteLabelMutation,
+  useReplaceSitesOptionsState,
+  useSiteComments,
+  useSitesNotice,
+  useSitesOptions,
+  useUpdateSiteMutation,
 } from "./sites-state";
 
 type EffectClientMock = (...args: unknown[]) => unknown;
@@ -576,65 +572,33 @@ function renderSitesStateProbe({
   readonly site?: CreateSiteResponse & UpdateSiteResponse;
 } = {}) {
   return render(
-    <RegistryProvider
-      initialValues={[
-        [
-          sitesOptionsStateAtom,
-          seedSitesOptionsState(organizationId, {
-            serviceAreas: [],
-            sites: [site],
-          }),
-        ],
-        [siteCommentsStateAtomFamily(existingSiteId), comments],
-      ]}
+    <SitesStateProvider
+      activeOrganizationId={organizationId}
+      initialSiteComments={new Map([[existingSiteId, comments]])}
+      options={{
+        serviceAreas: [],
+        sites: [site],
+      }}
     >
       <SitesStateProbe />
-    </RegistryProvider>
+    </SitesStateProvider>
   );
 }
 
 function SitesStateProbe() {
   const [lastExit, setLastExit] = useState("");
-  const assignSiteLabel = useAtomSet(
-    assignSiteLabelMutationAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const createSite = useAtomSet(createSiteMutationAtom, {
-    mode: "promiseExit",
-  });
-  const createAndAssignSiteLabel = useAtomSet(
-    createAndAssignSiteLabelMutationAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const removeSiteLabel = useAtomSet(
-    removeSiteLabelMutationAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const updateSite = useAtomSet(updateSiteMutationAtomFamily(existingSiteId), {
-    mode: "promiseExit",
-  });
-  const refreshComments = useAtomSet(
-    refreshSiteCommentsAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const addComment = useAtomSet(
-    addSiteCommentMutationAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const options = useAtomValue(sitesOptionsStateAtom).data;
-  const comments = useAtomValue(siteCommentsStateAtomFamily(existingSiteId));
-  const notice = useAtomValue(sitesNoticeAtom);
-  const setSitesOptions = useAtomSet(sitesOptionsStateAtom);
+  const assignSiteLabel = useAssignSiteLabelMutation(existingSiteId);
+  const [, createSite] = useCreateSiteMutation();
+  const createAndAssignSiteLabel =
+    useCreateAndAssignSiteLabelMutation(existingSiteId);
+  const removeSiteLabel = useRemoveSiteLabelMutation(existingSiteId);
+  const [, updateSite] = useUpdateSiteMutation(existingSiteId);
+  const refreshComments = useRefreshSiteCommentsMutation(existingSiteId);
+  const addComment = useAddSiteCommentMutation(existingSiteId);
+  const options = useSitesOptions();
+  const comments = useSiteComments(existingSiteId);
+  const [notice] = useSitesNotice();
+  const replaceSitesOptionsState = useReplaceSitesOptionsState();
 
   return (
     <div>
@@ -675,12 +639,10 @@ function SitesStateProbe() {
       <button
         type="button"
         onClick={() => {
-          setSitesOptions(
-            seedSitesOptionsState(otherOrganizationId, {
-              serviceAreas: [],
-              sites: [buildSite(existingSiteId, "Other Site")],
-            })
-          );
+          void replaceSitesOptionsState(otherOrganizationId, {
+            serviceAreas: [],
+            sites: [buildSite(existingSiteId, "Other Site")],
+          });
         }}
       >
         Switch org

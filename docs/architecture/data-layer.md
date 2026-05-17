@@ -75,7 +75,13 @@ Queues, Workers Scripts, Workers Routes, and DNS for `ceird.app`.
 The current stack uses Alchemy v2 native Neon and Cloudflare Hyperdrive
 resources. API runtime code still uses the existing Effect 3 database layer and
 checked-in Drizzle SQL migrations; migration generation with `Drizzle.Schema`
-is deferred until the API Drizzle/Effect upgrade.
+is deferred until the API Drizzle/Effect upgrade. Keep the root Alchemy stack on
+Alchemy's Effect 4 line, but keep API/app/shared runtime code on the current
+Effect 3 package line until the Effect platform/sql/rpc packages used by the
+API have a compatible v4 migration target. As of this migration pass,
+`@effect/platform`, `@effect/sql`, and `@effect/rpc` still publish the stable
+APIs this app uses against Effect 3 peers, while Alchemy v2 uses Effect 4
+unstable modules internally.
 
 The API Worker receives a `DATABASE` Hyperdrive binding and resolves the runtime
 Postgres URL from `env.DATABASE.connectionString`. Package-local Node runtimes
@@ -93,5 +99,6 @@ The following are intentionally left for later:
 - broader domain data services
 - auth-specific Effect wrappers
 - app-facing typed auth endpoints
+- full API/app/shared Effect 4 migration
 
 That keeps the current implementation simple while still leaving a clean path toward a more Effect-native backend as the project grows.
