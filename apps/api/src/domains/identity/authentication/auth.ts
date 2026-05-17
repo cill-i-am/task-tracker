@@ -1,6 +1,7 @@
 /* eslint-disable max-classes-per-file, typescript-eslint/no-explicit-any */
 import { createHash } from "node:crypto";
 
+import { oauthProvider } from "@better-auth/oauth-provider";
 import {
   isAdministrativeOrganizationRole,
   decodeCreateOrganizationInput,
@@ -14,9 +15,11 @@ import type {
 } from "@ceird/identity-core";
 import { HttpApiBuilder, HttpApp } from "@effect/platform";
 import { betterAuth } from "better-auth";
+import type { BetterAuthOptions } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import type { Role } from "better-auth/plugins/access";
+import { jwt } from "better-auth/plugins/jwt";
 import { organization } from "better-auth/plugins/organization";
 import {
   adminAc,
@@ -76,6 +79,32 @@ const SESSION_COOKIE_NAMES = [
 
 type AuthEmailFailureReporter = (error: unknown) => void;
 type AuthEmailPromiseSender<Input> = (input: Input) => Promise<void>;
+interface AuthenticationSessionResult {
+  readonly session: {
+    readonly activeOrganizationId?: string | null | undefined;
+  } & Record<string, unknown>;
+  readonly user: {
+    readonly id: string;
+  } & Record<string, unknown>;
+}
+interface AuthenticationPluginOption {
+  readonly id: string;
+  readonly options?: unknown;
+}
+
+export interface CeirdAuthentication {
+  api: {
+    readonly getSession: (options: {
+      readonly headers: Headers;
+    }) => Promise<AuthenticationSessionResult | null>;
+    readonly [endpoint: string]: unknown;
+  };
+  handler: (request: Request) => Promise<Response>;
+  options: BetterAuthOptions & {
+    readonly plugins: readonly AuthenticationPluginOption[];
+    readonly user?: AuthenticationConfig["user"];
+  };
+}
 
 export function maskInvitationEmail(email: string) {
   const [localPart, domainPart] = email.split("@");
@@ -243,7 +272,7 @@ export function createAuthentication(options: {
   readonly sendVerificationEmail: (
     input: EmailVerificationEmailInput
   ) => Promise<void>;
-}) {
+}): CeirdAuthentication {
   const {
     config,
     database,
@@ -251,7 +280,17 @@ export function createAuthentication(options: {
     sendPasswordResetEmail,
     sendVerificationEmail,
   } = options;
-  const { databaseUrl: _databaseUrl, ...authConfig } = config;
+  const {
+    databaseUrl: _databaseUrl,
+    mcpResourceUrl,
+    oauthClientRegistrationDefaultScopes,
+    oauthConsentPath,
+    oauthIssuerUrl,
+    oauthScopes,
+    ...authConfig
+  } = config;
+  const loginPage = new URL("/login", options.appOrigin).toString();
+  const consentPage = new URL(oauthConsentPath, options.appOrigin).toString();
 
   const auth = betterAuth({
     ...authConfig,
@@ -265,7 +304,35 @@ export function createAuthentication(options: {
       provider: "pg",
       schema: authSchema,
     }),
+    disabledPaths: ["/token"],
     plugins: [
+      jwt({
+        disableSettingJwtHeader: true,
+        jwt: {
+          issuer: oauthIssuerUrl,
+        },
+      }),
+      oauthProvider({
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
+        advertisedMetadata: {
+          scopes_supported: [...oauthScopes],
+        },
+        clientRegistrationAllowedScopes: [...oauthScopes],
+        clientRegistrationDefaultScopes: [
+          ...oauthClientRegistrationDefaultScopes,
+        ],
+        consentPage,
+        disableJwtPlugin: false,
+        grantTypes: ["authorization_code", "refresh_token"],
+        loginPage,
+        scopes: [...oauthScopes],
+        silenceWarnings: {
+          oauthAuthServerConfig: true,
+          openidConfig: true,
+        },
+        validAudiences: [authConfig.baseURL, mcpResourceUrl],
+      }),
       organization({
         cancelPendingInvitationsOnReInvite: true,
         invitationExpiresIn: ORGANIZATION_INVITATION_EXPIRATION_SECONDS,
@@ -415,7 +482,7 @@ export function createAuthentication(options: {
 
   auth.handler = withAuthenticationAuthorizationGuards(auth.handler, database);
 
-  return auth;
+  return auth as CeirdAuthentication;
 }
 
 function makeAuthenticationBackgroundTaskHandler() {

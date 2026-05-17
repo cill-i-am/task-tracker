@@ -7,6 +7,25 @@ import {
 
 export const DEFAULT_AUTH_BASE_PATH = "/api/auth" as const;
 export const DEFAULT_AUTH_DATABASE_URL = DEFAULT_APP_DATABASE_URL;
+export const DEFAULT_MCP_RESOURCE_PATH = "/mcp" as const;
+export const DEFAULT_OAUTH_CONSENT_PATH = "/oauth/consent" as const;
+export const CEIRD_OAUTH_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "ceird:read",
+  "ceird:write",
+  "ceird:admin",
+] as const;
+export type CeirdOAuthScope = (typeof CEIRD_OAUTH_SCOPES)[number];
+export const CEIRD_OAUTH_CLIENT_REGISTRATION_DEFAULT_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "offline_access",
+  "ceird:read",
+] as const satisfies readonly CeirdOAuthScope[];
 const TrustedOriginPattern = Schema.String.pipe(
   Schema.pattern(/^https?:\/\/(?:\*\.)?[a-z0-9.-]+(?::\d+)?$/i),
   Schema.brand("TrustedOriginPattern")
@@ -75,10 +94,55 @@ const authenticationBaseUrlConfig = Config.string("BETTER_AUTH_BASE_URL").pipe(
     },
   })
 );
+const absoluteUrlConfig = (name: string) =>
+  Config.string(name).pipe(
+    Config.validate({
+      message: `${name} must be a valid absolute URL`,
+      validation: (value) => {
+        try {
+          const url = new URL(value);
+          return url.protocol === "http:" || url.protocol === "https:";
+        } catch {
+          return false;
+        }
+      },
+    })
+  );
+
+const authenticationMcpResourceUrlConfig = absoluteUrlConfig(
+  "MCP_RESOURCE_URL"
+).pipe(Config.option);
+const oauthIssuerUrlConfig = absoluteUrlConfig("OAUTH_ISSUER_URL").pipe(
+  Config.option
+);
+
+function isLoopbackHostname(hostname: string) {
+  return (
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname.startsWith("127.")
+  );
+}
+
+function normalizeOAuthIssuerUrl(value: string) {
+  const url = new URL(value);
+
+  if (url.protocol !== "https:" && !isLoopbackHostname(url.hostname)) {
+    url.protocol = "https:";
+  }
+
+  url.search = "";
+  url.hash = "";
+
+  return url.toString().replace(/\/$/, "");
+}
 
 export interface AuthenticationEnvironment {
   readonly appOrigin?: string | undefined;
   readonly baseUrl: string;
+  readonly mcpResourceUrl?: string | undefined;
+  readonly oauthIssuerUrl?: string | undefined;
   readonly portlessUrl?: string | undefined;
   readonly secret: string;
   readonly databaseUrl: string;
@@ -140,6 +204,11 @@ export interface AuthenticationConfig {
       readonly enabled: true;
     };
   };
+  readonly mcpResourceUrl: string;
+  readonly oauthIssuerUrl: string;
+  readonly oauthConsentPath: typeof DEFAULT_OAUTH_CONSENT_PATH;
+  readonly oauthScopes: typeof CEIRD_OAUTH_SCOPES;
+  readonly oauthClientRegistrationDefaultScopes: typeof CEIRD_OAUTH_CLIENT_REGISTRATION_DEFAULT_SCOPES;
 }
 
 export class AuthenticationConfigService extends Effect.Service<AuthenticationConfigService>()(
@@ -228,11 +297,26 @@ export function makeAuthenticationTrustedOrigins(
   return [...trustedOrigins];
 }
 
+function makeDefaultMcpResourceUrl(
+  environment: Pick<
+    AuthenticationEnvironment,
+    "appOrigin" | "baseUrl" | "portlessUrl"
+  >
+) {
+  const url = new URL(environment.portlessUrl ?? environment.baseUrl);
+  return new URL(DEFAULT_MCP_RESOURCE_PATH, url.origin).toString();
+}
+
 export function makeAuthenticationConfig(
   environment: AuthenticationEnvironment
 ): AuthenticationConfig {
   const crossSubDomainCookieDomain =
     resolveCrossSubDomainCookieDomain(environment);
+  const mcpResourceUrl =
+    environment.mcpResourceUrl ?? makeDefaultMcpResourceUrl(environment);
+  const oauthIssuerUrl = normalizeOAuthIssuerUrl(
+    environment.oauthIssuerUrl ?? environment.baseUrl
+  );
 
   return {
     appName: "Ceird",
@@ -293,6 +377,12 @@ export function makeAuthenticationConfig(
         enabled: true,
       },
     },
+    mcpResourceUrl,
+    oauthIssuerUrl,
+    oauthConsentPath: DEFAULT_OAUTH_CONSENT_PATH,
+    oauthScopes: CEIRD_OAUTH_SCOPES,
+    oauthClientRegistrationDefaultScopes:
+      CEIRD_OAUTH_CLIENT_REGISTRATION_DEFAULT_SCOPES,
   };
 }
 
@@ -307,6 +397,8 @@ export const loadAuthenticationConfig = Effect.gen(
       Config.string("AUTH_APP_ORIGIN"),
       Config.option
     );
+    const mcpResourceUrl = yield* authenticationMcpResourceUrlConfig;
+    const oauthIssuerUrl = yield* oauthIssuerUrlConfig;
     const secret = yield* Config.string("BETTER_AUTH_SECRET").pipe(
       Config.validate({
         message: "BETTER_AUTH_SECRET must be at least 32 characters long",
@@ -321,6 +413,8 @@ export const loadAuthenticationConfig = Effect.gen(
     return makeAuthenticationConfig({
       appOrigin: Option.getOrUndefined(appOrigin),
       baseUrl,
+      mcpResourceUrl: Option.getOrUndefined(mcpResourceUrl),
+      oauthIssuerUrl: Option.getOrUndefined(oauthIssuerUrl),
       portlessUrl: Option.getOrUndefined(portlessUrl),
       secret,
       databaseUrl,

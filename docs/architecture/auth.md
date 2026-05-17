@@ -23,6 +23,9 @@ Authentication currently supports only:
 - session lookup
 - route protection for the authenticated app shell
 - redirecting authenticated users away from guest-only auth pages
+- OAuth/OIDC authorization-server configuration for MCP clients
+- app-owned OAuth consent UI for Better Auth authorization requests
+- MCP resource-server bearer-token validation and tool authorization
 
 Authentication explicitly does not currently support:
 
@@ -32,6 +35,7 @@ Authentication explicitly does not currently support:
 - roles, permissions, or authorization rules
 - custom app-owned auth endpoints such as `/me` or `/viewer`
 - a custom app-owned auth service layer that wraps Better Auth behavior
+- machine-to-machine `client_credentials` grants for Ceird MCP scopes
 
 ## Architectural Summary
 
@@ -45,6 +49,7 @@ The system is intentionally split into two layers:
    - session-aware route guards
    - authenticated shell rendering
    - sign-out UX
+   - OAuth consent review and approve/deny actions
 
 The core rule is:
 
@@ -82,11 +87,72 @@ Current config decisions:
 - `basePath` is always `/api/auth`
 - `appName` is `"Ceird"`
 - email/password auth is enabled
+- Better Auth's JWT plugin is enabled so the OAuth Provider can issue and
+  verify JWT-backed tokens, with session JWT response headers disabled so the
+  existing cookie-backed app session surface is preserved
+- the JWT plugin's direct `/api/auth/token` session-token endpoint is disabled;
+  OAuth clients must use the OAuth Provider token endpoint
+- Better Auth's OAuth Provider plugin is configured for MCP client
+  authorization with the scopes `openid`, `profile`, `email`,
+  `offline_access`, `ceird:read`, `ceird:write`, and `ceird:admin`
+- unauthenticated dynamic OAuth client registration is enabled for MCP clients,
+  defaulting newly registered clients to the identity scopes plus `ceird:read`
+  while allowing the full Ceird MCP scope set
+- OAuth grants are limited to authorization-code and refresh-token flows;
+  client-credentials tokens are intentionally not enabled for Ceird scopes
+- the OAuth Provider points clients at the existing app login and consent pages
+  through app-owned absolute URLs for `/login` and `/oauth/consent`
 - Better Auth remains the native owner of
   `/api/auth/request-password-reset` and `/api/auth/reset-password`
 - rate limiting is enabled and stored in the database
 - `BETTER_AUTH_BASE_URL` is required
+- `MCP_RESOURCE_URL` is optional; when omitted the valid MCP resource audience
+  defaults to the API origin plus `/mcp`
+- `OAUTH_ISSUER_URL` is optional; when omitted OAuth/OIDC issuer metadata
+  defaults to `BETTER_AUTH_BASE_URL`; explicit issuer URLs are canonicalized to
+  match Better Auth discovery metadata before token signing uses them
 - trusted origins are restricted to known local and sandbox app origins
+
+Current OAuth/OIDC discovery endpoints provided by Better Auth under the auth
+base path:
+
+- `/api/auth/.well-known/oauth-authorization-server`
+- `/api/auth/.well-known/openid-configuration`
+
+The MCP resource server also exposes protected-resource metadata at:
+
+- `/.well-known/oauth-protected-resource`
+- `/.well-known/oauth-protected-resource/<mcp-resource-path>`
+
+Ceird does not use the packaged `@xmcp-dev/better-auth` adapter or ship the
+`xmcp` runtime in `apps/api`. MCP auth uses Ceird's existing Better Auth OAuth
+Provider runtime, and MCP HTTP uses the `@effect/ai` MCP HTTP router mounted
+inside the API Worker.
+
+### MCP Bearer Sessions
+
+The MCP endpoint validates OAuth Provider access tokens as JWT bearer tokens.
+Token verification requires:
+
+- issuer equal to the configured OAuth issuer
+- audience equal to `MCP_RESOURCE_URL`
+- a token subject (`sub`) matching the Better Auth user
+- a Better Auth session id (`sid`)
+
+MCP tool execution does not synthesize cookie headers. It resolves the
+organization actor by loading the Better Auth `session` row from `sid`, checking
+that the row belongs to `sub`, reading the active organization id from that
+session, and then loading the user's `member` role in that organization. The
+Effect AI MCP router receives the verified identity through Effect
+context/layers, and the same domain authorization services used by the HTTP API
+decide whether that actor can perform each operation.
+
+Current Ceird MCP scopes are:
+
+- `ceird:read` for read-only labels, sites, jobs, and options tools
+- `ceird:write` for job comments and job-label assignment tools
+- `ceird:admin` for organization activity and rate-card tools; this scope also
+  satisfies read and write tool checks
 
 Current rate-limit rules:
 
@@ -241,6 +307,11 @@ Current tables:
 - `account`
 - `verification`
 - `rate_limit`
+- `jwks`
+- `oauth_client`
+- `oauth_refresh_token`
+- `oauth_access_token`
+- `oauth_consent`
 
 The database is the source of truth for:
 
@@ -249,6 +320,8 @@ The database is the source of truth for:
 - accounts
 - verifications
 - rate limiting state
+- JWT signing keys for OAuth/OIDC token issuance
+- OAuth client registrations, tokens, and consent records
 
 The API does not maintain a parallel app-specific session store.
 
@@ -282,6 +355,7 @@ Responsibilities:
 - export `AUTH_BASE_PATH` as `/api/auth`
 - derive the API auth origin from the current app origin when needed
 - create a shared Better Auth React client
+- install Better Auth client plugins for organization and OAuth provider flows
 
 Rules:
 
@@ -299,6 +373,22 @@ The app resolves its auth base URL in two steps:
 
 The fallback host-rewrite behavior is intentionally limited to local and
 Portless-style development.
+
+### OAuth Consent UI
+
+`apps/app/src/features/auth/oauth-consent-page.tsx` owns the public
+`/oauth/consent` review screen used by Better Auth's OAuth Provider.
+
+Current behavior:
+
+- parses the authorization query for display through the TanStack Router route
+- shows the requesting `client_id`, requested scopes, and redirect host
+- leaves signed-query verification to Better Auth
+- submits approve or deny decisions through `authClient.oauth2.consent`
+- relies on the OAuth provider client plugin to forward the original signed
+  `window.location.search` query on submit
+- avoids route hotkeys because consent is security-sensitive and should require
+  an explicit focused button action
 
 Current mappings:
 
@@ -686,6 +776,8 @@ These are the important current rules we are following.
   Password reset completion UI with invalid/expired-link feedback.
 - `apps/app/src/features/auth/email-verification-page.tsx`
   Public verification result UI for the `/verify-email` route.
+- `apps/app/src/features/auth/oauth-consent-page.tsx`
+  OAuth consent review UI for the `/oauth/consent` route.
 - `apps/app/src/features/auth/email-verification-banner.tsx`
   Authenticated-shell reminder with resend support when email is unverified.
 - `apps/app/src/components/nav-user.tsx`
