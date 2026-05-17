@@ -1,3 +1,7 @@
+import { Effect } from "effect";
+
+import { withAppEffectLogSinkForTest } from "#/lib/effect-log";
+
 import { getCurrentServerSession } from "./server-session";
 
 interface Session {
@@ -118,6 +122,10 @@ describe("server session lookup", () => {
       if (name === "x-forwarded-proto") {
         return "https";
       }
+
+      if (name === "cf-ray") {
+        return "0123456789abcdef-DUB";
+      }
     });
     process.env.API_ORIGIN = "http://127.0.0.1:3001";
 
@@ -134,6 +142,7 @@ describe("server session lookup", () => {
           cookie:
             "__Secure-better-auth.session_token=session-token; better-auth.session_token=session-token",
           origin: "https://linear-ui-refresh.app.ceird.localhost:1355",
+          "x-ceird-request-id": "0123456789abcdef-DUB",
           "x-forwarded-host": "linear-ui-refresh.api.ceird.localhost:1355",
           "x-forwarded-proto": "https",
         },
@@ -142,9 +151,16 @@ describe("server session lookup", () => {
   }, 1000);
 
   it("fails closed when the auth session payload is invalid", async () => {
-    mockedGetRequestHeader.mockImplementation((name) =>
-      name === "cookie" ? "better-auth.session_token=session-token" : undefined
-    );
+    const logs: unknown[] = [];
+    mockedGetRequestHeader.mockImplementation((name) => {
+      if (name === "cookie") {
+        return "better-auth.session_token=session-token";
+      }
+
+      if (name === "cf-ray") {
+        return "1234567890abcdef-DUB";
+      }
+    });
     process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -155,18 +171,60 @@ describe("server session lookup", () => {
       })
     );
 
-    await expect(getCurrentServerSession()).resolves.toBeNull();
+    await withAppEffectLogSinkForTest(
+      (logEntry) =>
+        Effect.sync(() => {
+          logs.push(logEntry);
+        }),
+      () => expect(getCurrentServerSession()).resolves.toBeNull()
+    );
+    expect(logs).toStrictEqual([
+      {
+        annotations: expect.objectContaining({
+          errorBucket: "invalid_upstream_payload",
+          operation: "AuthServer.getSession",
+          requestId: "1234567890abcdef-DUB",
+          targetOrigin: "http://ceird-sbx-api:4301/api/auth",
+        }),
+        level: "warning",
+        message: "App server operation failed",
+      },
+    ]);
   }, 1000);
 
   it("fails closed when the configured server API origin is missing", async () => {
-    mockedGetRequestHeader.mockImplementation((name) =>
-      name === "cookie" ? "better-auth.session_token=session-token" : undefined
-    );
+    const logs: unknown[] = [];
+    mockedGetRequestHeader.mockImplementation((name) => {
+      if (name === "cookie") {
+        return "better-auth.session_token=session-token";
+      }
+
+      if (name === "cf-ray") {
+        return "2234567890abcdef-DUB";
+      }
+    });
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete process.env.API_ORIGIN;
     const fetchMock = vi.spyOn(globalThis, "fetch");
 
-    await expect(getCurrentServerSession()).resolves.toBeNull();
+    await withAppEffectLogSinkForTest(
+      (logEntry) =>
+        Effect.sync(() => {
+          logs.push(logEntry);
+        }),
+      () => expect(getCurrentServerSession()).resolves.toBeNull()
+    );
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(logs).toStrictEqual([
+      {
+        annotations: expect.objectContaining({
+          errorBucket: "auth_origin_unresolved",
+          operation: "AuthServer.getSession",
+          requestId: "2234567890abcdef-DUB",
+        }),
+        level: "warning",
+        message: "App server operation failed",
+      },
+    ]);
   }, 1000);
 });

@@ -18,6 +18,7 @@
     "@ceird/identity-core": "workspace:*",
     "@ceird/jobs-core": "workspace:*",
     "@ceird/labels-core": "workspace:*",
+    "@ceird/observability-core": "workspace:*",
     "@ceird/sandbox-core": "workspace:*",
     "@ceird/sites-core": "workspace:*",
     "@effect/ai": "0.35.0",

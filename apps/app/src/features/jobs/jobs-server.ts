@@ -15,8 +15,10 @@ import { Effect } from "effect";
 
 import { runBrowserAppApiRequest } from "#/features/api/app-api-client";
 import type { AppApiClient } from "#/features/api/app-api-client";
+import { AppApiRequestError } from "#/features/api/app-api-errors";
 
 const importJobsServerSsr = () => import("./jobs-server-ssr");
+const MAX_ALL_JOB_PAGES = 1000;
 
 const listAllCurrentServerJobsIsomorphic = createIsomorphicFn()
   .server(async (query: JobListQuery = {}) => {
@@ -89,9 +91,18 @@ async function listAllCurrentBrowserJobs(
 ): Promise<JobListResponse> {
   const items: JobListItem[] = [];
   const { cursor: initialCursor, ...staticQuery } = query;
+  const seenCursors = new Set<string>();
   let cursor = initialCursor;
+  let pageCount = 0;
+
+  if (cursor !== undefined) {
+    seenCursors.add(cursor);
+  }
 
   while (true) {
+    pageCount += 1;
+    ensureJobPageLimit(pageCount);
+
     // Cursor pagination must await each page before requesting its next cursor.
     // react-doctor-disable-next-line
     const page = await listCurrentBrowserJobs(
@@ -107,6 +118,7 @@ async function listAllCurrentBrowserJobs(
       };
     }
 
+    ensureJobCursorProgress(page.nextCursor, seenCursors);
     cursor = page.nextCursor;
   }
 }
@@ -179,4 +191,25 @@ export function getCurrentServerJobMemberOptions(): Promise<JobMemberOptionsResp
 
 export function getCurrentServerJobExternalMemberOptions(): Promise<JobExternalMemberOptionsResponse> {
   return getCurrentServerJobExternalMemberOptionsIsomorphic();
+}
+
+function ensureJobPageLimit(pageCount: number) {
+  if (pageCount > MAX_ALL_JOB_PAGES) {
+    throw new AppApiRequestError({
+      message: "Job pagination exceeded the maximum page count.",
+    });
+  }
+}
+
+function ensureJobCursorProgress(
+  nextCursor: NonNullable<JobListResponse["nextCursor"]>,
+  seenCursors: Set<string>
+) {
+  if (seenCursors.has(nextCursor)) {
+    throw new AppApiRequestError({
+      message: "Job pagination returned a repeated cursor.",
+    });
+  }
+
+  seenCursors.add(nextCursor);
 }

@@ -10,7 +10,9 @@ import type {
 } from "@ceird/sites-core";
 /* oxlint-disable unicorn/no-useless-undefined */
 // @vitest-environment node
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
+
+import { withAppEffectLogSinkForTest } from "#/lib/effect-log";
 
 import {
   getCurrentServerLabelsDirect as getCurrentServerLabels,
@@ -150,6 +152,10 @@ describe("shared app api server helpers", () => {
       if (name === "x-forwarded-proto") {
         return "https";
       }
+
+      if (name === "cf-ray") {
+        return "0123456789abcdef-DUB";
+      }
     });
     process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
 
@@ -166,6 +172,7 @@ describe("shared app api server helpers", () => {
     expect(requestInit?.headers).toMatchObject({
       cookie: "__Secure-better-auth.session_token=session-token",
       origin: "https://agent-one.app.ceird.localhost:1355",
+      "x-ceird-request-id": "0123456789abcdef-DUB",
       "x-forwarded-host": "agent-one.api.ceird.localhost:1355",
       "x-forwarded-proto": "https",
     });
@@ -393,15 +400,52 @@ describe("shared app api server helpers", () => {
     expect(secondUrl.searchParams.get("cursor")).toBe("cursor-one");
   }, 1000);
 
+  it("rejects repeated cursors while reading every jobs page", async () => {
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cookie" ? "better-auth.session_token=session-token" : undefined
+    );
+    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json(firstJobsPage))
+      .mockResolvedValueOnce(Response.json(firstJobsPage));
+
+    await expect(listAllCurrentServerJobs({ siteId })).rejects.toMatchObject({
+      message: "Job pagination returned a repeated cursor.",
+    });
+  }, 1000);
+
   it("does not fetch jobs without the current auth cookie", async () => {
-    mockedGetRequestHeader.mockReturnValue(undefined);
+    const logs: unknown[] = [];
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cf-ray" ? "4234567890abcdef-DUB" : undefined
+    );
     process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
 
     const fetchMock = vi.spyOn(globalThis, "fetch");
 
-    await expect(listCurrentServerJobs({ siteId })).rejects.toThrow(
-      "Cannot query the Ceird API without the current auth cookie."
+    await withAppEffectLogSinkForTest(
+      (logEntry) =>
+        Effect.sync(() => {
+          logs.push(logEntry);
+        }),
+      () =>
+        expect(listCurrentServerJobs({ siteId })).rejects.toThrow(
+          "Cannot query the Ceird API without the current auth cookie."
+        )
     );
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(logs).toStrictEqual([
+      {
+        annotations: expect.objectContaining({
+          errorBucket: "missing_auth_cookie",
+          operation: "JobsServer.listJobs",
+          requestId: "4234567890abcdef-DUB",
+          targetOrigin: "http://ceird-sbx-api:4301",
+        }),
+        level: "warning",
+        message: "App server operation failed",
+      },
+    ]);
   }, 1000);
 });

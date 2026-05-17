@@ -41,13 +41,23 @@ Better Auth adapter in the API runtime.
 The API enables a custom Effect HTTP request logger for both the Node server and
 the Cloudflare/web-handler path. It records method, status, and redacted path
 only; query strings are not logged, and `/health` is skipped to keep probe noise
-out of operational logs. Typed domain HTTP handlers also wrap service calls with
+out of operational logs. When present, it annotates logs with the forwarded
+`x-ceird-request-id` and Cloudflare `cf-ray` so app Worker and API Worker logs
+can be correlated. Correlation headers are externally supplied at the public
+HTTP boundary, so they are validated through `@ceird/observability-core`; unsafe
+or oversized values are omitted, and direct API requests can use a safe
+Cloudflare Ray id as their request correlation id. Shared redacted path handling
+and the testable Effect log sink factory also live in
+`@ceird/observability-core`, which is used by both app and API observability
+adapters. Typed domain HTTP handlers also wrap service calls with
 `observeApiOperation`, which adds an operation log span and emits structured
 fields when a jobs, rate-card, labels, sites, or service-area operation fails.
 Storage failures and defects log at warning level, while expected typed domain
 failures log at info level. Those fields include the API domain, service,
-operation, failure tag, failure message, safe entity identifiers when present,
-and failure cause when present.
+operation, stable failure bucket, failure tag, failure message, safe entity
+identifiers when present, and failure cause when present. The bucket values are
+intended for Cloudflare queries and alert routing, while the exact typed error
+tags remain useful for debugging.
 
 Background auth email delivery uses the same structured failure vocabulary.
 Password reset, verification, email-change confirmation, and organization
@@ -55,6 +65,24 @@ invitation delivery failures are reported through the authentication failure
 reporters. Cloudflare queue delivery failures log the email kind, delivery key,
 source tag, and source cause before retrying. Deployed Workers rely on
 Cloudflare observability logs and traces configured by the infra stack.
+
+Better Auth's native logger is wrapped by Ceird before it reaches stderr.
+Expected credential failures are downgraded into structured info logs with
+stable buckets such as `invalid_password` and `user_not_found`. Background task
+failures are logged once with redacted argument details, and arbitrary Better
+Auth warnings/errors redact email addresses plus token, URL, cookie, session,
+and password-shaped fields before writing to console.
+
+MCP traffic is handled before the Effect `HttpApi` fallback, so
+`src/server.ts` logs MCP-owned web responses at that pre-router boundary. Those
+logs use the message `MCP HTTP response` or `MCP HTTP error response` and
+record the MCP domain, method, status, duration, redacted path,
+`x-ceird-request-id`, and `cf-ray` when present. MCP logging intentionally does
+not include query strings, request bodies, bearer tokens, OAuth metadata
+payloads, cookies, or raw error messages. Synchronous API boundaries that sit
+outside an Effect program, such as Better Auth's logger callback and the MCP
+pre-router web handler, emit through the local Effect logging adapter in
+`src/domains/effect-log.ts` instead of calling `console.*` directly.
 
 ## Authentication Domain
 
@@ -79,6 +107,9 @@ Better Auth owns standard auth routes under `/api/auth/*`. The API also exposes
 a public invitation preview route matched by
 `/api/public/invitations/:invitationId/preview`, returning a masked email,
 organization name, and role for pending non-expired invitations.
+Better Auth rate limiting and session IP tracking use `cf-connecting-ip` first
+for deployed Cloudflare traffic, then fall back to `x-real-ip` and
+`x-forwarded-for` for other trusted proxy paths.
 
 Auth email senders depend on the `AuthEmailTransport` capability rather than a
 specific provider. Local Node and sandbox composition use

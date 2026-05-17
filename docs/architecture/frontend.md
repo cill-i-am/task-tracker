@@ -86,9 +86,43 @@ Authenticated layout and navigation live under:
 
 ## Observability
 
-Server-side app requests use the explicit TanStack Start server entry at
-`apps/app/src/server.ts`. Deployed app Workers rely on Cloudflare observability
-logs and traces configured by the infra stack.
+Server-side app requests use TanStack Start global middleware in
+`apps/app/src/start.ts`; `apps/app/src/server.ts` remains the minimal
+`createStartHandler` entry. Deployed app Workers rely on Cloudflare
+observability logs and traces configured by the infra stack. The request
+middleware emits a structured app request log with method, redacted path,
+status, duration, handler type, Cloudflare ray, and `x-ceird-request-id`. Query
+strings are not logged, and redirect locations are reduced to their path. A
+global server-function middleware records every Start server-function boundary
+with method, safe function name, duration, request id, and Cloudflare ray. App
+observability boundaries emit through Effect logging via `lib/effect-log.ts`;
+route loaders, server helpers, Start middleware, and the server entry should
+not call `console.*` directly.
+`src/start.ts` also explicitly registers server-function CSRF request
+middleware because adding a custom Start instance replaces the framework
+default in versions that provide one. Shared redacted path handling, safe
+correlation-id validation, and the testable Effect log sink factory live in
+`@ceird/observability-core` so app and API logs sanitize paths and externally
+supplied headers consistently.
+
+Server-side helper failures use the shared app server operation observer in
+`features/api/app-server-observability.ts`. It logs the safe operation name,
+duration, request id, Cloudflare ray when present, target origin without query
+strings, and an error bucket such as `api_origin_unresolved`,
+`missing_auth_cookie`, `upstream_status`, or `invalid_upstream_payload`. Raw
+error messages are not written to the helper log. Helper-owned failures should
+use `makeAppServerOperationFailure` or
+`annotateAppServerOperationFailure` so buckets and statuses are explicit
+metadata, not inferred from English message text.
+
+Feature route loaders use `features/api/app-route-observability.ts` for
+server-side loader failures. The observer records the route id, loader
+operation, duration, organization sync state, current role when available, and a
+stable error bucket. Router redirects are intentionally ignored by this helper,
+because expected auth and role redirects are already visible through the app
+request log's status and redacted redirect path. Failures that were already
+observed by an app server helper are not logged again at the route boundary, so
+one upstream outage does not produce multiple warning logs for the same request.
 
 ## Feature Folders
 
@@ -109,9 +143,15 @@ Shared app components live in `src/components`. shadcn-style primitives live in
 
 Domain API access is contract-based:
 
-- `features/jobs/jobs-client.ts` builds a composed Effect `HttpApiClient` from
-  jobs, labels, sites, service-area, and rate-card API groups exported by
-  `@ceird/jobs-core`, `@ceird/labels-core`, and `@ceird/sites-core`.
+- `features/api/app-api-client-core.ts` builds a composed Effect
+  `HttpApiClient` from jobs, labels, sites, service-area, and rate-card API
+  groups exported by `@ceird/jobs-core`, `@ceird/labels-core`, and
+  `@ceird/sites-core`.
+- `features/api/app-api-client.ts` is the browser entry point. It provides
+  `fetch` with `credentials: "include"` and exposes browser request helpers.
+- `features/api/app-api-server-client.ts` is the server entry point. It adds
+  the current cookie and trusted forwarded headers, wraps requests in app
+  server-operation observability, and forwards `x-ceird-request-id` to the API.
   App code imports site-owned DTOs from `@ceird/sites-core` and
   organization-label DTOs from `@ceird/labels-core`; `@ceird/jobs-core` only
   supplies job-owned DTOs and the job-label assignment contract.
@@ -152,6 +192,19 @@ disabled/pending states over global shortcuts.
 
 Use `lib/server-api-forwarded-headers.ts` when server-side calls need the API to
 preserve the original browser host/protocol for trusted proxy and cookie logic.
+Server-side app helpers resolve the API origin from `process.env.API_ORIGIN`
+when a Node-like process env is available, and from the Vite build-time
+`__SERVER_API_ORIGIN__` define in the Cloudflare Worker bundle. This keeps
+TanStack Start server functions able to call the API in production where a
+Node-style `process.env` object is not guaranteed.
+Those helpers also forward `x-ceird-request-id` to the API, deriving it from
+the incoming request id, TanStack Start global request context, or Cloudflare
+`cf-ray` header when needed. Correlation headers are accepted only when they
+match the shared safe request-id or Cloudflare Ray formats; unsafe values are
+omitted or replaced with a generated request id before logging or forwarding.
+If a server helper fails before or during the API/Auth request, the helper
+observer logs the operation bucket so redacted TanStack server-function
+invocations can be correlated with app-side failure context.
 
 ## State And Validation
 

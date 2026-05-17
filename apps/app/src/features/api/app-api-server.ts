@@ -19,6 +19,7 @@ import { AppApiRequestError } from "#/features/api/app-api-errors";
 
 const importAppApiServerSsr = () => import("./app-api-server-ssr");
 const MAX_ALL_SITE_PAGES = 1000;
+const MAX_ALL_JOB_PAGES = 1000;
 
 const getCurrentServerLabelsIsomorphic = createIsomorphicFn()
   .server(async () => {
@@ -146,9 +147,18 @@ async function listAllCurrentBrowserJobs(
 ): Promise<JobListResponse> {
   const items: JobListItem[] = [];
   const { cursor: initialCursor, ...staticQuery } = query;
+  const seenCursors = new Set<string>();
   let cursor = initialCursor;
+  let pageCount = 0;
+
+  if (cursor !== undefined) {
+    seenCursors.add(cursor);
+  }
 
   while (true) {
+    pageCount += 1;
+    ensureJobPageLimit(pageCount);
+
     // Cursor pagination must await each page before requesting its next cursor.
     // react-doctor-disable-next-line
     const page = await listCurrentBrowserJobs(
@@ -164,6 +174,7 @@ async function listAllCurrentBrowserJobs(
       };
     }
 
+    ensureJobCursorProgress(page.nextCursor, seenCursors);
     cursor = page.nextCursor;
   }
 }
@@ -215,6 +226,27 @@ function ensureSiteCursorProgress(
   if (seenCursors.has(nextCursor)) {
     throw new AppApiRequestError({
       message: "Site pagination returned a repeated cursor.",
+    });
+  }
+
+  seenCursors.add(nextCursor);
+}
+
+function ensureJobPageLimit(pageCount: number) {
+  if (pageCount > MAX_ALL_JOB_PAGES) {
+    throw new AppApiRequestError({
+      message: "Job pagination exceeded the maximum page count.",
+    });
+  }
+}
+
+function ensureJobCursorProgress(
+  nextCursor: NonNullable<JobListResponse["nextCursor"]>,
+  seenCursors: Set<string>
+) {
+  if (seenCursors.has(nextCursor)) {
+    throw new AppApiRequestError({
+      message: "Job pagination returned a repeated cursor.",
     });
   }
 

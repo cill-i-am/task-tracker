@@ -21,13 +21,14 @@ import {
   makeBrowserAppApiClient,
   provideBrowserAppApiHttp,
   runBrowserAppApiRequest,
-  runAppApiClient,
 } from "#/features/api/app-api-client";
 import {
   APP_API_ORIGIN_RESOLUTION_ERROR_TAG,
   APP_API_REQUEST_ERROR_TAG,
   normalizeAppApiError,
 } from "#/features/api/app-api-errors";
+import { runAppApiClient } from "#/features/api/app-api-server-client";
+import { withAppEffectLogSinkForTest } from "#/lib/effect-log";
 
 const listResponse: JobListResponse = {
   items: [
@@ -149,6 +150,7 @@ describe("app API client", () => {
           cookie: "better-auth.session_token=session-token",
           forwardedHeaders: {
             origin: "https://agent-one.app.ceird.localhost:1355",
+            "x-ceird-request-id": "11111111-1111-4111-8111-111111111111",
             "x-forwarded-host": "agent-one.api.ceird.localhost:1355",
             "x-forwarded-proto": "https",
           },
@@ -164,6 +166,7 @@ describe("app API client", () => {
     expect(requestInit?.headers).toMatchObject({
       cookie: "better-auth.session_token=session-token",
       origin: "https://agent-one.app.ceird.localhost:1355",
+      "x-ceird-request-id": "11111111-1111-4111-8111-111111111111",
       "x-forwarded-host": "agent-one.api.ceird.localhost:1355",
       "x-forwarded-proto": "https",
     });
@@ -329,23 +332,92 @@ describe("app API client", () => {
   }, 1000);
 
   it("normalizes transport failures into a stable app API request error", async () => {
+    const logs: unknown[] = [];
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
 
-    const capturedError = await runAppApiClient(
-      {
-        requestOrigin: "http://127.0.0.1:3000",
-      },
-      "JobsServer.test.transportFailure",
-      (client) => client.jobs.listJobs({ urlParams: {} })
-    ).then(
-      () => {},
-      (rejectedError) => rejectedError
+    const capturedError = await withAppEffectLogSinkForTest(
+      (logEntry) =>
+        Effect.sync(() => {
+          logs.push(logEntry);
+        }),
+      () =>
+        runAppApiClient(
+          {
+            requestOrigin: "http://127.0.0.1:3000",
+            forwardedHeaders: {
+              origin: "http://127.0.0.1:3000",
+              "x-ceird-request-id": "33333333-3333-4333-8333-333333333333",
+              "x-forwarded-host": "127.0.0.1:3001",
+              "x-forwarded-proto": "http",
+            },
+          },
+          "JobsServer.test.transportFailure",
+          (client) => client.jobs.listJobs({ urlParams: {} })
+        ).catch((rejectedError: unknown) => rejectedError)
     );
 
     expect(capturedError).toMatchObject({
       _tag: APP_API_REQUEST_ERROR_TAG,
       message: expect.stringContaining("Transport"),
     });
+    expect(logs).toStrictEqual([
+      {
+        annotations: expect.objectContaining({
+          errorBucket: "app_api_request_failed",
+          operation: "JobsServer.test.transportFailure",
+          requestId: "33333333-3333-4333-8333-333333333333",
+          targetOrigin: "http://127.0.0.1:3001",
+        }),
+        level: "warning",
+        message: "App server operation failed",
+      },
+    ]);
+  }, 1000);
+
+  it("preserves upstream status codes for server-side API telemetry", async () => {
+    const logs: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 503, statusText: "Service Unavailable" })
+    );
+
+    const capturedError = await withAppEffectLogSinkForTest(
+      (logEntry) =>
+        Effect.sync(() => {
+          logs.push(logEntry);
+        }),
+      () =>
+        runAppApiClient(
+          {
+            requestOrigin: "http://127.0.0.1:3000",
+            forwardedHeaders: {
+              origin: "http://127.0.0.1:3000",
+              "x-ceird-request-id": "44444444-4444-4444-8444-444444444444",
+              "x-forwarded-host": "127.0.0.1:3001",
+              "x-forwarded-proto": "http",
+            },
+          },
+          "JobsServer.test.upstreamStatus",
+          (client) => client.jobs.listJobs({ urlParams: {} })
+        ).catch((rejectedError: unknown) => rejectedError)
+    );
+
+    expect(capturedError).toMatchObject({
+      _tag: APP_API_REQUEST_ERROR_TAG,
+      status: 503,
+    });
+    expect(logs).toStrictEqual([
+      {
+        annotations: expect.objectContaining({
+          errorBucket: "upstream_status",
+          operation: "JobsServer.test.upstreamStatus",
+          requestId: "44444444-4444-4444-8444-444444444444",
+          status: 503,
+          targetOrigin: "http://127.0.0.1:3001",
+        }),
+        level: "warning",
+        message: "App server operation failed",
+      },
+    ]);
   }, 1000);
 
   it("runs browser requests with HTTP provision and normalized errors", async () => {

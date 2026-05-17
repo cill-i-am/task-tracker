@@ -14,8 +14,8 @@ export interface ServerEntry {
 
 export function createServerEntry(entry: ServerEntry): ServerEntry {
   return {
-    async fetch(...args) {
-      return await entry.fetch(...args);
+    async fetch(request, opts) {
+      return await entry.fetch(request, opts);
     },
   };
 }

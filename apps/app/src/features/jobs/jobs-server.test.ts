@@ -190,6 +190,31 @@ describe("server jobs helpers", () => {
     });
   }, 1000);
 
+  it("rejects repeated cursors while reading every server job page", async () => {
+    mockedGetRequestHeader.mockImplementation((name) =>
+      name === "cookie" ? "better-auth.session_token=session-token" : undefined
+    );
+    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    const [firstItem] = listResponse.items;
+
+    if (!firstItem) {
+      throw new Error("Expected at least one seeded job item.");
+    }
+
+    const firstPage: JobListResponse = {
+      items: [firstItem],
+      nextCursor: "cursor_123" as NonNullable<JobListResponse["nextCursor"]>,
+    };
+
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json(firstPage))
+      .mockResolvedValueOnce(Response.json(firstPage));
+
+    await expect(listAllCurrentServerJobs({})).rejects.toMatchObject({
+      message: "Job pagination returned a repeated cursor.",
+    });
+  }, 1000);
+
   it("fails closed when no configured API origin exists for server requests", async () => {
     mockedGetRequestHeader.mockImplementation((name) =>
       name === "cookie" ? "better-auth.session_token=session-token" : undefined
@@ -208,7 +233,9 @@ describe("server jobs helpers", () => {
   }, 1000);
 
   it("does not invoke fetch when the incoming request has no auth cookie", async () => {
-    mockedGetRequestHeader.mockImplementation(() => undefined);
+    mockedGetRequestHeader.mockImplementation(() =>
+      new Map<string, string>().get("missing")
+    );
     const fetchMock = vi.spyOn(globalThis, "fetch");
 
     const capturedError = await listCurrentServerJobs({}).then(

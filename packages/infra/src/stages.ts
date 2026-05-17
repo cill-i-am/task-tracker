@@ -42,6 +42,9 @@ export interface InfraStageConfig {
     | Redacted.Redacted<NeonDirectDatabaseUrl>
     | undefined;
   readonly applyMigrations: boolean;
+  readonly workerInvocationLogsEnabled: boolean;
+  readonly workerLogHeadSamplingRate: number;
+  readonly workerTraceHeadSamplingRate: number;
 }
 
 const AuthEmailFromAddress = Schema.String.check(
@@ -55,6 +58,15 @@ const HyperdriveOriginConnectionLimit = Schema.Int.check(
     {
       message:
         "CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT must be an integer between 5 and 100",
+    }
+  )
+);
+const WorkerObservabilitySamplingRate = Schema.Number.check(
+  Schema.isBetween(
+    { minimum: 0, maximum: 1 },
+    {
+      message:
+        "Worker observability sampling rates must be numbers between 0 and 1",
     }
   )
 );
@@ -95,6 +107,12 @@ function trimRedactedConfigString(value: Redacted.Redacted<string>) {
 
 function decodeHyperdriveOriginConnectionLimit(value: number) {
   return Schema.decodeUnknownEffect(HyperdriveOriginConnectionLimit)(
+    value
+  ).pipe(Effect.mapError((error) => new Config.ConfigError(error)));
+}
+
+function decodeWorkerObservabilitySamplingRate(value: number) {
+  return Schema.decodeUnknownEffect(WorkerObservabilitySamplingRate)(
     value
   ).pipe(Effect.mapError((error) => new Config.ConfigError(error)));
 }
@@ -163,6 +181,21 @@ export const loadInfraStageConfig = Effect.gen(function* () {
   const applyMigrations = yield* Config.boolean("CEIRD_APPLY_MIGRATIONS").pipe(
     Config.withDefault(false)
   );
+  const workerInvocationLogsEnabled = yield* Config.boolean(
+    "CEIRD_WORKER_INVOCATION_LOGS_ENABLED"
+  ).pipe(Config.withDefault(false));
+  const workerLogHeadSamplingRate = yield* Config.number(
+    "CEIRD_WORKER_LOG_SAMPLE_RATE"
+  ).pipe(
+    Config.withDefault(stage === "production" ? 0.1 : 1),
+    Config.mapOrFail(decodeWorkerObservabilitySamplingRate)
+  );
+  const workerTraceHeadSamplingRate = yield* Config.number(
+    "CEIRD_WORKER_TRACE_SAMPLE_RATE"
+  ).pipe(
+    Config.withDefault(stage === "production" ? 0.1 : 1),
+    Config.mapOrFail(decodeWorkerObservabilitySamplingRate)
+  );
 
   return {
     appName: "ceird",
@@ -177,6 +210,9 @@ export const loadInfraStageConfig = Effect.gen(function* () {
     neonDatabaseUrl,
     neonMigrationDatabaseUrl,
     applyMigrations,
+    workerInvocationLogsEnabled,
+    workerLogHeadSamplingRate,
+    workerTraceHeadSamplingRate,
   } satisfies InfraStageConfig;
 });
 

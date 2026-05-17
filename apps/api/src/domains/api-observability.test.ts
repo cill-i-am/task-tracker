@@ -47,6 +47,7 @@ describe("API operation observability", () => {
         annotations: {
           apiDomain: "jobs",
           apiFailureCause: "database unavailable",
+          apiFailureBucket: "storage_failure",
           apiFailureDetails: {
             workItemId: "11111111-1111-4111-8111-111111111111",
           },
@@ -86,6 +87,7 @@ describe("API operation observability", () => {
       {
         annotations: {
           apiDomain: "jobs",
+          apiFailureBucket: "not_found",
           apiFailureDetails: {
             workItemId: "11111111-1111-4111-8111-111111111111",
           },

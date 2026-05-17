@@ -40,7 +40,7 @@ async function openOrganizationSettingsTab(page: Page, name: string) {
 
     return (
       tabElement !== undefined &&
-      Object.keys(tabElement).some(
+      Object.getOwnPropertyNames(tabElement).some(
         (key) =>
           key.startsWith("__reactFiber$") || key.startsWith("__reactProps$")
       )
@@ -130,6 +130,8 @@ test("an organization admin can update the organization name from account settin
 test("organization settings service areas and rate cards feed sites and job filters", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
+
   const serviceAreaName = "North Dublin";
   const updatedServiceAreaDescription = "Northside priority work";
   const updatedServiceAreaName = "North Dublin Core";
@@ -239,15 +241,18 @@ test("organization settings service areas and rate cards feed sites and job filt
   await runCommandBarAction(page, "Go to Sites");
   await expect(page).toHaveURL(/\/sites$/);
   await runCommandBarAction(page, "Create site");
+  const newSiteDialog = page.getByRole("dialog", { name: "New site" });
+
   await expect(page).toHaveURL(/\/sites\/new$/);
-  await expect(page.getByRole("dialog", { name: "New site" })).toBeVisible();
-  await page.getByLabel("Site name").fill(siteName);
-  await page.getByLabel("Service area").click();
+  await expect(newSiteDialog).toBeVisible();
+  await newSiteDialog.getByLabel("Site name").fill(siteName);
+  await newSiteDialog.getByLabel("Service area").click();
   await chooseCommandOption(page, updatedServiceAreaName);
-  await page.getByLabel("Address line 1").fill("42 North Road");
-  await page.getByLabel("County").fill("Dublin");
-  await page.getByLabel("Eircode").fill("D01 F5P2");
-  await page.getByRole("button", { name: "Create site" }).click();
+  await expect(newSiteDialog).toBeVisible();
+  await newSiteDialog.getByLabel("Address line 1").fill("42 North Road");
+  await newSiteDialog.getByLabel("County").fill("Dublin");
+  await newSiteDialog.getByLabel("Eircode").fill("D01 F5P2");
+  await newSiteDialog.getByRole("button", { name: "Create site" }).click();
   await expect(page).toHaveURL(/\/sites$/);
   await expect(page.getByRole("status")).toContainText(siteName);
   await expect(

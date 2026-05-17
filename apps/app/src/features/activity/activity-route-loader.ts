@@ -7,6 +7,7 @@ import { redirect } from "@tanstack/react-router";
 
 import type { ActivitySearch } from "#/features/activity/activity-search";
 import { toOrganizationActivityQuery } from "#/features/activity/activity-search";
+import { observeAppRouteOperation } from "#/features/api/app-route-observability";
 import {
   getCurrentServerJobMemberOptions,
   listCurrentServerOrganizationActivity,
@@ -33,28 +34,40 @@ export async function loadActivityRouteData(
   context: ActivityRouteOrganizationAccess,
   search: ActivitySearch
 ) {
-  if (context.activeOrganizationSync.required) {
-    return {
-      activity: EMPTY_ACTIVITY,
-      options: EMPTY_OPTIONS,
-    };
-  }
+  return await observeAppRouteOperation(
+    {
+      activeOrganizationSyncRequired: context.activeOrganizationSync.required,
+      currentOrganizationRole: context.currentOrganizationRole,
+      operation: "loadActivityRouteData",
+      routeId: "/activity",
+    },
+    async () => {
+      if (context.activeOrganizationSync.required) {
+        return {
+          activity: EMPTY_ACTIVITY,
+          options: EMPTY_OPTIONS,
+        };
+      }
 
-  const role = context.currentOrganizationRole;
+      const role = context.currentOrganizationRole;
 
-  if (role === undefined) {
-    throw redirect({ to: "/" });
-  }
+      if (role === undefined) {
+        throw redirect({ to: "/" });
+      }
 
-  assertOrganizationAdministrationRole({ role });
+      assertOrganizationAdministrationRole({ role });
 
-  const [activity, options] = await Promise.all([
-    listCurrentServerOrganizationActivity(toOrganizationActivityQuery(search)),
-    getCurrentServerJobMemberOptions(),
-  ]);
+      const [activity, options] = await Promise.all([
+        listCurrentServerOrganizationActivity(
+          toOrganizationActivityQuery(search)
+        ),
+        getCurrentServerJobMemberOptions(),
+      ]);
 
-  return {
-    activity,
-    options,
-  };
+      return {
+        activity,
+        options,
+      };
+    }
+  );
 }

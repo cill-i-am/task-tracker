@@ -77,6 +77,14 @@ describe("api origin resolution", () => {
     expect(readConfiguredServerApiOrigin()).toBe("http://ceird-sbx-api:4301");
   }, 1000);
 
+  it("reads the build-time server API origin when process env is unavailable", () => {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete process.env.API_ORIGIN;
+    vi.stubGlobal("__SERVER_API_ORIGIN__", "https://api.ceird.app");
+
+    expect(readConfiguredServerApiOrigin()).toBe("https://api.ceird.app");
+  }, 1000);
+
   it("returns undefined when no server API origin is injected", () => {
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete process.env.API_ORIGIN;
