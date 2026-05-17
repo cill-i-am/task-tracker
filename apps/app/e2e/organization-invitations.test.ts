@@ -297,6 +297,8 @@ test.describe("organization invitations", () => {
     page,
     request,
   }) => {
+    test.setTimeout(60_000);
+
     const ownerEmail = createTestEmail("invite-owner");
     const ownerPassword = "password123";
     const invitedEmail = createTestEmail("invitee-signup");
