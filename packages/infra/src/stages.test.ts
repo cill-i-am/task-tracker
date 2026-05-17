@@ -82,6 +82,12 @@ describe("Alchemy stage identity", () => {
     expect(config.stage).toBe("dev_cillian");
     expect(config.appHostname).toBe("app.example.com");
     expect(config.apiHostname).toBe("api.example.com");
+    expect(config.neonDatabaseName).toBe("ceird");
+    expect(config.neonDefaultBranchName).toBe("base");
+    expect(config.neonParentBranchName).toBe("main");
+    expect(config.neonParentStage).toBe("main");
+    expect(config.neonPgVersion).toBe(17);
+    expect(config.neonRegion).toBe("aws-eu-west-2");
     expect(resourceName(config, "api")).toBe("ceird-dev-cillian-api");
   });
 });
@@ -92,8 +98,6 @@ function makeConfigProvider() {
       AUTH_EMAIL_FROM: "no-reply@example.com",
       CEIRD_ZONE_NAME: "example.com",
       GOOGLE_MAPS_API_KEY: "google-key",
-      NEON_DATABASE_URL:
-        "postgresql://app:secret@ep-white-field.eu-west-2.aws.neon.tech/ceird?sslmode=require",
     },
   });
 }

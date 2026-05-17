@@ -50,24 +50,21 @@ Use the Effect SQL layers when:
 
 The Cloudflare Alchemy POC keeps Postgres as the source of truth.
 
-Neon Postgres is provisioned outside this repository and supplied to deploys as
-connection URL secrets. Alchemy manages the Cloudflare resources, including the
-Hyperdrive config that points at the Neon app database URL. The required
-operator inputs are bootstrap Cloudflare credentials plus database connection
-URLs:
+Neon Postgres is provisioned through native Alchemy resources. The parent
+Alchemy stage creates the shared Neon project and protected branch, while local
+and preview stages create isolated copy-on-write Neon branches from that parent
+branch. Alchemy also manages the Cloudflare resources, including the Hyperdrive
+config that points at the active stage branch. The required operator inputs are
+bootstrap Cloudflare credentials plus a Neon API key:
 
 1. Export bootstrap `CLOUDFLARE_ACCOUNT_ID`.
 2. Export bootstrap `CLOUDFLARE_API_TOKEN`.
 3. Export `GOOGLE_MAPS_API_KEY`.
-4. Export `NEON_DATABASE_URL`.
-5. Export `NEON_MIGRATION_DATABASE_URL` when `CEIRD_APPLY_MIGRATIONS=true`.
-   This should be a separate direct Neon connection URL for a migration-capable
-   role on the same host and database as the app role.
-6. Set `CEIRD_ZONE_NAME`.
-7. Set `AUTH_EMAIL_FROM`.
-8. Set `CEIRD_APPLY_MIGRATIONS=true` only when the deploy should apply Drizzle
-   migrations.
-9. Run `ALCHEMY_STAGE=main pnpm infra:deploy` to create or update the
+4. Export `NEON_API_KEY`.
+5. Set `CEIRD_ZONE_NAME`.
+6. Set `AUTH_EMAIL_FROM`.
+7. Run `ALCHEMY_STAGE=main pnpm infra:deploy` to create or update the Neon
+   project/branch, apply checked-in API SQL migrations, create or update the
    Hyperdrive config, Workers, queues, runtime email token, and routes.
 
 The bootstrap Cloudflare token is not the Worker runtime email token. It is the
@@ -75,20 +72,18 @@ credential Alchemy uses to manage Cloudflare. It needs write access for the
 resources in this POC, including Account API Tokens, Email Sending, Hyperdrive,
 Queues, Workers Scripts, Workers Routes, and DNS for `ceird.app`.
 
-The current POC uses Alchemy v2 plus custom resource wrappers. Neon owns the
-database lifecycle outside the stack, while a custom Cloudflare Hyperdrive
-resource owns Hyperdrive REST calls until Alchemy v2 ships a first-class
-Hyperdrive resource.
+The current stack uses Alchemy v2 native Neon and Cloudflare Hyperdrive
+resources. API runtime code still uses the existing Effect 3 database layer and
+checked-in Drizzle SQL migrations; migration generation with `Drizzle.Schema`
+is deferred until the API Drizzle/Effect upgrade.
 
 The API Worker receives a `DATABASE` Hyperdrive binding and resolves the runtime
 Postgres URL from `env.DATABASE.connectionString`. Local Node and sandbox
 runtimes still read `DATABASE_URL`.
 
-The Worker does not run migrations. When `CEIRD_APPLY_MIGRATIONS=true`, a custom
-`Drizzle.Migrations` Alchemy resource runs Drizzle's programmatic Node migrator
-from the deployment process using `NEON_MIGRATION_DATABASE_URL`. When migrations
-are disabled, the migration role falls back to `NEON_DATABASE_URL` only to keep
-the stack shape simple; no deploy-time schema changes are attempted.
+The Worker does not run migrations. During deploy, the native Neon branch
+resource applies the checked-in `apps/api/drizzle/*.sql` files before
+Hyperdrive and the API Worker are reconciled.
 
 ## Deferred Decisions
 

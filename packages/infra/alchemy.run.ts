@@ -1,6 +1,6 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
-import type { Input } from "alchemy/Input";
+import * as Neon from "alchemy/Neon";
 import { Stack } from "alchemy/Stack";
 import type { StackServices } from "alchemy/Stack";
 import * as Effect from "effect/Effect";
@@ -10,18 +10,14 @@ import {
   makeCloudflareHyperdrive,
   makeCloudflareStack,
 } from "./src/cloudflare-stack.ts";
-import {
-  DrizzleMigrations,
-  DrizzleMigrationsProvider,
-} from "./src/drizzle-migrations.ts";
-import { makeNeonPostgresConfig } from "./src/neon.ts";
+import { makeNeonPostgresResources } from "./src/neon.ts";
 import { loadInfraStageConfig } from "./src/stages.ts";
 
 const stackName = process.env.CEIRD_ALCHEMY_STACK_NAME ?? "ceird";
 
 const providers = (() => {
   const cloudflareProviders = Cloudflare.providers();
-  return Layer.mergeAll(cloudflareProviders, DrizzleMigrationsProvider()).pipe(
+  return Layer.mergeAll(cloudflareProviders, Neon.providers()).pipe(
     Layer.orDie
   ) as Layer.Layer<unknown, never, StackServices>;
 })();
@@ -39,51 +35,26 @@ export default Alchemy.Stack(
     yield* Effect.annotateCurrentSpan("appHostname", config.appHostname);
     yield* Effect.annotateCurrentSpan("apiHostname", config.apiHostname);
     yield* Effect.annotateCurrentSpan(
-      "applyMigrations",
-      config.applyMigrations
+      "neonParentStage",
+      config.neonParentStage
     );
 
-    const database = yield* makeNeonPostgresConfig({
-      appDatabaseUrl: config.neonDatabaseUrl,
-      migrationDatabaseUrl: config.neonMigrationDatabaseUrl,
-      requireMigrationDatabaseUrl: config.applyMigrations,
-    });
+    const database = yield* makeNeonPostgresResources(config);
     yield* Effect.annotateCurrentSpan("databaseName", database.databaseName);
+    yield* Effect.annotateCurrentSpan("neonBranchId", database.branch.branchId);
 
     const hyperdrive = yield* makeCloudflareHyperdrive({ config, database });
-
-    let migrationRunId: Input<string> | undefined;
-    if (config.applyMigrations) {
-      const runId = new Date().toISOString();
-      yield* Effect.annotateCurrentSpan("migrationRunId", runId);
-      yield* Effect.annotateCurrentSpan(
-        "migrationHyperdriveId",
-        hyperdrive.hyperdriveId
-      );
-      yield* Effect.annotateCurrentSpan(
-        "migrationsFolder",
-        "../../apps/api/drizzle"
-      );
-
-      const migrations = yield* DrizzleMigrations("DrizzleMigrations", {
-        databaseUrl: database.migrationRole.connectionUrl,
-        hyperdriveId: hyperdrive.hyperdriveId,
-        migrationsFolder: "../../apps/api/drizzle",
-        runId,
-      });
-      migrationRunId = migrations.runId;
-    }
 
     const cloudflareStack = yield* makeCloudflareStack({
       config,
       database,
       hyperdrive,
-      migrationRunId,
     });
 
     return {
       api: cloudflareStack.api.url,
       app: cloudflareStack.app.url,
+      branch: database.branch.branchName,
       hyperdrive: cloudflareStack.database.name,
       neonDatabase: database.databaseName,
     } as const;

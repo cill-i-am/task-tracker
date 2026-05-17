@@ -6,7 +6,7 @@ import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
-import { NeonDirectDatabaseUrl } from "./neon.ts";
+export const apiMigrationsDir = "../../apps/api/drizzle";
 
 export const InfraStage = Schema.NonEmptyString;
 export type InfraStage = Schema.Schema.Type<typeof InfraStage>;
@@ -41,11 +41,15 @@ export interface InfraStageConfig {
   readonly authEmailFromName: string;
   readonly googleMapsApiKey: Redacted.Redacted<InfraGoogleMapsApiKey>;
   readonly hyperdriveOriginConnectionLimit: number;
-  readonly neonDatabaseUrl: Redacted.Redacted<NeonDirectDatabaseUrl>;
-  readonly neonMigrationDatabaseUrl:
-    | Redacted.Redacted<NeonDirectDatabaseUrl>
-    | undefined;
-  readonly applyMigrations: boolean;
+  readonly neonDatabaseName: string;
+  readonly neonDefaultBranchName: string;
+  readonly neonMigrationsDir: string;
+  readonly neonOrgId: string | undefined;
+  readonly neonParentBranchName: string;
+  readonly neonParentStage: string;
+  readonly neonPgVersion: NeonPgVersion;
+  readonly neonRegion: NeonRegion;
+  readonly neonRoleName: string;
 }
 
 export interface AlchemyStageIdentityInput {
@@ -76,6 +80,23 @@ const HyperdriveOriginConnectionLimit = Schema.Int.check(
     }
   )
 );
+export const NeonRegion = Schema.Literals([
+  "aws-us-east-1",
+  "aws-us-east-2",
+  "aws-us-west-2",
+  "aws-eu-central-1",
+  "aws-eu-west-2",
+  "aws-ap-southeast-1",
+  "aws-ap-southeast-2",
+  "aws-sa-east-1",
+  "azure-eastus2",
+  "azure-westus3",
+  "azure-gwc",
+]);
+export type NeonRegion = Schema.Schema.Type<typeof NeonRegion>;
+
+export const NeonPgVersion = Schema.Literals([14, 15, 16, 17, 18]);
+export type NeonPgVersion = Schema.Schema.Type<typeof NeonPgVersion>;
 
 function decodeAlchemyStage(value: string) {
   return Schema.decodeUnknownEffect(InfraStage)(value).pipe(
@@ -107,21 +128,20 @@ function decodeGoogleMapsApiKey(value: Redacted.Redacted<string>) {
   );
 }
 
-function trimRedactedConfigString(value: Redacted.Redacted<string>) {
-  return Redacted.make(Redacted.value(value).trim());
-}
-
 function decodeHyperdriveOriginConnectionLimit(value: number) {
   return Schema.decodeUnknownEffect(HyperdriveOriginConnectionLimit)(
     value
   ).pipe(Effect.mapError((error) => new Config.ConfigError(error)));
 }
 
-function decodeNeonDirectDatabaseUrl(value: Redacted.Redacted<string>) {
-  return Schema.decodeUnknownEffect(NeonDirectDatabaseUrl)(
-    Redacted.value(value)
-  ).pipe(
-    Effect.map((neonDatabaseUrl) => Redacted.make(neonDatabaseUrl)),
+function decodeNeonRegion(value: string) {
+  return Schema.decodeUnknownEffect(NeonRegion)(value).pipe(
+    Effect.mapError((error) => new Config.ConfigError(error))
+  );
+}
+
+function decodeNeonPgVersion(value: number) {
+  return Schema.decodeUnknownEffect(NeonPgVersion)(value).pipe(
     Effect.mapError((error) => new Config.ConfigError(error))
   );
 }
@@ -155,30 +175,42 @@ export function loadInfraStageConfig(stageInput: string) {
       Config.withDefault(5),
       Config.mapOrFail(decodeHyperdriveOriginConnectionLimit)
     );
-    const neonDatabaseUrl = yield* Config.redacted("NEON_DATABASE_URL").pipe(
-      Config.map(trimRedactedConfigString),
-      Config.mapOrFail(decodeNeonDirectDatabaseUrl)
+    const neonDatabaseName = yield* Config.string(
+      "CEIRD_NEON_DATABASE_NAME"
+    ).pipe(Config.withDefault("ceird"));
+    const neonDefaultBranchName = yield* Config.string(
+      "CEIRD_NEON_DEFAULT_BRANCH_NAME"
+    ).pipe(Config.withDefault("base"));
+    const neonMigrationsDir = yield* Config.string(
+      "CEIRD_NEON_MIGRATIONS_DIR"
+    ).pipe(Config.withDefault(apiMigrationsDir));
+    const neonOrgIdOption = yield* Config.option(
+      Config.string("NEON_ORG_ID").pipe(Config.map((value) => value.trim()))
     );
-    const neonMigrationDatabaseUrlOption = yield* Config.option(
-      Config.redacted("NEON_MIGRATION_DATABASE_URL").pipe(
-        Config.map(trimRedactedConfigString)
-      )
-    );
-    const neonMigrationDatabaseUrl:
-      | Redacted.Redacted<NeonDirectDatabaseUrl>
-      | undefined = yield* Option.match(neonMigrationDatabaseUrlOption, {
-      onNone: () =>
-        Effect.succeed(Option.none<Redacted.Redacted<NeonDirectDatabaseUrl>>()),
+    const neonOrgId = yield* Option.match(neonOrgIdOption, {
+      onNone: () => Effect.succeed(Option.none<string>()),
       onSome: (value) =>
-        Redacted.value(value).length > 0
-          ? decodeNeonDirectDatabaseUrl(value).pipe(Effect.map(Option.some))
-          : Effect.succeed(
-              Option.none<Redacted.Redacted<NeonDirectDatabaseUrl>>()
-            ),
+        value.length > 0
+          ? Effect.succeed(Option.some(value))
+          : Effect.succeed(Option.none<string>()),
     }).pipe(Effect.map(Option.getOrUndefined));
-    const applyMigrations = yield* Config.boolean(
-      "CEIRD_APPLY_MIGRATIONS"
-    ).pipe(Config.withDefault(false));
+    const neonParentBranchName = yield* Config.string(
+      "CEIRD_NEON_PARENT_BRANCH_NAME"
+    ).pipe(Config.withDefault("main"));
+    const neonParentStage = yield* Config.string(
+      "CEIRD_NEON_PARENT_STAGE"
+    ).pipe(Config.withDefault("main"));
+    const neonPgVersion = yield* Config.number("CEIRD_NEON_PG_VERSION").pipe(
+      Config.withDefault(17),
+      Config.mapOrFail(decodeNeonPgVersion)
+    );
+    const neonRegion = yield* Config.string("CEIRD_NEON_REGION").pipe(
+      Config.withDefault("aws-eu-west-2"),
+      Config.mapOrFail(decodeNeonRegion)
+    );
+    const neonRoleName = yield* Config.string("CEIRD_NEON_ROLE_NAME").pipe(
+      Config.withDefault("ceird")
+    );
 
     return {
       appName: "ceird",
@@ -190,9 +222,15 @@ export function loadInfraStageConfig(stageInput: string) {
       authEmailFromName,
       googleMapsApiKey,
       hyperdriveOriginConnectionLimit,
-      neonDatabaseUrl,
-      neonMigrationDatabaseUrl,
-      applyMigrations,
+      neonDatabaseName,
+      neonDefaultBranchName,
+      neonMigrationsDir,
+      neonOrgId,
+      neonParentBranchName,
+      neonParentStage,
+      neonPgVersion,
+      neonRegion,
+      neonRoleName,
     } satisfies InfraStageConfig;
   });
 }
@@ -238,9 +276,9 @@ function makeStageSlug(value: string) {
   const slug = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-");
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-+|-+$/g, "")
+    .replaceAll(/-{2,}/g, "-");
   const base = slug.length > 0 ? slug : "stage";
 
   if (base.length <= maxStageSlugLength) {
@@ -250,7 +288,7 @@ function makeStageSlug(value: string) {
   const hash = createHash("sha256").update(value).digest("hex").slice(0, 8);
   const prefix = base
     .slice(0, maxStageSlugLength - hash.length - 1)
-    .replace(/-+$/g, "");
+    .replaceAll(/-+$/g, "");
 
   return `${prefix}-${hash}`;
 }

@@ -1,17 +1,11 @@
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
-import { NeonDirectDatabaseUrl } from "./neon.ts";
 import { InfraGoogleMapsApiKey } from "./stages.ts";
 import type { InfraStageConfig } from "./stages.ts";
 
-function neonDatabaseUrl(value: string) {
-  return Redacted.make(Schema.decodeUnknownSync(NeonDirectDatabaseUrl)(value));
-}
-
 export const configWithoutCloudflareBootstrapSecrets = {
   appName: "ceird",
-  applyMigrations: false,
   apiHostname: "api.example.com",
   appHostname: "app.example.com",
   authEmailFrom: Redacted.make("no-reply@example.com"),
@@ -20,10 +14,15 @@ export const configWithoutCloudflareBootstrapSecrets = {
     Schema.decodeUnknownSync(InfraGoogleMapsApiKey)("google-key")
   ),
   hyperdriveOriginConnectionLimit: 5,
-  neonDatabaseUrl: neonDatabaseUrl(
-    "postgresql://app:secret@ep-white-field.eu-west-2.aws.neon.tech/ceird?sslmode=require"
-  ),
-  neonMigrationDatabaseUrl: undefined,
+  neonDatabaseName: "ceird",
+  neonDefaultBranchName: "base",
+  neonMigrationsDir: "../../apps/api/drizzle",
+  neonOrgId: undefined,
+  neonParentBranchName: "main",
+  neonParentStage: "main",
+  neonPgVersion: 17,
+  neonRegion: "aws-eu-west-2",
+  neonRoleName: "ceird",
   stage: "production",
   zoneName: "example.com",
 } satisfies InfraStageConfig;

@@ -118,7 +118,7 @@ blank, the API uses deterministic development geocoding.
 
 The stack provisions:
 
-- Neon Postgres connectivity from deploy-time connection URL secrets
+- native Alchemy Neon project and per-stage branch
 - native Alchemy Cloudflare Hyperdrive for Postgres connectivity
 - Cloudflare Worker API from `apps/api/src/worker.ts`
 - Cloudflare Vite app from `apps/app`
@@ -135,11 +135,8 @@ observability logs, and traces.
 The app is configured with app/API origins, Cloudflare-specific Vite flags, and
 Cloudflare observability logs and traces.
 
-The production Hyperdrive configuration sets a conservative origin connection
-limit before deploy-time migrations run. Drizzle migrations depend on that
-Hyperdrive resource and the API Worker depends on the migration run when
-`CEIRD_APPLY_MIGRATIONS=true`, so schema changes run after the connection pool
-budget is applied and before new API code is uploaded.
+The native Neon branch resource applies the checked-in API SQL migrations before
+Hyperdrive reads the branch origin and before new API code is uploaded.
 
 ## Infra Configuration
 
@@ -149,27 +146,33 @@ environment variables. Do not set a separate infra stage; the Alchemy `--stage`
 value is the environment identity for state, resource names, and future Neon
 branch names.
 
-| Variable                                   | Default      | Purpose                                                |
-| ------------------------------------------ | ------------ | ------------------------------------------------------ |
-| `CEIRD_ZONE_NAME`                          | required     | Cloudflare zone.                                       |
-| `CEIRD_APP_HOSTNAME`                       | `app.<zone>` | App hostname.                                          |
-| `CEIRD_API_HOSTNAME`                       | `api.<zone>` | API hostname.                                          |
-| `AUTH_EMAIL_FROM`                          | required     | Sender email address.                                  |
-| `AUTH_EMAIL_FROM_NAME`                     | `Ceird`      | Sender display name.                                   |
-| `GOOGLE_MAPS_API_KEY`                      | required     | Google Maps Geocoding API key for deployed API.        |
-| `CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT` | `5`          | Soft maximum Hyperdrive origin database connections.   |
-| `NEON_DATABASE_URL`                        | required     | Direct Neon app database URL used by Hyperdrive.       |
-| `NEON_MIGRATION_DATABASE_URL`              | migrations   | Direct Neon database URL for a migration-capable role. |
-| `CEIRD_APPLY_MIGRATIONS`                   | `false`      | Run API Drizzle migrations during deploy.              |
+| Variable                                   | Default         | Purpose                                                    |
+| ------------------------------------------ | --------------- | ---------------------------------------------------------- |
+| `CEIRD_ZONE_NAME`                          | required        | Cloudflare zone.                                           |
+| `CEIRD_APP_HOSTNAME`                       | `app.<zone>`    | App hostname.                                              |
+| `CEIRD_API_HOSTNAME`                       | `api.<zone>`    | API hostname.                                              |
+| `AUTH_EMAIL_FROM`                          | required        | Sender email address.                                      |
+| `AUTH_EMAIL_FROM_NAME`                     | `Ceird`         | Sender display name.                                       |
+| `GOOGLE_MAPS_API_KEY`                      | required        | Google Maps Geocoding API key for deployed API.            |
+| `CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT` | `5`             | Soft maximum Hyperdrive origin database connections.       |
+| `CEIRD_NEON_DATABASE_NAME`                 | `ceird`         | Database created in the parent Neon project.               |
+| `CEIRD_NEON_DEFAULT_BRANCH_NAME`           | `base`          | Unmigrated default branch created with the Neon project.   |
+| `CEIRD_NEON_MIGRATIONS_DIR`                | API drizzle dir | SQL migration directory applied by the Neon branch.        |
+| `CEIRD_NEON_PARENT_BRANCH_NAME`            | `main`          | Parent branch used by non-parent stages.                   |
+| `CEIRD_NEON_PARENT_STAGE`                  | `main`          | Stage that owns the shared Neon project and parent branch. |
+| `CEIRD_NEON_PG_VERSION`                    | `17`            | Neon Postgres major version.                               |
+| `CEIRD_NEON_REGION`                        | `aws-eu-west-2` | Neon project region.                                       |
+| `CEIRD_NEON_ROLE_NAME`                     | `ceird`         | Initial Neon database owner role.                          |
+| `NEON_API_KEY`                             | provider secret | Neon API key consumed by Alchemy's Neon provider.          |
+| `NEON_ORG_ID`                              | optional        | Neon organization ID for project creation.                 |
 
 Resource names use `ceird-<normalized-alchemy-stage>-<suffix>`. Branch-shaped
 stages are normalized to provider-safe lowercase slugs with deterministic hash
 suffixes when needed.
 
-`NEON_MIGRATION_DATABASE_URL` is required when
-`CEIRD_APPLY_MIGRATIONS=true`. Both Neon URLs must be direct non-pooler URLs for
-the same Neon host and database and must include `sslmode=require` or
-`sslmode=verify-full`.
+The parent stage creates a shared Neon project with an unmigrated `base`
+default branch and a protected `main` branch. Other stages reference the
+parent-stage project and create their own branch from `main`.
 
 ## Deployment Commands
 

@@ -24,27 +24,24 @@ pnpm --filter @ceird/infra dev
 
 ## Important Paths
 
-| Path                        | Purpose                                                                             |
-| --------------------------- | ----------------------------------------------------------------------------------- |
-| `alchemy.run.ts`            | Alchemy stack entrypoint.                                                           |
-| `src/stages.ts`             | Deployment stage config, environment decoding, and resource naming.                 |
-| `src/cloudflare-stack.ts`   | Cloudflare app, API, queues, email bindings, Hyperdrive binding, and observability. |
-| `src/neon.ts`               | Neon direct connection URL validation and database resource shape.                  |
-| `src/drizzle-migrations.ts` | Drizzle migration deployment resource.                                              |
-| `scripts/alchemy-env.mjs`   | Environment wrapper used by deploy/destroy scripts.                                 |
+| Path                      | Purpose                                                                             |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `alchemy.run.ts`          | Alchemy stack entrypoint.                                                           |
+| `src/stages.ts`           | Deployment stage config, environment decoding, and resource naming.                 |
+| `src/cloudflare-stack.ts` | Cloudflare app, API, queues, email bindings, Hyperdrive binding, and observability. |
+| `src/neon.ts`             | Native Neon project/branch layout and resource creation.                            |
+| `scripts/alchemy-env.mjs` | Environment wrapper used by deploy/destroy scripts.                                 |
 
 ## Deployed Resources
 
-The stack provisions native Alchemy Cloudflare Hyperdrive backed by Neon
-Postgres connection URLs, a Cloudflare Worker API, a Cloudflare Vite app, an
-auth email queue, an auth email dead-letter queue, and the Cloudflare Email
-Worker binding used by deployed auth email delivery.
+The stack provisions a native Alchemy Neon project for the parent stage, a
+per-stage Neon branch that applies the checked-in API SQL migrations, native
+Alchemy Cloudflare Hyperdrive backed by that branch, a Cloudflare Worker API, a
+Cloudflare Vite app, auth email queues, and the Cloudflare Email Worker binding
+used by deployed auth email delivery.
 
-Hyperdrive is configured with a conservative origin connection limit. When
-migrations are enabled, Alchemy applies that Hyperdrive configuration before
-running Drizzle with `NEON_MIGRATION_DATABASE_URL` and makes the API Worker
-update depend on the migration run. `NEON_DATABASE_URL` should remain the app
-role used by Hyperdrive.
+Hyperdrive is configured with a conservative origin connection limit and reads
+its origin directly from the typed Neon branch output.
 
 See [../../docs/architecture/sandbox-and-infra.md](../../docs/architecture/sandbox-and-infra.md)
 for configuration variables and deployment flow.

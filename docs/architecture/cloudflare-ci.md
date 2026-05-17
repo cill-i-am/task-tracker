@@ -40,12 +40,12 @@ Secrets:
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 - `GOOGLE_MAPS_API_KEY`
-- `NEON_DATABASE_URL`
-- `NEON_MIGRATION_DATABASE_URL`
+- `NEON_API_KEY`
 
 Variables:
 
 - `AUTH_EMAIL_FROM_NAME`
+- `NEON_ORG_ID` (optional)
 
 `CLOUDFLARE_API_TOKEN` must be able to read and update the Cloudflare state
 store, deploy Workers, manage custom domains, queues, Hyperdrive, and bind
@@ -67,18 +67,14 @@ The workflow:
 - type-checks the app and infra package
 - deploys through `pnpm infra:deploy`
 - serializes deploys with a GitHub Actions concurrency group
-- applies migrations by default through `CEIRD_APPLY_MIGRATIONS=true`
-- caps Hyperdrive origin database connections before migration attempts, then
-  makes the API Worker wait for migrations when migrations are enabled
+- lets the native Neon branch resource apply the checked-in API SQL migrations
+- caps Hyperdrive origin database connections and points Hyperdrive at the typed
+  Neon branch origin
 
-Use the manual `apply_migrations=false` input only when intentionally testing a
-deploy that must not touch the database schema.
-
-`NEON_DATABASE_URL` is the least-privilege app role used by Hyperdrive.
-`NEON_MIGRATION_DATABASE_URL` must be a direct Neon URL for a migration-capable
-role on the same host and database whenever migrations are enabled. Mainline CI
-enables migrations by default, so the GitHub `main` environment should always
-define both Neon URL secrets.
+`NEON_API_KEY` is used by Alchemy's Neon provider. The parent Alchemy stage
+defaults to `main`; that stage creates the shared Neon project and a protected
+`main` branch, while other stages reference the `main` project and fork their
+own branch from `main`.
 
 This branch removes the PlanetScale provider dependency. If the shared Alchemy
 state still contains old `PlanetScale.*` resources, clean them up or reset the
@@ -87,9 +83,7 @@ deletions for resource types whose provider is no longer installed.
 
 `CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT` defaults to `5`, Cloudflare
 Hyperdrive's minimum. Keep it below the Neon connection budget so there is room
-for direct migration connections and provider control-plane checks. The
-migration resource retries transient PostgreSQL slot exhaustion, but unrelated
-SQL or schema failures still fail immediately.
+for direct migration connections and provider control-plane checks.
 
 The infra package tracks the current Alchemy v2 beta line documented by
 v2.alchemy.run. Older local patches for beta.28 and

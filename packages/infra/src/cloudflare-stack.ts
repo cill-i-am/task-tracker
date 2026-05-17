@@ -1,7 +1,6 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import type { WorkerProps } from "alchemy/Cloudflare";
-import type { Input } from "alchemy/Input";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 
@@ -18,7 +17,6 @@ export interface CloudflareStackInput {
   readonly config: InfraStageConfig;
   readonly database: NeonPostgresResources;
   readonly hyperdrive: Cloudflare.Hyperdrive;
-  readonly migrationRunId?: Input<string>;
 }
 
 export function makeCloudflareHyperdrive(input: {
@@ -42,10 +40,6 @@ export const makeCloudflareStack = Effect.fn("CloudflareStack.make")(function* (
   yield* Effect.annotateCurrentSpan(
     "hyperdriveId",
     input.hyperdrive.hyperdriveId
-  );
-  yield* Effect.annotateCurrentSpan(
-    "migrationRunId.present",
-    input.migrationRunId !== undefined
   );
 
   const betterAuthSecret = yield* Alchemy.Random("BetterAuthSecret", {
@@ -78,9 +72,6 @@ export const makeCloudflareStack = Effect.fn("CloudflareStack.make")(function* (
       BETTER_AUTH_SECRET: betterAuthSecret.text,
       GOOGLE_MAPS_API_KEY: input.config.googleMapsApiKey,
       NODE_ENV: "production",
-      ...(input.migrationRunId
-        ? { CEIRD_MIGRATIONS_RUN_ID: input.migrationRunId }
-        : {}),
     },
     domain: input.config.apiHostname,
     observability: {

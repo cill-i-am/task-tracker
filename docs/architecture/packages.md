@@ -152,15 +152,14 @@ Path: `packages/infra`
 Defines production infrastructure with Alchemy v2:
 
 - stage config and resource naming in `src/stages.ts`
-- Neon Postgres connection inputs for Hyperdrive and migrations
+- native Neon project and per-stage branch resources in `src/neon.ts`
 - native Alchemy Cloudflare Hyperdrive resources
-- Drizzle migration resource in `src/drizzle-migrations.ts`
 - Cloudflare app/API/queue stack in `src/cloudflare-stack.ts`
 - stack entrypoint in `alchemy.run.ts`
 
 The stack deploys a Cloudflare Worker API, a Cloudflare Vite app, auth email
-queues and dead-letter queue, and Hyperdrive backed by Neon Postgres. It can
-also run API Drizzle migrations during deployment when configured.
+queues and dead-letter queue, Hyperdrive backed by Neon Postgres, and API SQL
+migrations through the native Neon branch resource.
 
 ## Dependency Direction
 
