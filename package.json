@@ -3,9 +3,9 @@
   "private": true,
   "scripts": {
     "alchemy": "node packages/infra/scripts/alchemy-env.mjs",
-    "build": "turbo run build",
+    "build": "pnpm -r --if-present build",
     "check": "ultracite check .",
-    "check-types": "turbo run check-types",
+    "check-types": "pnpm -r --if-present check-types",
     "dev": "pnpm alchemy dev",
     "fix": "ultracite fix .",
     "format": "oxfmt --check .",
@@ -20,7 +20,7 @@
     "postinstall": "pnpm run opensrc:sync",
     "prebuild": "pnpm run opensrc:sync",
     "prepare": "node scripts/prepare.mjs",
-    "test": "turbo run test && pnpm run test:scripts",
+    "test": "pnpm -r --if-present --workspace-concurrency=1 test && pnpm run test:scripts",
     "test:scripts": "node --test scripts/*.test.mjs"
   },
   "devDependencies": {
@@ -31,7 +31,6 @@
     "oxfmt": "^0.43.0",
     "oxlint": "^1.62.0",
     "portless": "^0.9.6",
-    "turbo": "^2.9.7",
     "typescript": "5.9.2",
     "ultracite": "^7.6.2"
   },

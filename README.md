@@ -5,7 +5,7 @@ product gives small and medium-sized businesses a focused way to manage jobs,
 sites, members, activity, and organization configuration without adopting a
 generic project-management workflow.
 
-The codebase is a TypeScript monorepo built with pnpm and Turborepo. It contains
+The codebase is a TypeScript monorepo built with pnpm workspaces. It contains
 a TanStack Start web app, an Effect HTTP API, shared runtime schema packages,
 and Alchemy infrastructure for Cloudflare and Neon.
 
@@ -47,7 +47,7 @@ Workers, app, Hyperdrive, Neon branch, queues, and routes.
 | Command                         | What it does                                                                          |
 | ------------------------------- | ------------------------------------------------------------------------------------- |
 | `pnpm dev`                      | Runs `pnpm alchemy dev` for the selected cloud-backed stage.                          |
-| `pnpm test`                     | Runs package tests through Turbo and root script tests.                               |
+| `pnpm test`                     | Runs workspace package tests and root script tests.                                   |
 | `pnpm check-types`              | Runs TypeScript checks for all workspaces with a `check-types` task.                  |
 | `pnpm lint`                     | Runs oxlint over the workspace.                                                       |
 | `pnpm check`                    | Runs the Ultracite quality check.                                                     |
