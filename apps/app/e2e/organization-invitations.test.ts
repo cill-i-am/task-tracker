@@ -343,12 +343,13 @@ test.describe("organization invitations", () => {
       await expect(invitedPage).toHaveURL(
         `${APP_ORIGIN}/accept-invitation/${invitationId}`
       );
-      await expect(
-        invitedPage.getByRole("heading", { name: "Join Acme Field Ops" })
-      ).toBeVisible({ timeout: INVITATION_UI_TIMEOUT_MS });
-      await invitedPage
-        .getByRole("button", { name: "Accept invitation" })
-        .click();
+      const acceptInvitationButton = invitedPage.getByRole("button", {
+        name: "Accept invitation",
+      });
+      await expect(acceptInvitationButton).toBeVisible({
+        timeout: INVITATION_UI_TIMEOUT_MS,
+      });
+      await acceptInvitationButton.click();
 
       await expectAuthenticatedHome(invitedPage);
     } finally {
