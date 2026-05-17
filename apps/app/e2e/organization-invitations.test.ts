@@ -12,6 +12,8 @@ type CookieJar = Map<string, string>;
 
 const INVITATION_UI_TIMEOUT_MS = 30_000;
 
+type InvitationActionState = "ready" | "signed-out" | "switch-account";
+
 function createTestEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.com`;
 }
@@ -61,6 +63,105 @@ async function expectVisibleWithPageSnapshot(
       { cause: error }
     );
   }
+}
+
+async function getInvitationActionState(page: Page) {
+  if (
+    await page
+      .getByRole("button", { name: "Accept invitation" })
+      .isVisible()
+      .catch(() => false)
+  ) {
+    return "ready" as const;
+  }
+
+  if (
+    await page
+      .getByRole("button", { name: "Sign out and try another account" })
+      .isVisible()
+      .catch(() => false)
+  ) {
+    return "switch-account" as const;
+  }
+
+  if (
+    await page
+      .getByRole("link", { name: "Sign in" })
+      .isVisible()
+      .catch(() => false)
+  ) {
+    return "signed-out" as const;
+  }
+
+  return null;
+}
+
+async function waitForInvitationActionState(
+  page: Page
+): Promise<InvitationActionState> {
+  const deadline = Date.now() + INVITATION_UI_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const state = await getInvitationActionState(page);
+
+    if (state) {
+      return state;
+    }
+
+    await page.waitForTimeout(250);
+  }
+
+  await expectVisibleWithPageSnapshot(
+    page,
+    page.getByRole("button", { name: "Accept invitation" }),
+    "Invitation accept action",
+    1
+  );
+
+  return "ready";
+}
+
+async function ensureInvitationAcceptAction(
+  page: Page,
+  invitationId: string,
+  email: string,
+  password: string
+) {
+  const state = await waitForInvitationActionState(page);
+
+  if (state === "switch-account") {
+    await page
+      .getByRole("button", { name: "Sign out and try another account" })
+      .click();
+  } else if (state === "signed-out") {
+    await page.getByRole("link", { name: "Sign in" }).click();
+  }
+
+  if (state !== "ready") {
+    const loginPage = new LoginPage(page);
+
+    await expect(page).toHaveURL(
+      `${APP_ORIGIN}/login?invitation=${invitationId}`
+    );
+    await loginPage.email.fill(email);
+    await loginPage.password.fill(password);
+    await loginPage.submit.click();
+    await expect(page).toHaveURL(
+      `${APP_ORIGIN}/accept-invitation/${invitationId}`
+    );
+  }
+
+  const acceptInvitationButton = page.getByRole("button", {
+    name: "Accept invitation",
+  });
+  await expectVisibleWithPageSnapshot(
+    page,
+    acceptInvitationButton,
+    "Invitation accept action",
+    INVITATION_UI_TIMEOUT_MS
+  );
+
+  return acceptInvitationButton;
 }
 
 async function getCookieHeader(page: Page) {
@@ -364,14 +465,11 @@ test.describe("organization invitations", () => {
       await expect(invitedPage).toHaveURL(
         `${APP_ORIGIN}/accept-invitation/${invitationId}`
       );
-      const acceptInvitationButton = invitedPage.getByRole("button", {
-        name: "Accept invitation",
-      });
-      await expectVisibleWithPageSnapshot(
+      const acceptInvitationButton = await ensureInvitationAcceptAction(
         invitedPage,
-        acceptInvitationButton,
-        "Invitation accept action",
-        INVITATION_UI_TIMEOUT_MS
+        invitationId,
+        invitedEmail,
+        "password123"
       );
       await acceptInvitationButton.click();
 
