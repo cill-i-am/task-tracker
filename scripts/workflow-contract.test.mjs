@@ -555,6 +555,10 @@ test("preview workflow deploys same-repository PR stages for E2E", () => {
     /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/
   );
   assert.match(previewWorkflow, /environment: preview-deploy/);
+  assert.match(previewWorkflow, /Restore Alchemy state store credentials/);
+  assert.match(previewWorkflow, /ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS/);
+  assert.match(previewWorkflow, /cloudflare-state-store\.json/);
+  assert.doesNotMatch(previewWorkflow, /pnpm alchemy cloudflare bootstrap/);
   assert.match(
     previewWorkflow,
     /PLAYWRIGHT_BASE_URL: https:\/\/app\.pr-\$\{\{ github\.event\.pull_request\.number \}\}\.ceird\.app/

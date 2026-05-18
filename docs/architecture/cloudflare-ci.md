@@ -79,6 +79,7 @@ For both `preview-deploy` and `preview-cleanup`, add:
 
 Secrets:
 
+- `ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS`
 - `AUTH_EMAIL_FROM`
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
@@ -99,12 +100,18 @@ deploy, `.github/workflows/preview.yml` reads the preview stage's
 `add-mask` command for the value, and writes `PLAYWRIGHT_DATABASE_URL` to
 `GITHUB_ENV`.
 
+`ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS` is the JSON body from
+`~/.alchemy/credentials/default/cloudflare-state-store.json`, stored as a
+GitHub environment secret. Preview CI writes it back to Alchemy's expected
+credentials path before deploy or destroy. This avoids re-running
+`pnpm alchemy cloudflare bootstrap` for preview jobs; the current Alchemy beta
+reads the state-store token through Cloudflare edge preview during bootstrap,
+and Cloudflare rejects edge preview for the existing state-store Worker because
+it has a Durable Object binding.
+
 `CLOUDFLARE_API_TOKEN` must be able to read and update the Cloudflare state
 store, deploy Workers, manage custom domains, queues, Hyperdrive, and bind
-Cloudflare Email Service to the API Worker. Alchemy's CI guide specifically calls out that
-`Cloudflare.state()` needs Cloudflare Secrets Store Write in CI because Alchemy
-reads the state-store token back through an ephemeral edge-preview Worker with a
-secret binding.
+Cloudflare Email Service to the API Worker.
 
 ## Preview Workflow
 
@@ -121,14 +128,15 @@ receive Cloudflare, Neon, or environment-scoped GitHub secrets from the preview
 jobs. Same-repository preview deploys run in the protected `preview-deploy`
 environment, so GitHub waits for environment approval before checking out and
 deploying PR code with provider secrets. Inside the preview job, provider
-secrets are scoped to the Alchemy bootstrap, deploy, and state-read steps;
+secrets are scoped to the Alchemy credential restore, deploy, and state-read steps;
 Playwright receives only the stage URLs and the masked database URL. Fork PRs
 still run the normal non-secret `Build` workflow.
 
 For same-repository PR updates, the workflow:
 
 - checks out the PR head SHA
-- bootstraps the Cloudflare Alchemy state store
+- restores Alchemy's Cloudflare state-store credentials from an environment
+  secret
 - deploys or updates the persistent `pr-${PR_NUMBER}` stage
 - derives `PLAYWRIGHT_BASE_URL` as
   `https://app.pr-${PR_NUMBER}.ceird.app`
@@ -150,12 +158,13 @@ to reconcile and destroy the same stage concurrently.
 
 When a same-repository PR closes, the cleanup job checks out the repository
 default branch instead of closed PR code, verifies the stage name matches
-`pr-[0-9]+`, bootstraps the state store, and destroys the preview stage through
-the unblocked `preview-cleanup` environment. The same workflow also has a manual
-`workflow_dispatch` cleanup path: provide the numeric PR number to destroy
-`pr-<number>` from default-branch code if the closed-PR cleanup was cancelled or
-failed. A scheduled stale-preview cleanup is intentionally not part of the first
-workflow; closed-PR cleanup plus manual cleanup is the source of truth for now.
+`pr-[0-9]+`, restores the state-store credentials, and destroys the preview
+stage through the unblocked `preview-cleanup` environment. The same workflow
+also has a manual `workflow_dispatch` cleanup path: provide the numeric PR
+number to destroy `pr-<number>` from default-branch code if the closed-PR
+cleanup was cancelled or failed. A scheduled stale-preview cleanup is
+intentionally not part of the first workflow; closed-PR cleanup plus manual
+cleanup is the source of truth for now.
 
 Preview resources persist for the lifetime of the pull request. That means each
 open PR consumes Cloudflare Worker routes, queues, Hyperdrive configs, and a

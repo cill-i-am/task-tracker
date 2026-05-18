@@ -185,7 +185,8 @@ High-signal runtime variables:
 Infrastructure deployment variables are documented in
 [Local Development And Infrastructure](architecture/local-development-and-infra.md).
 Local Alchemy provider auth uses `pnpm alchemy login`; CI supplies
-`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` as GitHub secrets.
+`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and preview state-store
+credentials as GitHub secrets.
 
 When running API database integration tests against a specific database, set
 `API_TEST_DATABASE_URL`:

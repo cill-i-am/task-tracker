@@ -15,9 +15,12 @@ pnpm alchemy login
 ```
 
 CI uses `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` as GitHub secrets for
-non-interactive provider auth. Local operators should leave Cloudflare provider
-auth in the Alchemy profile instead of exporting those variables for normal
-Alchemy runs.
+non-interactive provider auth. Preview CI also stores the existing Cloudflare
+state-store credentials JSON as `ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS`
+and writes it to Alchemy's expected credentials path before deploy or destroy.
+Local operators should leave Cloudflare provider auth and state-store
+credentials in the Alchemy profile instead of exporting those variables for
+normal Alchemy runs.
 
 Use an explicit stage for linked worktrees and agent tasks:
 
@@ -229,6 +232,10 @@ then destroys the stage when the PR closes. Deploy jobs run in the protected
 `preview-deploy` GitHub environment; cleanup runs in an unblocked
 `preview-cleanup` environment and also supports manual `workflow_dispatch`
 cleanup by PR number.
+
+Both preview environments include the Cloudflare state-store credentials secret
+so preview deploy and cleanup can use the existing state store directly instead
+of re-running Alchemy's Cloudflare bootstrap flow.
 
 Preview stages are ordinary non-parent stages. They use the default
 stage-scoped hostnames (`app.pr-<number>.ceird.app` and
