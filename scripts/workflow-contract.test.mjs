@@ -524,6 +524,88 @@ test("Playwright E2E defaults to an existing Alchemy stage", () => {
   assert.match(developmentGuide, /PLAYWRIGHT_USE_PACKAGE_LOCAL_SERVER=1/);
 });
 
+test("preview workflow deploys same-repository PR stages for E2E", () => {
+  const previewWorkflow = readFileSync(
+    path.join(repoRoot, ".github/workflows/preview.yml"),
+    "utf8"
+  );
+
+  assert.match(previewWorkflow, /^name: Preview$/m);
+  assert.match(previewWorkflow, /pull_request:/);
+  assert.match(previewWorkflow, /workflow_dispatch:/);
+  assert.match(previewWorkflow, /pr_number:/);
+  for (const action of ["opened", "synchronize", "reopened", "closed"]) {
+    assert.match(
+      previewWorkflow,
+      new RegExp(`- ${action}\\b`),
+      `preview workflow should handle pull_request ${action}`
+    );
+  }
+  assert.doesNotMatch(previewWorkflow, /pull_request_target/);
+  assert.match(
+    previewWorkflow,
+    /group: ceird-preview-pr-\$\{\{ github\.event\.pull_request\.number \|\| inputs\.pr_number \|\| github\.run_id \}\}/
+  );
+  assert.match(
+    previewWorkflow,
+    /PREVIEW_STAGE: pr-\$\{\{ github\.event\.pull_request\.number \|\| inputs\.pr_number \}\}/
+  );
+  assert.match(
+    previewWorkflow,
+    /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/
+  );
+  assert.match(previewWorkflow, /environment: preview-deploy/);
+  assert.match(
+    previewWorkflow,
+    /PLAYWRIGHT_BASE_URL: https:\/\/app\.pr-\$\{\{ github\.event\.pull_request\.number \}\}\.ceird\.app/
+  );
+  assert.match(
+    previewWorkflow,
+    /PLAYWRIGHT_API_URL: https:\/\/api\.pr-\$\{\{ github\.event\.pull_request\.number \}\}\.ceird\.app/
+  );
+  assert.match(
+    previewWorkflow,
+    /pnpm alchemy deploy --stage "\$PREVIEW_STAGE" --yes/
+  );
+  assert.match(
+    previewWorkflow,
+    /pnpm --silent alchemy state get ceird "\$PREVIEW_STAGE" PostgresBranch --stage "\$PREVIEW_STAGE"/
+  );
+  assert.match(
+    previewWorkflow,
+    /node scripts\/export-playwright-database-url\.mjs/
+  );
+  assert.match(previewWorkflow, /Wait for preview health/);
+  assert.match(previewWorkflow, /"\$PLAYWRIGHT_API_URL\/health"/);
+  assert.match(previewWorkflow, /"\$PLAYWRIGHT_BASE_URL\/health"/);
+  assert.match(previewWorkflow, /pnpm --filter app e2e/);
+});
+
+test("preview workflow destroys PR stages from the default branch on close", () => {
+  const previewWorkflow = readFileSync(
+    path.join(repoRoot, ".github/workflows/preview.yml"),
+    "utf8"
+  );
+
+  assert.match(previewWorkflow, /github\.event\.action == 'closed'/);
+  assert.match(previewWorkflow, /github\.event_name == 'workflow_dispatch'/);
+  assert.match(previewWorkflow, /environment: preview-cleanup/);
+  assert.match(
+    previewWorkflow,
+    /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/
+  );
+  assert.match(
+    previewWorkflow,
+    /if \[\[ ! "\$PREVIEW_STAGE" =~ \^pr-\[0-9\]\+\$ \]\]; then/
+  );
+  assert.match(
+    previewWorkflow,
+    /pnpm alchemy destroy --stage "\$PREVIEW_STAGE" --yes/
+  );
+  assert.doesNotMatch(previewWorkflow, /CEIRD_APP_HOSTNAME: app\.ceird\.app/);
+  assert.doesNotMatch(previewWorkflow, /CEIRD_API_HOSTNAME: api\.ceird\.app/);
+});
+
 test("Playwright database URL fallback is package-local only", () => {
   const testUrls = readFileSync(
     path.join(repoRoot, "apps/app/e2e/test-urls.ts"),

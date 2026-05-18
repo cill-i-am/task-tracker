@@ -103,8 +103,10 @@ CEIRD_CLOUDFLARE=1 pnpm alchemy state get ceird <stage> PostgresBranch --env-fil
 ```
 
 The connection URI is intentionally not returned as a stack output because
-deploy outputs are printed into local and CI logs. CI should provide
-`PLAYWRIGHT_DATABASE_URL` through the environment-scoped GitHub secret.
+deploy outputs are printed into local and CI logs. Main-stage CI E2E receives
+`PLAYWRIGHT_DATABASE_URL` through the `main` environment-scoped GitHub secret;
+preview CI E2E reads the `pr-<number>` stage's `PostgresBranch` state, masks the
+connection URI, and exports it only for the Playwright job.
 
 For a package-local fallback that starts the app, API, and migration step from
 Playwright instead of targeting an existing Alchemy stage:

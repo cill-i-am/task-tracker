@@ -220,6 +220,31 @@ through the same TypeScript resolver Alchemy needs at deploy time. Its
 Alchemy regenerate future SQL before the Neon branch runs the recursive parent
 migration tree that still contains the historical package-local SQL files.
 
+## Pull Request Preview Infrastructure
+
+Same-repository pull requests use persistent Alchemy preview stages named
+`pr-<number>`. The preview workflow leaves the stage online across pushes so
+Playwright can test the same Cloudflare app/API surfaces that reviewers use,
+then destroys the stage when the PR closes. Deploy jobs run in the protected
+`preview-deploy` GitHub environment; cleanup runs in an unblocked
+`preview-cleanup` environment and also supports manual `workflow_dispatch`
+cleanup by PR number.
+
+Preview stages are ordinary non-parent stages. They use the default
+stage-scoped hostnames (`app.pr-<number>.ceird.app` and
+`api.pr-<number>.ceird.app`), stage-scoped Cloudflare resources, and a Neon
+branch forked from the parent `main` branch through the existing
+`PostgresProject.ref` model. The workflow reads the preview branch connection
+URI from Alchemy `PostgresBranch` state for `PLAYWRIGHT_DATABASE_URL`; the value
+is masked before it is exported to the Playwright step and is still omitted from
+root stack outputs. After deploy, CI waits for both preview `/health` endpoints
+before starting Playwright to avoid transient route or domain propagation
+failures.
+
+Fork pull requests do not run the secret-bearing preview jobs. They continue to
+run the non-deploying build, lint, format, and typecheck jobs without
+Cloudflare or Neon secrets.
+
 ## Deployment Commands
 
 From the repo root:
