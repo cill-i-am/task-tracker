@@ -1,9 +1,11 @@
-import { Cause, ConfigProvider, Effect, Exit, Layer, Option } from "effect";
+import { Cause, ConfigProvider, Effect, Layer } from "effect";
 
 import { AuthEmailConfigurationError } from "../../domains/identity/authentication/auth-email-errors.js";
-import {
+import type {
   AuthEmailQueueDeliveryError,
   InvalidAuthEmailQueueMessageError,
+} from "../../domains/identity/authentication/auth-email-queue.js";
+import {
   decodeAuthEmailQueueMessageEffect,
   makeCloudflareAuthenticationEmailSchedulerLive,
   sendAuthEmailQueueMessage,
@@ -193,40 +195,26 @@ function logAuthEmailQueueDeliveryError(failure: AuthEmailQueueDeliveryError) {
 
 function handleQueuedAuthEmailMessage(message: Message<unknown>) {
   return sendQueuedAuthEmail(message.body).pipe(
-    Effect.exit,
-    Effect.flatMap((exit) => {
-      if (Exit.isSuccess(exit)) {
-        return acknowledgeMessage(message);
-      }
-
-      const failure = Cause.failureOption(exit.cause);
-
-      if (
-        Option.isSome(failure) &&
-        failure.value instanceof InvalidAuthEmailQueueMessageError
-      ) {
-        return logInvalidAuthEmailQueueMessage(failure.value).pipe(
-          Effect.zipRight(acknowledgeMessage(message))
-        );
-      }
-
-      if (
-        Option.isSome(failure) &&
-        failure.value instanceof AuthEmailQueueDeliveryError
-      ) {
-        return logAuthEmailQueueDeliveryError(failure.value).pipe(
+    Effect.zipRight(acknowledgeMessage(message)),
+    Effect.catchTags({
+      AuthEmailQueueDeliveryError: (failure) =>
+        logAuthEmailQueueDeliveryError(failure).pipe(
           Effect.zipRight(retryMessage(message))
-        );
-      }
-
-      return Effect.logError("Auth email queue handler failed with a defect")
+        ),
+      InvalidAuthEmailQueueMessageError: (failure) =>
+        logInvalidAuthEmailQueueMessage(failure).pipe(
+          Effect.zipRight(acknowledgeMessage(message))
+        ),
+    }),
+    Effect.catchAllCause((cause) =>
+      Effect.logError("Auth email queue handler failed with a defect")
         .pipe(
           Effect.annotateLogs({
-            authEmailQueueFailureMessage: String(Cause.squash(exit.cause)),
+            authEmailQueueFailureMessage: String(Cause.squash(cause)),
           })
         )
-        .pipe(Effect.zipRight(retryMessage(message)));
-    })
+        .pipe(Effect.zipRight(retryMessage(message)))
+    )
   );
 }
 
@@ -235,6 +223,9 @@ export const handleWorkerQueue = Effect.fn("CloudflareWorker.handleQueue")(
     yield* Effect.forEach(batch.messages, handleQueuedAuthEmailMessage, {
       discard: true,
     }).pipe(
+      Effect.annotateLogs({
+        authEmailQueueMessageCount: batch.messages.length,
+      }),
       Effect.provide(makeWorkerAuthEmailSenderLive(env)),
       Effect.provide(makeWorkerBaseLive(env))
     );

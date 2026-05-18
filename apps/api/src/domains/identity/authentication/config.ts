@@ -233,12 +233,20 @@ function isLocalhostDomain(hostname: string) {
 }
 
 function findSharedDomain(firstHostname: string, secondHostname: string) {
-  if (firstHostname === secondHostname) {
+  const firstLabels = firstHostname.split(".").filter(Boolean);
+  const secondLabels = secondHostname.split(".").filter(Boolean);
+
+  if (
+    firstLabels.length < 3 ||
+    secondLabels.length < 3 ||
+    firstLabels[0] !== "api" ||
+    secondLabels[0] !== "app"
+  ) {
     return;
   }
 
-  const firstLabels = firstHostname.split(".").filter(Boolean);
-  const secondLabels = secondHostname.split(".").filter(Boolean);
+  firstLabels.shift();
+  secondLabels.shift();
   const sharedLabels: string[] = [];
 
   while (firstLabels.length > 0 && secondLabels.length > 0) {

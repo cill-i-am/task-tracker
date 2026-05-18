@@ -434,7 +434,7 @@ describe("server organization lookup", () => {
         headers: expect.objectContaining({
           origin: "https://attacker.example",
           "x-forwarded-host": "api.ceird.example.com",
-          "x-forwarded-proto": "http",
+          "x-forwarded-proto": "https",
         }),
       })
     );

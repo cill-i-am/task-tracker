@@ -134,6 +134,7 @@ jobs:
         run: pnpm --filter app react-doctor
 
   e2e:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: main
     needs:
@@ -179,7 +180,6 @@ jobs:
       - format
       - check-types
       - react-doctor
-      - e2e
 
     steps:
       - name: Checkout

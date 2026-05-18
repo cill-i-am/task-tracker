@@ -158,6 +158,44 @@ describe("organization service areas section", () => {
     expect(screen.getByText("Northside")).toBeVisible();
   });
 
+  it("prefers server rows when a list response includes a local service area id", async () => {
+    const serviceAreasResponse = createDeferredServiceAreasResponse();
+    mockedListServiceAreas.mockReturnValue(
+      Effect.promise(() => serviceAreasResponse.promise)
+    );
+    mockedCreateServiceArea.mockReturnValue(
+      Effect.succeed(
+        buildServiceArea("Local draft", "Pending local value", serviceAreaId)
+      )
+    );
+    const user = userEvent.setup();
+    renderServiceAreasSection();
+
+    await screen.findByRole("heading", { name: "Service areas" });
+    await user.type(
+      screen.getByLabelText("New service area name"),
+      "Local draft"
+    );
+    await user.click(screen.getByRole("button", { name: /Add service area/ }));
+
+    await expect(screen.findByText("Local draft")).resolves.toBeVisible();
+
+    act(() => {
+      serviceAreasResponse.resolve({
+        items: [
+          buildServiceArea(
+            "Server canonical",
+            "Fresh server value",
+            serviceAreaId
+          ),
+        ],
+      });
+    });
+
+    await expect(screen.findByText("Server canonical")).resolves.toBeVisible();
+    expect(screen.queryByText("Local draft")).not.toBeInTheDocument();
+  });
+
   it("edits a service area through the jobs client group", async () => {
     const user = userEvent.setup();
     renderServiceAreasSection();

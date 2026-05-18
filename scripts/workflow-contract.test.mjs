@@ -235,6 +235,8 @@ test("main deploy workflow uses current Alchemy command order explicitly", () =>
   );
 
   assert.match(deployWorkflow, /CEIRD_CLOUDFLARE:\s+"1"/);
+  assert.match(deployWorkflow, /CEIRD_APP_HOSTNAME:\s+app\.ceird\.app/);
+  assert.match(deployWorkflow, /CEIRD_API_HOSTNAME:\s+api\.ceird\.app/);
   assert.doesNotMatch(deployWorkflow, /ALCHEMY_STAGE:/);
   assert.doesNotMatch(deployWorkflow, /CEIRD_ALCHEMY_STAGE:/);
   assert.doesNotMatch(deployWorkflow, /AUTH_EMAIL_TRANSPORT:/);
@@ -508,6 +510,10 @@ test("Playwright E2E defaults to an existing Alchemy stage", () => {
     /services:\n\s+postgres:|postgres:16|pnpm --filter api db:migrate/
   );
   assert.match(buildWorkflow, /e2e:\n(?: {4}.*\n)* {4}environment: main/);
+  assert.match(
+    buildWorkflow,
+    /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/
+  );
   assert.match(buildWorkflow, /PLAYWRIGHT_BASE_URL:/);
   assert.match(buildWorkflow, /PLAYWRIGHT_API_URL:/);
   assert.match(buildWorkflow, /PLAYWRIGHT_DATABASE_URL:/);
@@ -803,8 +809,8 @@ test("Alchemy native migration has a current progress note", () => {
     progressNote,
     /DATABASE` binding state now persists the Hyperdrive id/
   );
-  assert.match(progressNote, /api-main\.ceird\.app\/health/);
-  assert.match(progressNote, /app-main\.ceird\.app\/health/);
+  assert.match(progressNote, /api\.main\.ceird\.app\/health/);
+  assert.match(progressNote, /app\.main\.ceird\.app\/health/);
   assert.match(progressNote, /state tree/);
   assert.match(progressNote, /DrizzleMigrations/);
   assert.match(progressNote, /PostgresProject/);

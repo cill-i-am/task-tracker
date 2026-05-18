@@ -194,8 +194,8 @@ export function loadInfraStageConfig(stageInput: string) {
       productionStage: neonParentStage,
       stage,
     });
-    const defaultAppHostname = `app-${identity.stageSlug}.${zoneName}`;
-    const defaultApiHostname = `api-${identity.stageSlug}.${zoneName}`;
+    const defaultAppHostname = `app.${identity.stageSlug}.${zoneName}`;
+    const defaultApiHostname = `api.${identity.stageSlug}.${zoneName}`;
     const defaultHyperdriveName = identity.isProduction
       ? `${identity.appName}-production-postgres`
       : stageResourceName(identity, "postgres");

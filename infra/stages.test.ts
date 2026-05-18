@@ -87,8 +87,8 @@ describe("Alchemy stage identity", () => {
     );
 
     expect(config.stage).toBe("dev_cillian");
-    expect(config.appHostname).toBe("app-dev-cillian.example.com");
-    expect(config.apiHostname).toBe("api-dev-cillian.example.com");
+    expect(config.appHostname).toBe("app.dev-cillian.example.com");
+    expect(config.apiHostname).toBe("api.dev-cillian.example.com");
     expect(config.hyperdriveName).toBe("ceird-dev-cillian-postgres");
     expect(config.neonDatabaseName).toBe("ceird");
     expect(config.neonDefaultBranchName).toBe("base");
@@ -119,10 +119,10 @@ describe("Alchemy stage identity", () => {
 
     expect(config.zoneName).toBe("ceird.app");
     expect(config.appHostname).toBe(
-      "app-codex-alchemy-v2-native-migration.ceird.app"
+      "app.codex-alchemy-v2-native-migration.ceird.app"
     );
     expect(config.apiHostname).toBe(
-      "api-codex-alchemy-v2-native-migration.ceird.app"
+      "api.codex-alchemy-v2-native-migration.ceird.app"
     );
   });
 
@@ -143,8 +143,8 @@ describe("Alchemy stage identity", () => {
     );
 
     expect(config.zoneName).toBe("ceird.app");
-    expect(config.appHostname).toBe("app-main.ceird.app");
-    expect(config.apiHostname).toBe("api-main.ceird.app");
+    expect(config.appHostname).toBe("app.main.ceird.app");
+    expect(config.apiHostname).toBe("api.main.ceird.app");
     expect(config.hyperdriveName).toBe("ceird-production-postgres");
     expect(config.neonHistoryRetentionSeconds).toBe(21_600);
     expect(config.neonParentBranchProtected).toBe(false);

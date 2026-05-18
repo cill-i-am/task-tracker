@@ -46,12 +46,12 @@ Effect-threaded runtime composition.
 - `git diff --check` passed.
 - `CEIRD_CLOUDFLARE=1 pnpm alchemy deploy --env-file .env.local --stage main`
   completed after operator approval and returned:
-  `api=https://api-main.ceird.app`, `app=https://app-main.ceird.app`,
+  `api=https://api.main.ceird.app`, `app=https://app.main.ceird.app`,
   `branch=main`, `hyperdrive=ceird-production-postgres`, and
   `neonDatabase=ceird`.
-- `curl -fsS https://api-main.ceird.app/health` returned
+- `curl -fsS https://api.main.ceird.app/health` returned
   `{"ok":true,"service":"api","stackName":"ceird","stage":"main"}`.
-- `curl -fsS https://app-main.ceird.app/health` returned
+- `curl -fsS https://app.main.ceird.app/health` returned
   `{"ok":true,"service":"app","stackName":"ceird","stage":"main"}`.
 - `CEIRD_CLOUDFLARE=1 pnpm alchemy plan --env-file .env.local --stage main`
   now reports `Plan: 10 to noop`. Neon, Hyperdrive, Drizzle schema state,
@@ -430,7 +430,7 @@ is currently known.
   protection opt-in through `CEIRD_NEON_PARENT_BRANCH_PROTECTED=false`.
 - Fixed the canonical hostname collision with existing `ceird-production-*`
   Workers by making the parent `main` stage default to
-  `app-main.ceird.app` and `api-main.ceird.app`; canonical `app.ceird.app` and
+  `app.main.ceird.app` and `api.main.ceird.app`; canonical `app.ceird.app` and
   `api.ceird.app` now require explicit hostname overrides after route cutover.
 - Fixed parent-stage repeat plans by adding explicit provider-normalized
   settings: `CEIRD_HYPERDRIVE_NAME` defaults to the adopted
@@ -446,7 +446,7 @@ is currently known.
   Worker and its `DATABASE` binding still plan one update and need follow-up
   before the migration can be considered fully converged.
 - Verified both deployed health endpoints:
-  `https://api-main.ceird.app/health` and `https://app-main.ceird.app/health`.
+  `https://api.main.ceird.app/health` and `https://app.main.ceird.app/health`.
 
 ### 2026-05-18 API Hyperdrive Binding Convergence
 
@@ -465,6 +465,6 @@ hyperdriveId }`.
 - Re-ran `CEIRD_CLOUDFLARE=1 pnpm alchemy state get ceird main Api --env-file .env.local`
   and confirmed the persisted API Worker `DATABASE` binding now includes
   `id: 8ef9c8cdd94d46458841fc88d77ad3c8`.
-- Re-verified `https://api-main.ceird.app/health` and
-  `https://app-main.ceird.app/health`; both returned healthy `ceird/main`
+- Re-verified `https://api.main.ceird.app/health` and
+  `https://app.main.ceird.app/health`; both returned healthy `ceird/main`
   payloads.

@@ -771,7 +771,9 @@ function mergeByIdSortedByName<
   }
 
   for (const item of currentItems) {
-    itemsById.set(item.id, item);
+    if (!itemsById.has(item.id)) {
+      itemsById.set(item.id, item);
+    }
   }
 
   return [...itemsById.values()].toSorted(compareByNameThenId);

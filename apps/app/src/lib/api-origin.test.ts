@@ -62,6 +62,18 @@ describe("api origin resolution", () => {
     );
   }, 1000);
 
+  it("maps nested stage app hostnames to nested stage API hostnames", () => {
+    expect(resolveApiOrigin("https://app.main.ceird.app")).toBe(
+      "https://api.main.ceird.app"
+    );
+  }, 1000);
+
+  it("maps legacy stage-prefixed app hostnames to stage-prefixed API hostnames", () => {
+    expect(resolveApiOrigin("https://app-main.ceird.app")).toBe(
+      "https://api-main.ceird.app"
+    );
+  }, 1000);
+
   it("falls back to conventional app subdomain mapping when the injected API origin is invalid", () => {
     expect(resolveApiOrigin("https://app.ceird.example.com", "not-a-url")).toBe(
       "https://api.ceird.example.com"

@@ -38,6 +38,16 @@ function mapAppOriginToApiOrigin(url: URL): URL | undefined {
     }
   }
 
+  if (mapped.hostname.startsWith("app-")) {
+    const [appLabel, ...remainingLabels] = mapped.hostname.split(".");
+    const stageSlug = appLabel?.slice("app-".length);
+
+    if (stageSlug && remainingLabels.length >= 2) {
+      mapped.hostname = [`api-${stageSlug}`, ...remainingLabels].join(".");
+      return mapped;
+    }
+  }
+
   return undefined;
 }
 

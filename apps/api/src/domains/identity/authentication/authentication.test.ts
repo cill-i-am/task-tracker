@@ -336,7 +336,7 @@ describe("makeAuthenticationConfig()", () => {
     ).toBeUndefined();
   }, 10_000);
 
-  it("shares auth cookies across configured Alchemy app and API domains", () => {
+  it("shares auth cookies across canonical app and API domains", () => {
     const config = makeAuthenticationConfig({
       appOrigin: "https://app.ceird.app",
       baseUrl: "https://api.ceird.app/api/auth",
@@ -354,6 +354,24 @@ describe("makeAuthenticationConfig()", () => {
         baseUrl: "https://api.ceird.example.com/api/auth",
       })
     ).toBe("ceird.example.com");
+  }, 10_000);
+
+  it("shares auth cookies inside one nested stage domain", () => {
+    expect(
+      resolveCrossSubDomainCookieDomain({
+        appOrigin: "https://app.main.ceird.app",
+        baseUrl: "https://api.main.ceird.app/api/auth",
+      })
+    ).toBe("main.ceird.app");
+  }, 10_000);
+
+  it("does not share auth cookies across legacy stage-prefixed app and API domains", () => {
+    expect(
+      resolveCrossSubDomainCookieDomain({
+        appOrigin: "https://app-main.ceird.app",
+        baseUrl: "https://api-main.ceird.app/api/auth",
+      })
+    ).toBeUndefined();
   }, 10_000);
 });
 

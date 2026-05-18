@@ -122,11 +122,13 @@ stack-provided config keys with the API runtime's `ApiWorkerConfigEnv` while
 allowing redacted Alchemy inputs to resolve to strings at runtime.
 Better Auth derives cross-subdomain cookies from the configured HTTPS app/API
 origins for deployed Alchemy stages. Every stage, including `main`, defaults to
-`app-<stage>.<zone>` and `api-<stage>.<zone>`, so each stage gets isolated
-hostnames without relying on local sandbox host aliases. Canonical
+`app.<stage>.<zone>` and `api.<stage>.<zone>`, so each stage can share auth
+cookies only within its own `<stage>.<zone>` parent without relying on local
+sandbox host aliases. Canonical
 `app.<zone>` and `api.<zone>` hostnames require explicit
 `CEIRD_APP_HOSTNAME` / `CEIRD_API_HOSTNAME` overrides after any existing Worker
-routes have been cut over intentionally.
+routes have been cut over intentionally; `.github/workflows/deploy-main.yml`
+sets those overrides for Ceird's production `main` stage.
 The app is configured with app/API origins, Cloudflare-specific Vite flags, and
 Cloudflare observability logs and traces. Its API origin is derived from the API
 Worker's reconciled Cloudflare domain output, with the configured API hostname

@@ -44,7 +44,8 @@ The root stack outputs `app` and `api` as stage HTTPS origins derived from the
 reconciled Cloudflare Worker domains. The configured app/API hostnames are used
 as fallbacks while the domain lists are resolving. Use
 `CEIRD_APP_HOSTNAME` / `CEIRD_API_HOSTNAME` only for an intentional canonical
-domain cutover.
+domain cutover; the main deploy workflow sets them to `app.ceird.app` and
+`api.ceird.app` for production.
 It does not output the Neon connection URI; inspect `PostgresBranch` state when
 a local operator needs the direct database URL for Playwright.
 

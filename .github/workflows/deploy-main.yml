@@ -18,6 +18,8 @@ permissions:
   contents: read
 
 env:
+  CEIRD_API_HOSTNAME: api.ceird.app
+  CEIRD_APP_HOSTNAME: app.ceird.app
   CEIRD_CLOUDFLARE: "1"
   CEIRD_ZONE_NAME: ceird.app
   PNPM_CONFIG_OPTIONAL: "true"

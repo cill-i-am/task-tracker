@@ -226,6 +226,10 @@ export function SitesStateProvider({
             createdSite,
             expectedOrganizationId
           );
+          if (organizationIdRef.current !== expectedOrganizationId) {
+            return;
+          }
+
           dispatch({
             notice: {
               kind: "created",
@@ -255,6 +259,10 @@ export function SitesStateProvider({
           }),
         async (response) => {
           await syncChangedSiteDetail(store, response, expectedOrganizationId);
+          if (organizationIdRef.current !== expectedOrganizationId) {
+            return;
+          }
+
           dispatch({
             notice: {
               kind: "updated",

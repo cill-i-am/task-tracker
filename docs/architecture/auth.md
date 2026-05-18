@@ -112,8 +112,13 @@ Current config decisions:
   defaults to `BETTER_AUTH_BASE_URL`; explicit issuer URLs are canonicalized to
   match Better Auth discovery metadata before token signing uses them
 - trusted origins are restricted to known local and configured app origins
-- deployed app/API sibling domains share the configured parent cookie domain,
-  for example `app.ceird.app` and `api.ceird.app` use `ceird.app`
+- canonical deployed app/API sibling domains share the configured parent cookie
+  domain, for example `app.ceird.app` and `api.ceird.app` use `ceird.app`
+- nested stage domains share only their stage parent, for example
+  `app.main.ceird.app` and `api.main.ceird.app` use `main.ceird.app`
+- legacy stage-prefixed sibling hosts such as `app-main.ceird.app` and
+  `api-main.ceird.app` keep host-scoped cookies because sharing `ceird.app`
+  would leak cookies across unrelated stages
 
 Current OAuth/OIDC discovery endpoints provided by Better Auth under the auth
 base path:

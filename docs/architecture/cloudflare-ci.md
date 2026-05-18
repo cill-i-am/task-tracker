@@ -53,9 +53,10 @@ E2E secrets:
 
 - `PLAYWRIGHT_DATABASE_URL`
 
-The `Build` workflow's Playwright E2E job also selects the `main` environment
-so those environment-scoped variables and secrets are available when it tests
-against the existing Alchemy stage.
+The `Build` workflow's Playwright E2E job selects the `main` environment only on
+trusted pushes to `main`, so those environment-scoped variables and secrets are
+not exposed to pull-request code while still testing the live Alchemy stage
+before deployment.
 
 `CLOUDFLARE_API_TOKEN` must be able to read and update the Cloudflare state
 store, deploy Workers, manage custom domains, queues, Hyperdrive, and bind
@@ -91,11 +92,11 @@ Neon plan can create another protected branch. `CEIRD_NEON_HISTORY_RETENTION_SEC
 defaults to `21600` so the workflow declares the provider-reported Neon
 retention window instead of re-planning it on every deploy.
 
-The main deploy workflow does not set `CEIRD_APP_HOSTNAME` or
-`CEIRD_API_HOSTNAME`, so it uses stage-scoped hostnames such as
-`app-main.ceird.app` and `api-main.ceird.app`. Set those variables only for an
-intentional canonical domain cutover after any existing Worker routes have been
-cleared.
+The main deploy workflow sets `CEIRD_APP_HOSTNAME=app.ceird.app` and
+`CEIRD_API_HOSTNAME=api.ceird.app` so the production stage keeps the canonical
+app/API routes. Other stages use stage-scoped hostnames such as
+`app.<stage>.ceird.app` and `api.<stage>.ceird.app` unless explicitly
+overridden.
 
 `CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT` defaults to `5`, Cloudflare
 Hyperdrive's minimum. Keep it below the Neon connection budget so there is room

@@ -42,6 +42,8 @@ const createdSiteId = "22222222-2222-4222-8222-222222222222" as SiteIdType;
 const urgentLabelId = "33333333-3333-4333-8333-333333333333" as LabelIdType;
 const warrantyLabelId = "44444444-4444-4444-8444-444444444444" as LabelIdType;
 let resolveCreatedLabel: (label: Label) => void = () => {};
+let resolveCreatedSite: (site: CreateSiteResponse) => void = () => {};
+let resolveUpdatedSite: (site: UpdateSiteResponse) => void = () => {};
 
 const {
   mockedAddSiteComment,
@@ -163,6 +165,60 @@ describe("sites state integration", () => {
       expect(screen.getByTestId("notice")).toHaveTextContent(
         "updated:Updated Site"
       );
+    }
+  );
+
+  it(
+    "does not show a created-site notice after switching organizations",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedCreateSite.mockReturnValue(
+        Effect.async<CreateSiteResponse>((resume) => {
+          resolveCreatedSite = (site) => resume(Effect.succeed(site));
+        })
+      );
+
+      const user = userEvent.setup();
+      renderSitesStateProbe();
+
+      await user.click(screen.getByRole("button", { name: "Create site" }));
+      await user.click(screen.getByRole("button", { name: "Switch org" }));
+      resolveCreatedSite(buildSite(createdSiteId, "Draft Site"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("last-exit")).toHaveTextContent("success");
+      });
+      expect(screen.getByTestId("site-names")).toHaveTextContent("Other Site");
+      expect(screen.getByTestId("notice")).toBeEmptyDOMElement();
+    }
+  );
+
+  it(
+    "does not show an updated-site notice after switching organizations",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedUpdateSite.mockReturnValue(
+        Effect.async<UpdateSiteResponse>((resume) => {
+          resolveUpdatedSite = (site) => resume(Effect.succeed(site));
+        })
+      );
+
+      const user = userEvent.setup();
+      renderSitesStateProbe();
+
+      await user.click(screen.getByRole("button", { name: "Update site" }));
+      await user.click(screen.getByRole("button", { name: "Switch org" }));
+      resolveUpdatedSite(buildSite(existingSiteId, "Updated Site"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("last-exit")).toHaveTextContent("success");
+      });
+      expect(screen.getByTestId("site-names")).toHaveTextContent("Other Site");
+      expect(screen.getByTestId("notice")).toBeEmptyDOMElement();
     }
   );
 
@@ -605,7 +661,9 @@ function SitesStateProbe() {
       <button
         type="button"
         onClick={() => {
-          void createSite(buildCreateSiteInput("Draft Site"));
+          void createSite(buildCreateSiteInput("Draft Site")).then((exit) => {
+            setLastExit(Exit.isFailure(exit) ? "failure" : "success");
+          });
         }}
       >
         Create site
@@ -613,7 +671,9 @@ function SitesStateProbe() {
       <button
         type="button"
         onClick={() => {
-          void updateSite(buildUpdateSiteInput("Updated Site"));
+          void updateSite(buildUpdateSiteInput("Updated Site")).then((exit) => {
+            setLastExit(Exit.isFailure(exit) ? "failure" : "success");
+          });
         }}
       >
         Update site

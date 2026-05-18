@@ -1,7 +1,8 @@
 /* eslint-disable max-classes-per-file */
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Match, ParseResult, Schema } from "effect";
 
 import { AuthenticationEmailScheduler } from "./auth-email-scheduler.js";
+import { serializeUnknownError } from "./auth-email-transport-helpers.js";
 import {
   AuthEmailSender,
   EmailVerificationEmailInput,
@@ -53,9 +54,9 @@ const decodeAuthEmailQueueMessage = Schema.decodeUnknown(AuthEmailQueueMessage);
 export function decodeAuthEmailQueueMessageEffect(input: unknown) {
   return decodeAuthEmailQueueMessage(input).pipe(
     Effect.mapError(
-      () =>
+      (parseError) =>
         new InvalidAuthEmailQueueMessageError({
-          cause: "Auth email queue message failed schema validation",
+          cause: formatParseError(parseError),
           message: "Invalid auth email queue message",
         })
     )
@@ -87,31 +88,36 @@ export const sendAuthEmailQueueMessage = Effect.fn(
 )(function* (message: AuthEmailQueueMessage) {
   const sender = yield* AuthEmailSender;
 
-  switch (message.kind) {
-    case "password-reset": {
-      return yield* mapAuthEmailQueueDelivery(
-        message,
-        sender.sendPasswordResetEmail(message.payload)
-      );
-    }
-    case "email-verification": {
-      return yield* mapAuthEmailQueueDelivery(
-        message,
-        sender.sendEmailVerificationEmail(message.payload)
-      );
-    }
-    case "organization-invitation": {
-      return yield* mapAuthEmailQueueDelivery(
-        message,
-        sender.sendOrganizationInvitationEmail(message.payload)
-      );
-    }
-    default: {
-      const exhaustive: never = message;
-      return exhaustive;
-    }
-  }
+  return yield* Match.value(message).pipe(
+    Match.when({ kind: "password-reset" }, (passwordResetMessage) =>
+      mapAuthEmailQueueDelivery(
+        passwordResetMessage,
+        sender.sendPasswordResetEmail(passwordResetMessage.payload)
+      )
+    ),
+    Match.when({ kind: "email-verification" }, (emailVerificationMessage) =>
+      mapAuthEmailQueueDelivery(
+        emailVerificationMessage,
+        sender.sendEmailVerificationEmail(emailVerificationMessage.payload)
+      )
+    ),
+    Match.when(
+      { kind: "organization-invitation" },
+      (organizationInvitationMessage) =>
+        mapAuthEmailQueueDelivery(
+          organizationInvitationMessage,
+          sender.sendOrganizationInvitationEmail(
+            organizationInvitationMessage.payload
+          )
+        )
+    ),
+    Match.exhaustive
+  );
 });
+
+function formatParseError(parseError: ParseResult.ParseError) {
+  return ParseResult.TreeFormatter.formatErrorSync(parseError);
+}
 
 function mapAuthEmailQueueDelivery(
   message: AuthEmailQueueMessage,
@@ -152,16 +158,4 @@ function extractUnknownErrorTag(error: unknown) {
   ) {
     return error._tag;
   }
-}
-
-function serializeUnknownError(error: unknown) {
-  if (typeof error === "object" && error !== null) {
-    if ("_tag" in error && typeof error._tag === "string") {
-      return error._tag;
-    }
-    if ("message" in error && typeof error.message === "string") {
-      return error.message;
-    }
-  }
-  return String(error);
 }

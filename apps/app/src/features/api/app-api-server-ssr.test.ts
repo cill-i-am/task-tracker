@@ -202,9 +202,9 @@ describe("shared app api server helpers", () => {
     const [, requestInit] = fetchMock.mock.calls[0] ?? [];
 
     expect(requestInit?.headers).toMatchObject({
-      origin: "http://app.ceird.example.com",
+      origin: "https://app.ceird.example.com",
       "x-forwarded-host": "api.ceird.example.com",
-      "x-forwarded-proto": "http",
+      "x-forwarded-proto": "https",
     });
   }, 1000);
 
@@ -237,7 +237,7 @@ describe("shared app api server helpers", () => {
     expect(requestInit?.headers).toMatchObject({
       origin: "https://attacker.example",
       "x-forwarded-host": "api.ceird.example.com",
-      "x-forwarded-proto": "http",
+      "x-forwarded-proto": "https",
     });
   }, 1000);
 
