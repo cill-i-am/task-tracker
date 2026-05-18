@@ -53,6 +53,7 @@ export interface InfraStageConfig {
   readonly mcpHostname: DomainName;
   readonly authEmailFrom: Redacted.Redacted<string>;
   readonly authEmailFromName: string;
+  readonly authRateLimitEnabled: boolean;
   readonly googleMapsApiKey: Redacted.Redacted<InfraGoogleMapsApiKey>;
   readonly hyperdriveName: ProviderResourceName;
   readonly hyperdriveOriginConnectionLimit: number;
@@ -77,6 +78,7 @@ export interface AlchemyStageIdentityInput {
 export interface AlchemyStageIdentity {
   readonly appName: string;
   readonly isProduction: boolean;
+  readonly isPullRequestPreview: boolean;
   readonly neonBranchName: string;
   readonly stage: string;
   readonly stageSlug: string;
@@ -219,6 +221,9 @@ export function loadInfraStageConfig(stageInput: string) {
     const authEmailFromName = yield* Config.string("AUTH_EMAIL_FROM_NAME").pipe(
       Config.withDefault("Ceird")
     );
+    const authRateLimitEnabled = yield* Config.boolean(
+      "AUTH_RATE_LIMIT_ENABLED"
+    ).pipe(Config.withDefault(!identity.isPullRequestPreview));
     const googleMapsApiKey = yield* Config.redacted("GOOGLE_MAPS_API_KEY").pipe(
       Config.mapOrFail(decodeGoogleMapsApiKey)
     );
@@ -281,6 +286,7 @@ export function loadInfraStageConfig(stageInput: string) {
       mcpHostname,
       authEmailFrom,
       authEmailFromName,
+      authRateLimitEnabled,
       googleMapsApiKey,
       hyperdriveName,
       hyperdriveOriginConnectionLimit,
@@ -319,6 +325,7 @@ export function makeAlchemyStageIdentity(
   return {
     appName,
     isProduction: stage === productionStage,
+    isPullRequestPreview: /^pr-\d+$/.test(stage),
     neonBranchName: stageSlug,
     stage,
     stageSlug,

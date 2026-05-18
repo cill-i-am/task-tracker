@@ -66,6 +66,7 @@ export interface ApiWorkerConfiguredEnv {
   readonly AUTH_APP_ORIGIN: string;
   readonly AUTH_EMAIL_FROM: Redacted.Redacted<string>;
   readonly AUTH_EMAIL_FROM_NAME: string;
+  readonly AUTH_RATE_LIMIT_ENABLED: "false" | "true";
   readonly BETTER_AUTH_BASE_URL: string;
   readonly BETTER_AUTH_SECRET: Input<Redacted.Redacted<string>>;
   readonly GOOGLE_MAPS_API_KEY: Redacted.Redacted<InfraGoogleMapsApiKey>;
@@ -115,6 +116,9 @@ export function makeApiWorkerEnv(input: {
     AUTH_APP_ORIGIN: `https://${input.config.appHostname}`,
     AUTH_EMAIL_FROM: input.config.authEmailFrom,
     AUTH_EMAIL_FROM_NAME: input.config.authEmailFromName,
+    AUTH_RATE_LIMIT_ENABLED: input.config.authRateLimitEnabled
+      ? "true"
+      : "false",
     BETTER_AUTH_BASE_URL: apiAuthUrl,
     BETTER_AUTH_SECRET: input.betterAuthSecret,
     GOOGLE_MAPS_API_KEY: input.config.googleMapsApiKey,

@@ -76,6 +76,7 @@ type ApiWorkerStackRuntimeConfigEnv = Required<
     | "AUTH_APP_ORIGIN"
     | "AUTH_EMAIL_FROM"
     | "AUTH_EMAIL_FROM_NAME"
+    | "AUTH_RATE_LIMIT_ENABLED"
     | "BETTER_AUTH_BASE_URL"
     | "BETTER_AUTH_SECRET"
     | "GOOGLE_MAPS_API_KEY"
@@ -212,6 +213,7 @@ describe("Cloudflare stack", () => {
     expect(apiEnv).toMatchObject({
       AUTH_APP_ORIGIN: "https://app.example.com",
       AUTH_EMAIL_FROM_NAME: "Ceird",
+      AUTH_RATE_LIMIT_ENABLED: "true",
       BETTER_AUTH_BASE_URL: "https://api.example.com/api/auth",
       MCP_RESOURCE_URL: "https://mcp.example.com/mcp",
       NODE_ENV: "production",
@@ -228,6 +230,23 @@ describe("Cloudflare stack", () => {
       MCP_RESOURCE_URL: "https://mcp.example.com/mcp",
       NODE_ENV: "production",
       OAUTH_ISSUER_URL: "https://api.example.com/api/auth",
+    });
+  });
+
+  it("passes disabled auth rate limits through to preview API Workers", () => {
+    const betterAuthSecret = Redacted.make("better-auth-secret");
+
+    expect(
+      makeApiWorkerEnv({
+        betterAuthSecret,
+        config: {
+          ...configWithoutCloudflareBootstrapSecrets,
+          authRateLimitEnabled: false,
+          stage: "pr-104",
+        },
+      })
+    ).toMatchObject({
+      AUTH_RATE_LIMIT_ENABLED: "false",
     });
   });
 
