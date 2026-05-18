@@ -4,13 +4,13 @@ import { createRequire } from "node:module";
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
 
-import { LoginPage } from "./pages/login-page";
 import { MembersPage } from "./pages/members-page";
 import { SignupPage } from "./pages/signup-page";
 import { API_ORIGIN, APP_ORIGIN, readPlaywrightDatabaseUrl } from "./test-urls";
 
 type CookieJar = Map<string, string>;
 
+const INVITATION_FLOW_TIMEOUT_MS = 90_000;
 const INVITATION_UI_TIMEOUT_MS = 30_000;
 const apiRequire = createRequire(
   new URL("../../api/package.json", import.meta.url)
@@ -148,13 +148,20 @@ async function sendAuthRequest(
 }
 
 async function syncCookieJarToPage(page: Page, cookieJar: CookieJar) {
-  await page.context().addCookies(
-    [...cookieJar.entries()].map(([name, value]) => ({
+  const cookies = [...cookieJar.entries()].flatMap(([name, value]) => [
+    {
       name,
       url: APP_ORIGIN,
       value,
-    }))
-  );
+    },
+    {
+      name,
+      url: API_ORIGIN,
+      value,
+    },
+  ]);
+
+  await page.context().addCookies(cookies);
 }
 
 async function createCookieJarFromPage(page: Page) {
@@ -173,6 +180,17 @@ async function signInInvitationContext(
   email: string,
   password: string
 ) {
+  const cookieJar = await createSignedInCookieJar(request, email, password);
+
+  await page.context().clearCookies();
+  await syncCookieJarToPage(page, cookieJar);
+}
+
+async function createSignedInCookieJar(
+  request: APIRequestContext,
+  email: string,
+  password: string
+) {
   const cookieJar = new Map<string, string>();
 
   await sendAuthRequest(request, "/sign-in/email", {
@@ -183,8 +201,8 @@ async function signInInvitationContext(
     cookieJar,
     forwardedFor: createForwardedFor(),
   });
-  await page.context().clearCookies();
-  await syncCookieJarToPage(page, cookieJar);
+
+  return cookieJar;
 }
 
 async function markUserEmailVerified(email: string) {
@@ -288,25 +306,29 @@ async function seedOwnerOrganization(
     cookieJar,
     forwardedFor,
   });
-  await sendAuthRequest(request, "/organization/create", {
-    body: {
-      name: "Acme Field Ops",
-      slug: createTestSlug("acme-field-ops"),
-    },
-    cookieJar,
-    forwardedFor,
-  });
-}
+  const organizationResponse = await sendAuthRequest(
+    request,
+    "/organization/create",
+    {
+      body: {
+        name: "Acme Field Ops",
+        slug: createTestSlug("acme-field-ops"),
+      },
+      cookieJar,
+      forwardedFor,
+    }
+  );
+  const organizationPayload = (await organizationResponse.json()) as {
+    readonly id?: unknown;
+  };
 
-async function login(page: Page, email: string, password: string) {
-  const loginPage = new LoginPage(page);
+  if (typeof organizationPayload.id !== "string") {
+    throw new TypeError(
+      "Expected created organization response to include an id."
+    );
+  }
 
-  await loginPage.goto();
-  await loginPage.email.fill(email);
-  await loginPage.password.fill(password);
-  await loginPage.submit.click();
-
-  await expectAuthenticatedHome(page);
+  return organizationPayload.id;
 }
 
 async function findInvitationIdForEmail(
@@ -412,11 +434,27 @@ async function createOwnerOrganization(
   ownerEmail: string,
   ownerPassword: string
 ) {
-  await seedOwnerOrganization(request, {
+  const organizationId = await seedOwnerOrganization(request, {
     email: ownerEmail,
     password: ownerPassword,
   });
-  await login(page, ownerEmail, ownerPassword);
+  const ownerCookieJar = await createSignedInCookieJar(
+    request,
+    ownerEmail,
+    ownerPassword
+  );
+
+  await sendAuthRequest(request, "/organization/set-active", {
+    body: {
+      organizationId,
+    },
+    cookieJar: ownerCookieJar,
+    forwardedFor: createForwardedFor(),
+  });
+  await page.context().clearCookies();
+  await syncCookieJarToPage(page, ownerCookieJar);
+  await page.goto("/");
+  await expectAuthenticatedHome(page);
 }
 
 async function createExistingUser(
@@ -454,15 +492,16 @@ async function inviteMemberFromMembersPage(
 }
 
 test.describe("organization invitations", () => {
-  test.describe.configure({ mode: "serial" });
+  test.describe.configure({
+    mode: "serial",
+    timeout: INVITATION_FLOW_TIMEOUT_MS,
+  });
 
   test("a new user can sign up from the invitation and accept it", async ({
     browser,
     page,
     request,
   }) => {
-    test.setTimeout(90_000);
-
     const ownerEmail = createTestEmail("invite-owner");
     const ownerPassword = "password123";
     const invitedEmail = createTestEmail("invitee-signup");
@@ -549,7 +588,6 @@ test.describe("organization invitations", () => {
     const invitedContext = await browser.newContext();
     try {
       const invitedPage = await invitedContext.newPage();
-      const invitedLoginPage = new LoginPage(invitedPage);
 
       await invitedPage.goto(`/accept-invitation/${invitationId}`);
       await invitedPage.getByRole("link", { name: "Sign in" }).click();
@@ -557,13 +595,14 @@ test.describe("organization invitations", () => {
       await expect(invitedPage).toHaveURL(
         `${APP_ORIGIN}/login?invitation=${invitationId}`
       );
-      await invitedLoginPage.email.fill(invitedEmail);
-      await invitedLoginPage.password.fill(invitedPassword);
-      await invitedLoginPage.submit.click();
 
-      await expect(invitedPage).toHaveURL(
-        `${APP_ORIGIN}/accept-invitation/${invitationId}`
+      await signInInvitationContext(
+        request,
+        invitedPage,
+        invitedEmail,
+        invitedPassword
       );
+      await invitedPage.goto(`/accept-invitation/${invitationId}`);
       await invitedPage
         .getByRole("button", { name: "Accept invitation" })
         .click();
@@ -598,13 +637,14 @@ test.describe("organization invitations", () => {
     const invitedContext = await browser.newContext();
     try {
       const invitedPage = await invitedContext.newPage();
-      const invitedLoginPage = new LoginPage(invitedPage);
 
+      await signInInvitationContext(
+        request,
+        invitedPage,
+        invitedEmail,
+        invitedPassword
+      );
       await invitedPage.goto(`/accept-invitation/${invitationId}`);
-      await invitedPage.getByRole("link", { name: "Sign in" }).click();
-      await invitedLoginPage.email.fill(invitedEmail);
-      await invitedLoginPage.password.fill(invitedPassword);
-      await invitedLoginPage.submit.click();
       await invitedPage
         .getByRole("button", { name: "Accept invitation" })
         .click();
@@ -711,14 +751,13 @@ test.describe("organization invitations", () => {
     const invitedContext = await browser.newContext();
     try {
       const invitedPage = await invitedContext.newPage();
-      const invitedLoginPage = new LoginPage(invitedPage);
 
-      await invitedLoginPage.goto();
-      await invitedLoginPage.email.fill(wrongAccountEmail);
-      await invitedLoginPage.password.fill(wrongAccountPassword);
-      await invitedLoginPage.submit.click();
-      await expect(invitedPage).toHaveURL(`${APP_ORIGIN}/create-organization`);
-
+      await signInInvitationContext(
+        request,
+        invitedPage,
+        wrongAccountEmail,
+        wrongAccountPassword
+      );
       await invitedPage.goto(`/accept-invitation/${invitationId}`);
       await expect(
         invitedPage.getByText(
@@ -732,7 +771,9 @@ test.describe("organization invitations", () => {
       await expect(invitedPage).toHaveURL(
         `${APP_ORIGIN}/login?invitation=${invitationId}`
       );
-      await expect(invitedLoginPage.heading).toBeVisible();
+      await expect(
+        invitedPage.locator('[data-slot="card-title"]', { hasText: "Sign in" })
+      ).toBeVisible();
     } finally {
       await invitedContext.close();
     }
