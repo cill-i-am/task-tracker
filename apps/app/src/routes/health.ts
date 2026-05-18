@@ -35,7 +35,7 @@ function readRuntimeIdentity(
   );
 }
 
-export function makeAppHealthPayload(input: AppHealthPayloadInput) {
+function makeAppHealthPayload(input: AppHealthPayloadInput) {
   return {
     ok: true,
     service: "app",
