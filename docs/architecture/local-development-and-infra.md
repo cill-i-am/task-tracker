@@ -15,9 +15,12 @@ pnpm alchemy login
 ```
 
 CI uses `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` as GitHub secrets for
-non-interactive provider auth. Local operators should leave Cloudflare provider
-auth in the Alchemy profile instead of exporting those variables for normal
-Alchemy runs.
+non-interactive provider auth. Preview CI also stores the existing Cloudflare
+state-store credentials JSON as `ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS`
+and writes it to Alchemy's expected credentials path before deploy or destroy.
+Local operators should leave Cloudflare provider auth and state-store
+credentials in the Alchemy profile instead of exporting those variables for
+normal Alchemy runs.
 
 Use an explicit stage for linked worktrees and agent tasks:
 
@@ -72,7 +75,7 @@ Common local and Alchemy variables include:
 | `AUTH_APP_ORIGIN`         | Browser app origin used by auth redirects and emails.     |
 | `AUTH_EMAIL_FROM`         | Sender address for auth emails.                           |
 | `AUTH_EMAIL_FROM_NAME`    | Sender display name.                                      |
-| `AUTH_RATE_LIMIT_ENABLED` | Disabled during automation to avoid local auth lockouts.  |
+| `AUTH_RATE_LIMIT_ENABLED` | Disables auth rate limiting for local and PR-preview E2E. |
 | `BETTER_AUTH_BASE_URL`    | API auth URL.                                             |
 | `BETTER_AUTH_SECRET`      | Stable local auth secret for package-local API runs.      |
 | `DATABASE_URL`            | Package-local API database URL.                           |
@@ -178,6 +181,7 @@ branch names.
 | `CEIRD_API_HOSTNAME`                       | stage-scoped    | API hostname override.                                                                               |
 | `AUTH_EMAIL_FROM`                          | required        | Sender email address.                                                                                |
 | `AUTH_EMAIL_FROM_NAME`                     | `Ceird`         | Sender display name.                                                                                 |
+| `AUTH_RATE_LIMIT_ENABLED`                  | stage-dependent | Auth rate limiting flag; defaults to `false` for `pr-<number>` stages and `true` otherwise.          |
 | `GOOGLE_MAPS_API_KEY`                      | required        | Google Maps Geocoding API key for deployed API.                                                      |
 | `CEIRD_HYPERDRIVE_NAME`                    | stage-dependent | Hyperdrive config name; the parent stage defaults to the adopted `ceird-production-postgres` config. |
 | `CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT` | `5`             | Soft maximum Hyperdrive origin database connections.                                                 |
@@ -219,6 +223,40 @@ through the same TypeScript resolver Alchemy needs at deploy time. Its
 `appliedMigrationsDir` is `apps/api/drizzle`. Keeping those roles explicit lets
 Alchemy regenerate future SQL before the Neon branch runs the recursive parent
 migration tree that still contains the historical package-local SQL files.
+
+## Pull Request Preview Infrastructure
+
+Same-repository pull requests use persistent Alchemy preview stages named
+`pr-<number>`. The preview workflow leaves the stage online across pushes so
+Playwright can test the same Cloudflare app/API surfaces that reviewers use,
+then destroys the stage when the PR closes. Deploy jobs run in the protected
+`preview-deploy` GitHub environment; cleanup runs in an unblocked
+`preview-cleanup` environment and also supports manual `workflow_dispatch`
+cleanup by PR number. After app and API health checks pass, the deploy job
+creates or updates one pull request comment with links to the stage-scoped app
+and API URLs.
+
+Both preview environments include the Cloudflare state-store credentials secret
+so preview deploy and cleanup can use the existing state store directly instead
+of re-running Alchemy's Cloudflare bootstrap flow.
+
+Preview stages are ordinary non-parent stages. They use the default
+stage-scoped hostnames (`app.pr-<number>.ceird.app` and
+`api.pr-<number>.ceird.app`), stage-scoped Cloudflare resources, and a Neon
+branch forked from the parent `main` branch through the existing
+`PostgresProject.ref` model. The workflow reads the preview branch connection
+URI from Alchemy `PostgresBranch` state for `PLAYWRIGHT_DATABASE_URL`; the value
+is masked before it is exported to the Playwright step and is still omitted from
+root stack outputs. After deploy, CI waits for both preview `/health` endpoints
+before starting Playwright to avoid transient route or domain propagation
+failures. The API Worker disables auth rate limiting by default only for
+`pr-<number>` stages so repeated E2E runs against the persistent preview
+database do not accumulate lockout counters; set `AUTH_RATE_LIMIT_ENABLED=true`
+explicitly if a preview needs to exercise production rate-limit behavior.
+
+Fork pull requests do not run the secret-bearing preview jobs. They continue to
+run the non-deploying build, lint, format, and typecheck jobs without
+Cloudflare or Neon secrets.
 
 ## Deployment Commands
 

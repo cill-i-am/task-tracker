@@ -1,0 +1,295 @@
+name: Preview
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number whose preview stage should be destroyed
+        required: true
+        type: string
+
+concurrency:
+  group: ceird-preview-pr-${{ github.event.pull_request.number || inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+env:
+  CEIRD_CLOUDFLARE: "1"
+  CEIRD_ZONE_NAME: ceird.app
+  PNPM_CONFIG_OPTIONAL: "true"
+  PREVIEW_STAGE: pr-${{ github.event.pull_request.number || inputs.pr_number }}
+
+jobs:
+  deploy-e2e:
+    name: Deploy Preview And E2E
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: preview-deploy
+    env:
+      PLAYWRIGHT_API_URL: https://api.pr-${{ github.event.pull_request.number }}.ceird.app
+      PLAYWRIGHT_BASE_URL: https://app.pr-${{ github.event.pull_request.number }}.ceird.app
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            package.json
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Ensure Linux native packages
+        run: node scripts/ensure-linux-native-packages.mjs
+
+      - name: Restore Alchemy state store credentials
+        run: |
+          set -euo pipefail
+
+          credentials_dir="$HOME/.alchemy/credentials/default"
+          credentials_file="$credentials_dir/cloudflare-state-store.json"
+
+          mkdir -p "$credentials_dir"
+          printf '%s' "$ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS" > "$credentials_file"
+          chmod 600 "$credentials_file"
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const credentialsFile = path.join(
+            process.env.HOME,
+            ".alchemy",
+            "credentials",
+            "default",
+            "cloudflare-state-store.json"
+          );
+          const credentials = JSON.parse(fs.readFileSync(credentialsFile, "utf8"));
+
+          if (
+            typeof credentials.url !== "string" ||
+            !credentials.url.startsWith("https://") ||
+            typeof credentials.authToken !== "string" ||
+            credentials.authToken.length === 0
+          ) {
+            throw new Error("Invalid Alchemy Cloudflare state store credentials");
+          }
+          NODE
+        env:
+          ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS: ${{ secrets.ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS }}
+
+      - name: Deploy preview
+        run: pnpm alchemy deploy --stage "$PREVIEW_STAGE" --yes
+        env:
+          AUTH_EMAIL_FROM: ${{ secrets.AUTH_EMAIL_FROM }}
+          AUTH_EMAIL_FROM_NAME: ${{ vars.AUTH_EMAIL_FROM_NAME || 'Ceird' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ vars.NEON_ORG_ID }}
+
+      - name: Export Playwright database URL
+        run: |
+          set -euo pipefail
+          pnpm --silent alchemy state get ceird "$PREVIEW_STAGE" PostgresBranch --stage "$PREVIEW_STAGE" \
+            | node scripts/export-playwright-database-url.mjs
+        env:
+          AUTH_EMAIL_FROM: ${{ secrets.AUTH_EMAIL_FROM }}
+          AUTH_EMAIL_FROM_NAME: ${{ vars.AUTH_EMAIL_FROM_NAME || 'Ceird' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ vars.NEON_ORG_ID }}
+
+      - name: Wait for preview health
+        run: |
+          set -euo pipefail
+
+          wait_for_health() {
+            local url="$1"
+            local label="$2"
+
+            for attempt in {1..30}; do
+              if curl --fail --silent --show-error --max-time 10 "$url" >/dev/null; then
+                echo "$label is healthy"
+                return 0
+              fi
+
+              if [[ "$attempt" == "30" ]]; then
+                echo "$label did not become healthy at $url"
+                return 1
+              fi
+
+              sleep 5
+            done
+          }
+
+          wait_for_health "$PLAYWRIGHT_API_URL/health" "API"
+          wait_for_health "$PLAYWRIGHT_BASE_URL/health" "App"
+
+      - name: Comment preview URLs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const marker = "<!-- ceird-preview-environment -->";
+            const appUrl = process.env.PLAYWRIGHT_BASE_URL;
+            const apiUrl = process.env.PLAYWRIGHT_API_URL;
+            const stage = process.env.PREVIEW_STAGE;
+            const headSha = context.payload.pull_request.head.sha;
+            const body = [
+              marker,
+              "### Preview environment is ready",
+              "",
+              "| Surface | URL |",
+              "| --- | --- |",
+              `| App | [${appUrl}](${appUrl}) |`,
+              `| API | [${apiUrl}](${apiUrl}) |`,
+              "",
+              `Stage: \`${stage}\``,
+              `Commit: \`${headSha.slice(0, 7)}\``,
+            ].join("\n");
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existingComment = comments.find(
+              (comment) =>
+                comment.user?.type === "Bot" && comment.body?.includes(marker)
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Install Playwright browsers
+        run: pnpm --filter app exec playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: pnpm --filter app e2e
+
+  cleanup:
+    name: Destroy Preview
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: preview-cleanup
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            package.json
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Ensure Linux native packages
+        run: node scripts/ensure-linux-native-packages.mjs
+
+      - name: Validate preview stage
+        run: |
+          set -euo pipefail
+          if [[ ! "$PREVIEW_STAGE" =~ ^pr-[0-9]+$ ]]; then
+            echo "Refusing to destroy unexpected preview stage: $PREVIEW_STAGE"
+            exit 1
+          fi
+
+      - name: Restore Alchemy state store credentials
+        run: |
+          set -euo pipefail
+
+          credentials_dir="$HOME/.alchemy/credentials/default"
+          credentials_file="$credentials_dir/cloudflare-state-store.json"
+
+          mkdir -p "$credentials_dir"
+          printf '%s' "$ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS" > "$credentials_file"
+          chmod 600 "$credentials_file"
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const credentialsFile = path.join(
+            process.env.HOME,
+            ".alchemy",
+            "credentials",
+            "default",
+            "cloudflare-state-store.json"
+          );
+          const credentials = JSON.parse(fs.readFileSync(credentialsFile, "utf8"));
+
+          if (
+            typeof credentials.url !== "string" ||
+            !credentials.url.startsWith("https://") ||
+            typeof credentials.authToken !== "string" ||
+            credentials.authToken.length === 0
+          ) {
+            throw new Error("Invalid Alchemy Cloudflare state store credentials");
+          }
+          NODE
+        env:
+          ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS: ${{ secrets.ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS }}
+
+      - name: Destroy preview
+        run: pnpm alchemy destroy --stage "$PREVIEW_STAGE" --yes
+        env:
+          AUTH_EMAIL_FROM: ${{ secrets.AUTH_EMAIL_FROM }}
+          AUTH_EMAIL_FROM_NAME: ${{ vars.AUTH_EMAIL_FROM_NAME || 'Ceird' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_ORG_ID: ${{ vars.NEON_ORG_ID }}

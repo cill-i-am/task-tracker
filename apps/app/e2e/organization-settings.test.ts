@@ -7,6 +7,7 @@ import { CreateOrganizationPage } from "./pages/create-organization-page";
 import { SignupPage } from "./pages/signup-page";
 
 const ORGANIZATION_SETTINGS_FLOW_TIMEOUT_MS = 90_000;
+const AUTHENTICATED_HOME_TIMEOUT_MS = 30_000;
 
 function createTestEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.com`;
@@ -15,11 +16,17 @@ function createTestEmail(prefix: string): string {
 async function expectAuthenticatedHome(page: Page) {
   const workspaceHome = page.getByRole("main", { name: "Workspace home" });
 
-  await expect(page).toHaveURL(/\/$/);
-  await expect(workspaceHome).toBeVisible();
+  await expect(page).toHaveURL(/\/$/, {
+    timeout: AUTHENTICATED_HOME_TIMEOUT_MS,
+  });
+  await expect(workspaceHome).toBeVisible({
+    timeout: AUTHENTICATED_HOME_TIMEOUT_MS,
+  });
   await expect(
     page.getByRole("link", { exact: true, name: "Jobs" })
-  ).toBeVisible();
+  ).toBeVisible({
+    timeout: AUTHENTICATED_HOME_TIMEOUT_MS,
+  });
 }
 
 async function openAccountMenu(page: Page) {

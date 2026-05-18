@@ -1,4 +1,4 @@
-# Cloudflare Alchemy Mainline CI
+# Cloudflare Alchemy CI
 
 Ceird deploys the Cloudflare stack through Alchemy v2. The stack uses
 `Cloudflare.state()`, so CI and local deploys share Cloudflare-backed remote
@@ -6,9 +6,13 @@ state rather than checked-in `.alchemy` files. The stack does not configure a
 custom state-store Worker name; it relies on Alchemy's default shared
 Cloudflare state store.
 
-This repository is not using per-PR preview infrastructure. The deploy workflow
-applies changes to the single shared live Cloudflare stack after `main` passes
-the `Build` workflow.
+CI owns two deployment paths:
+
+- `.github/workflows/preview.yml` deploys persistent same-repository pull
+  request previews and runs Playwright E2E against the preview app/API.
+- `.github/workflows/deploy-main.yml` deploys the canonical `main` stage after
+  `main` passes the `Build` workflow. Main deploy behavior is intentionally
+  separate from preview deploy behavior.
 
 ## Alchemy Stage
 
@@ -16,9 +20,15 @@ Alchemy stage is the only infrastructure environment axis. CI must pass it
 explicitly so GitHub Actions never falls back to Alchemy's default
 `dev_${USER}` stage.
 
-For the mainline deployment:
+For mainline deployment:
 
 - `pnpm alchemy deploy --stage main --yes`
+- `CEIRD_CLOUDFLARE=1`
+
+For pull request previews:
+
+- `pnpm alchemy deploy --stage pr-${PR_NUMBER} --yes`
+- `pnpm alchemy destroy --stage pr-${PR_NUMBER} --yes`
 - `CEIRD_CLOUDFLARE=1`
 
 The stage is passed as a CLI flag rather than through a separate environment
@@ -32,7 +42,14 @@ corresponding native-stage deploy, rather than adopted accidentally.
 
 ## GitHub Secrets And Variables
 
-Create a GitHub environment named `main` and add:
+Create a GitHub environment named `main` for production deploys and main-stage
+E2E. Create `preview-deploy` and `preview-cleanup` for pull request previews.
+`preview-deploy` should require reviewer approval through GitHub environment
+protection rules so same-repository PR code is reviewed before provider secrets
+are exposed. `preview-cleanup` should not require reviewer approval, otherwise
+PR cleanup can stall after a branch is closed.
+
+For `main`, add:
 
 Secrets:
 
@@ -58,14 +75,113 @@ trusted pushes to `main`, so those environment-scoped variables and secrets are
 not exposed to pull-request code while still testing the live Alchemy stage
 before deployment.
 
+For both `preview-deploy` and `preview-cleanup`, add:
+
+Secrets:
+
+- `ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS`
+- `AUTH_EMAIL_FROM`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+- `GOOGLE_MAPS_API_KEY`
+- `NEON_API_KEY`
+
+Variables:
+
+- `AUTH_EMAIL_FROM_NAME`
+- `NEON_ORG_ID` (optional)
+
+Preview E2E does not store `PLAYWRIGHT_DATABASE_URL` as a GitHub secret. After
+deploy, `.github/workflows/preview.yml` reads the preview stage's
+`PostgresBranch` state and pipes the JSON to
+`scripts/export-playwright-database-url.mjs`. The helper extracts
+`attr.connectionUri` from either the current redacted Alchemy encoding
+(`{"__redacted__":"..."}`) or a plain string, emits a GitHub Actions
+`add-mask` command for the value, and writes `PLAYWRIGHT_DATABASE_URL` to
+`GITHUB_ENV`.
+
+Preview stages named `pr-<number>` deploy the API Worker with
+`AUTH_RATE_LIMIT_ENABLED=false`. This keeps repeated same-PR E2E runs from
+locking themselves out against a persistent preview database while preserving
+auth rate limiting for `main` and ordinary non-PR stages by default.
+
+`ALCHEMY_CLOUDFLARE_STATE_STORE_CREDENTIALS` is the JSON body from
+`~/.alchemy/credentials/default/cloudflare-state-store.json`, stored as a
+GitHub environment secret. Preview CI writes it back to Alchemy's expected
+credentials path before deploy or destroy. This avoids re-running
+`pnpm alchemy cloudflare bootstrap` for preview jobs; the current Alchemy beta
+reads the state-store token through Cloudflare edge preview during bootstrap,
+and Cloudflare rejects edge preview for the existing state-store Worker because
+it has a Durable Object binding.
+
 `CLOUDFLARE_API_TOKEN` must be able to read and update the Cloudflare state
 store, deploy Workers, manage custom domains, queues, Hyperdrive, and bind
-Cloudflare Email Service to the API Worker. Alchemy's CI guide specifically calls out that
-`Cloudflare.state()` needs Cloudflare Secrets Store Write in CI because Alchemy
-reads the state-store token back through an ephemeral edge-preview Worker with a
-secret binding.
+Cloudflare Email Service to the API Worker.
 
-## Workflow
+## Preview Workflow
+
+`.github/workflows/preview.yml` runs on pull request `opened`, `synchronize`,
+`reopened`, and `closed` events. Secret-bearing jobs are gated with:
+
+```yaml
+github.event.pull_request.head.repo.full_name == github.repository
+```
+
+The workflow uses `pull_request`, not `pull_request_target`, and forked pull
+requests do not satisfy the same-repository gate. Fork PR code therefore cannot
+receive Cloudflare, Neon, or environment-scoped GitHub secrets from the preview
+jobs. Same-repository preview deploys run in the protected `preview-deploy`
+environment, so GitHub waits for environment approval before checking out and
+deploying PR code with provider secrets. Inside the preview job, provider
+secrets are scoped to the Alchemy credential restore, deploy, and state-read
+steps; Playwright receives only the stage URLs and the masked database URL. The
+workflow grants `issues: write` to `GITHUB_TOKEN` so the same-repository preview
+job can create or update a pull request comment with the app/API URLs after the
+health checks pass. It also grants `pull-requests: write` because GitHub's PR
+comment endpoint accepts either issues or pull request write scope depending on
+repository policy. Fork PRs still run the normal non-secret `Build` workflow.
+
+For same-repository PR updates, the workflow:
+
+- checks out the PR head SHA
+- restores Alchemy's Cloudflare state-store credentials from an environment
+  secret
+- deploys or updates the persistent `pr-${PR_NUMBER}` stage
+- derives `PLAYWRIGHT_BASE_URL` as
+  `https://app.pr-${PR_NUMBER}.ceird.app`
+- derives `PLAYWRIGHT_API_URL` as
+  `https://api.pr-${PR_NUMBER}.ceird.app`
+- reads and masks `PLAYWRIGHT_DATABASE_URL` from the preview
+  `PostgresBranch` state
+- waits for the preview app and API `/health` endpoints to respond
+- creates or updates a single PR comment containing the preview app/API URLs
+- runs `pnpm --filter app e2e`
+
+The workflow has a concurrency group per PR:
+
+```yaml
+ceird-preview-pr-${{ github.event.pull_request.number }}
+```
+
+Deploy and cleanup runs for the same PR are serialized so Alchemy does not try
+to reconcile and destroy the same stage concurrently.
+
+When a same-repository PR closes, the cleanup job checks out the repository
+default branch instead of closed PR code, verifies the stage name matches
+`pr-[0-9]+`, restores the state-store credentials, and destroys the preview
+stage through the unblocked `preview-cleanup` environment. The same workflow
+also has a manual `workflow_dispatch` cleanup path: provide the numeric PR
+number to destroy `pr-<number>` from default-branch code if the closed-PR
+cleanup was cancelled or failed. A scheduled stale-preview cleanup is
+intentionally not part of the first workflow; closed-PR cleanup plus manual
+cleanup is the source of truth for now.
+
+Preview resources persist for the lifetime of the pull request. That means each
+open PR consumes Cloudflare Worker routes, queues, Hyperdrive configs, and a
+Neon branch until it is closed. Watch provider quotas if many same-repository
+PRs are open at once.
+
+## Main Workflow
 
 `.github/workflows/deploy-main.yml` deploys on:
 
@@ -117,6 +233,8 @@ The Alchemy v2 CI guide recommends:
 - using `state: Cloudflare.state()` for Cloudflare-backed state
 - using GitHub Actions secrets/variables for CI credentials
 - setting an explicit stage with `pnpm alchemy deploy --stage <stage>`
+- using PR stages such as `pr-{number}` for isolated previews and destroying
+  them when the PR closes
 - optionally using `--adopt` when importing existing cloud resources into a
   fresh state store
 
