@@ -2,7 +2,11 @@ import {
   SERVICE_AREA_NOT_FOUND_ERROR_TAG,
   SiteGeocodingFailedError,
 } from "@ceird/sites-core";
-import type { ServiceAreaIdType, SiteIdType } from "@ceird/sites-core";
+import type {
+  ServiceAreaIdType,
+  SiteIdType,
+  SitesOptionsResponse,
+} from "@ceird/sites-core";
 /* oxlint-disable vitest/prefer-import-in-mock */
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,11 +15,8 @@ import * as React from "react";
 import type { ReactNode } from "react";
 
 import { SitesCreateSheet } from "./sites-create-sheet";
-import { createSiteMutationAtom, sitesOptionsStateAtom } from "./sites-state";
 
 type AsyncMutationMock = (...args: unknown[]) => Promise<unknown>;
-type AtomSetterMock = (atom: unknown) => unknown;
-type AtomValueMock = (atom: unknown) => unknown;
 type NavigateMock = (...args: unknown[]) => unknown;
 
 const serviceAreaId =
@@ -23,12 +24,20 @@ const serviceAreaId =
 const siteId = "55555555-5555-4555-8555-555555555555" as SiteIdType;
 
 const {
+  mockedCreateSite,
+  mockedCreateResult,
   mockedDrawerRuntime,
   mockedNavigate,
   mockedPathname,
-  mockedUseAtomSet,
-  mockedUseAtomValue,
+  mockedSitesOptions,
 } = vi.hoisted(() => ({
+  mockedCreateSite: vi.fn<AsyncMutationMock>(),
+  mockedCreateResult: {
+    current: {
+      error: null as unknown,
+      waiting: false,
+    },
+  },
   mockedDrawerRuntime: {
     close: vi.fn<() => void>(),
     finishCloseAnimation: vi.fn<() => void>(),
@@ -37,39 +46,32 @@ const {
   mockedPathname: {
     current: "/sites/new",
   },
-  mockedUseAtomSet: vi.fn<AtomSetterMock>(),
-  mockedUseAtomValue: vi.fn<AtomValueMock>(),
+  mockedSitesOptions: {
+    current: {
+      serviceAreas: [] as SitesOptionsResponse["serviceAreas"],
+      sites: [] as SitesOptionsResponse["sites"],
+    },
+  },
 }));
 
-const mockedCreateSite = vi.fn<AsyncMutationMock>();
-let mockedCreateResult: unknown;
+vi.mock("./sites-state", () => ({
+  getSitesAsyncErrorMessage: (error: unknown) => {
+    if (error instanceof Error) {
+      return error.message;
+    }
 
-vi.mock(import("@effect-atom/atom-react"), async (importActual) => {
-  const actual = await importActual();
+    if (typeof error === "object" && error !== null && "message" in error) {
+      return String(error.message);
+    }
 
-  return {
-    ...actual,
-    Result: {
-      builder: (result: unknown) => ({
-        onError: (renderError: (error: { message: string }) => ReactNode) => ({
-          render: () => {
-            if (
-              typeof result === "object" &&
-              result !== null &&
-              "error" in result
-            ) {
-              return renderError(result.error as { message: string });
-            }
-
-            return null;
-          },
-        }),
-      }),
-    } as never,
-    useAtomSet: mockedUseAtomSet as never,
-    useAtomValue: mockedUseAtomValue as never,
-  };
-});
+    return "Something went wrong.";
+  },
+  isSitesAsyncFailure: (result: { readonly error?: unknown }) =>
+    result.error !== null && result.error !== undefined,
+  useCreateSiteMutation: () =>
+    [mockedCreateResult.current, mockedCreateSite] as const,
+  useSitesOptions: () => mockedSitesOptions.current,
+}));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockedNavigate,
@@ -150,40 +152,19 @@ describe("sites create sheet", () => {
     mockedCreateSite.mockReset();
     mockedNavigate.mockReset();
     mockedPathname.current = "/sites/new";
-    mockedCreateResult = {
+    mockedCreateResult.current = {
+      error: null,
       waiting: false,
     };
-
-    mockedUseAtomSet.mockImplementation((atom: unknown) => {
-      if (atom === createSiteMutationAtom) {
-        return mockedCreateSite;
-      }
-
-      return vi.fn<() => void>();
-    });
-
-    mockedUseAtomValue.mockImplementation((atom: unknown) => {
-      if (atom === createSiteMutationAtom) {
-        return mockedCreateResult;
-      }
-
-      if (atom === sitesOptionsStateAtom) {
-        return {
-          data: {
-            serviceAreas: [
-              {
-                id: serviceAreaId,
-                name: "Dublin",
-              },
-            ],
-            sites: [],
-          },
-          organizationId: "org_123",
-        };
-      }
-
-      return null;
-    });
+    mockedSitesOptions.current = {
+      serviceAreas: [
+        {
+          id: serviceAreaId,
+          name: "Dublin",
+        },
+      ],
+      sites: [],
+    };
   });
 
   afterEach(() => {
@@ -323,7 +304,8 @@ describe("sites create sheet", () => {
     "locks close controls while creation is waiting",
     { timeout: 10_000 },
     () => {
-      mockedCreateResult = {
+      mockedCreateResult.current = {
+        error: null,
         waiting: true,
       };
 
@@ -417,7 +399,7 @@ describe("sites create sheet", () => {
     "suppresses stale service area failures from the global result alert",
     { timeout: 10_000 },
     () => {
-      mockedCreateResult = {
+      mockedCreateResult.current = {
         error: {
           _tag: SERVICE_AREA_NOT_FOUND_ERROR_TAG,
           message: "Service area is no longer available.",

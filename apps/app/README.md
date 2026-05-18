@@ -8,7 +8,6 @@ clients, component tests, and Playwright E2E tests.
 
 ```bash
 pnpm --filter app dev
-pnpm --filter app sandbox:dev
 pnpm --filter app test
 pnpm --filter app e2e
 pnpm --filter app check-types
@@ -16,12 +15,21 @@ pnpm --filter app build
 pnpm --filter app build:cloudflare
 ```
 
-For full app/API/Postgres testing, start the root sandbox first:
+For full cloud-backed app/API/Postgres testing, start an Alchemy stage first:
 
 ```bash
-pnpm sandbox:up
+pnpm dev -- --stage codex-my-task
+PLAYWRIGHT_BASE_URL=<alchemy-app-url> \
+PLAYWRIGHT_API_URL=<alchemy-api-url> \
+PLAYWRIGHT_DATABASE_URL=<alchemy-database-url> \
 pnpm --filter app e2e
 ```
+
+For local runs, read `<alchemy-database-url>` from the selected stage's
+`PostgresBranch` Alchemy state instead of from stack outputs.
+
+Use `PLAYWRIGHT_USE_PACKAGE_LOCAL_SERVER=1 pnpm --filter app e2e` only when
+you intentionally want Playwright to start the package-local app/API fallback.
 
 ## Important Paths
 

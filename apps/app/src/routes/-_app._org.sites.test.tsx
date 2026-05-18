@@ -194,7 +194,7 @@ describe("sites route loader", () => {
   );
 
   it(
-    "renders sites from loader-seeded atom state on the first paint",
+    "renders sites from loader-seeded provider state on the first paint",
     { timeout: 10_000 },
     async () => {
       const { SitesRouteContent } =

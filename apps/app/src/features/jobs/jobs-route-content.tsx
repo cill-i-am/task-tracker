@@ -4,18 +4,12 @@ import type {
   JobListResponse,
   JobOptionsResponse,
 } from "@ceird/jobs-core";
-import { RegistryProvider } from "@effect-atom/atom-react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { JobsCreateSheet } from "#/features/jobs/jobs-create-sheet";
 import { JobsDetailSheet } from "#/features/jobs/jobs-detail-sheet";
 import { JobsPage } from "#/features/jobs/jobs-page";
-import {
-  jobsListStateAtom,
-  jobsOptionsStateAtom,
-  seedJobsListState,
-  seedJobsOptionsState,
-} from "#/features/jobs/jobs-state";
+import { JobsStateProvider } from "#/features/jobs/jobs-state";
 import type { JobsViewer } from "#/features/jobs/jobs-viewer";
 
 export function JobsRouteContent({
@@ -42,15 +36,11 @@ export function JobsRouteContent({
   readonly viewer: JobsViewer;
 }) {
   return (
-    <RegistryProvider
+    <JobsStateProvider
       key={activeOrganizationId}
-      initialValues={[
-        [jobsListStateAtom, seedJobsListState(activeOrganizationId, list)],
-        [
-          jobsOptionsStateAtom,
-          seedJobsOptionsState(activeOrganizationId, options),
-        ],
-      ]}
+      activeOrganizationId={activeOrganizationId}
+      list={list}
+      options={options}
     >
       <JobsPage
         listHotkeysEnabled={listHotkeysEnabled}
@@ -60,7 +50,7 @@ export function JobsRouteContent({
       >
         {children}
       </JobsPage>
-    </RegistryProvider>
+    </JobsStateProvider>
   );
 }
 

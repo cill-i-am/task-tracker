@@ -5,7 +5,6 @@ import type {
   SiteIdType,
   SitesOptionsResponse,
 } from "@ceird/sites-core";
-import { RegistryProvider } from "@effect-atom/atom-react";
 import { HotkeysProvider } from "@tanstack/react-hotkeys";
 import {
   act,
@@ -21,7 +20,7 @@ import type { ComponentProps } from "react";
 import { CommandBarProvider } from "#/features/command-bar/command-bar";
 
 import { SitesPage } from "./sites-page";
-import { seedSitesOptionsState, sitesOptionsStateAtom } from "./sites-state";
+import { SitesStateProvider } from "./sites-state";
 
 const serviceAreaId =
   "33333333-3333-4333-8333-333333333333" as ServiceAreaIdType;
@@ -357,16 +356,12 @@ function renderSitesPage({
 } = {}) {
   const page = (
     <HotkeysProvider>
-      <RegistryProvider
-        initialValues={[
-          [
-            sitesOptionsStateAtom,
-            seedSitesOptionsState(organizationId, pageOptions),
-          ],
-        ]}
+      <SitesStateProvider
+        activeOrganizationId={organizationId}
+        options={pageOptions}
       >
         <SitesPage viewer={{ role, userId }} />
-      </RegistryProvider>
+      </SitesStateProvider>
     </HotkeysProvider>
   );
 

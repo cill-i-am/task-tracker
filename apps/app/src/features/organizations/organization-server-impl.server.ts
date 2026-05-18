@@ -4,7 +4,6 @@ import {
   decodeOrganizationSummary,
   decodeOrganizationSummaryList,
   OrganizationId,
-  UserId,
 } from "@ceird/identity-core";
 import type {
   CreateOrganizationNameInput,
@@ -14,17 +13,11 @@ import type {
 } from "@ceird/identity-core";
 import { Schema } from "effect";
 
-import {
-  makeAppServerOperationFailure,
-  makeAppServerOperationContext,
-  observeAppServerOperation,
-} from "#/features/api/app-server-observability";
 import { resolveConfiguredServerAuthBaseURL } from "#/lib/auth-client.server";
 import {
   normalizeServerApiCookieHeader,
-  readServerApiForwardedHeadersFromRequest,
+  readServerApiForwardedHeaders,
 } from "#/lib/server-api-forwarded-headers";
-import type { ServerApiForwardedHeaders } from "#/lib/server-api-forwarded-headers";
 
 const NullableString = Schema.NullOr(Schema.String);
 const NullableOrganizationId = Schema.NullOr(OrganizationId);
@@ -40,7 +33,7 @@ const OrganizationAccessSessionSchema = Schema.Struct({
     id: Schema.String,
     createdAt: Schema.String,
     updatedAt: Schema.String,
-    userId: UserId,
+    userId: Schema.String,
     expiresAt: Schema.String,
     token: Schema.String,
     ipAddress: Schema.optional(NullableString),
@@ -48,7 +41,7 @@ const OrganizationAccessSessionSchema = Schema.Struct({
     activeOrganizationId: Schema.optional(NullableOrganizationId),
   }),
   user: Schema.Struct({
-    id: UserId,
+    id: Schema.String,
     name: Schema.String,
     email: Schema.String,
     image: Schema.optional(NullableString),
@@ -67,215 +60,153 @@ export type OrganizationMemberRole = OrganizationMemberRoleResponse;
 interface ServerAuthRequest {
   cookie: string;
   authBaseURL: string;
-  forwardedHeaders?: ServerApiForwardedHeaders;
+  forwardedHeaders?: ReturnType<typeof readServerApiForwardedHeaders>;
 }
 
 export async function createCurrentServerOrganizationDirect(
   input: CreateOrganizationNameInput
 ): Promise<OrganizationSummary> {
   const { getRequestHeader } = await import("@tanstack/react-start/server");
-  return await observeAppServerOperation(
-    makeAppServerOperationContext({
-      getRequestHeader,
-      operation: "OrganizationsServer.createOrganization",
-      targetOrigin: readServerAuthBaseURL(),
-    }),
-    async () => {
-      const authRequest = readServerAuthRequestStrict(getRequestHeader);
-      const baseSlug = createOrganizationSlugFromName(input.name);
-      const response = await postCreateOrganization(authRequest, {
-        name: input.name,
-        slug: baseSlug,
-      });
+  const authRequest = readServerAuthRequestStrict(getRequestHeader);
+  const baseSlug = createOrganizationSlugFromName(input.name);
+  const response = await postCreateOrganization(authRequest, {
+    name: input.name,
+    slug: baseSlug,
+  });
 
-      if (response.ok) {
-        await forwardAuthResponseCookies(response);
-        return await readCreatedOrganization(response);
-      }
+  if (response.ok) {
+    await forwardAuthResponseCookies(response);
+    return await readCreatedOrganization(response);
+  }
 
-      if (await isOrganizationSlugConflictResponse(response)) {
-        const retryResponse = await postCreateOrganization(authRequest, {
-          name: input.name,
-          slug: `${baseSlug}-${crypto.randomUUID().slice(0, 8)}`,
-        });
+  if (await isOrganizationSlugConflictResponse(response)) {
+    const retryResponse = await postCreateOrganization(authRequest, {
+      name: input.name,
+      slug: `${baseSlug}-${crypto.randomUUID().slice(0, 8)}`,
+    });
 
-        if (retryResponse.ok) {
-          await forwardAuthResponseCookies(retryResponse);
-          return await readCreatedOrganization(retryResponse);
-        }
-
-        throw makeAppServerOperationFailure({
-          bucket: "upstream_status",
-          message: `Organization creation failed with status ${retryResponse.status}.`,
-          status: retryResponse.status,
-        });
-      }
-
-      throw makeAppServerOperationFailure({
-        bucket: "upstream_status",
-        message: `Organization creation failed with status ${response.status}.`,
-        status: response.status,
-      });
+    if (retryResponse.ok) {
+      await forwardAuthResponseCookies(retryResponse);
+      return await readCreatedOrganization(retryResponse);
     }
+
+    throw new Error(
+      `Organization creation failed with status ${retryResponse.status}.`
+    );
+  }
+
+  throw new Error(
+    `Organization creation failed with status ${response.status}.`
   );
 }
 
 export async function getCurrentServerOrganizationSessionDirect(): Promise<OrganizationAccessSession | null> {
   const { getRequestHeader } = await import("@tanstack/react-start/server");
-  return await observeAppServerOperation(
-    makeAppServerOperationContext({
-      getRequestHeader,
-      operation: "OrganizationsServer.getSession",
-      targetOrigin: readServerAuthBaseURL(),
-    }),
-    async () => {
-      const authRequest = readServerSessionRequest(getRequestHeader);
+  const authRequest = readServerSessionRequest(getRequestHeader);
 
-      if (!authRequest) {
-        return null;
-      }
+  if (!authRequest) {
+    return null;
+  }
 
-      const response = await fetch(
-        new URL("get-session", `${authRequest.authBaseURL}/`),
-        {
-          headers: {
-            accept: "application/json",
-            cookie: authRequest.cookie,
-            ...authRequest.forwardedHeaders,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw makeAppServerOperationFailure({
-          bucket: "upstream_status",
-          message: `Session lookup failed with status ${response.status}.`,
-          status: response.status,
-        });
-      }
-
-      const session = (await response.json()) as unknown;
-
-      if (session === null) {
-        return null;
-      }
-
-      return decodeOrganizationAccessSession(session);
+  const response = await fetch(
+    new URL("get-session", `${authRequest.authBaseURL}/`),
+    {
+      headers: {
+        accept: "application/json",
+        cookie: authRequest.cookie,
+        ...authRequest.forwardedHeaders,
+      },
     }
   );
+
+  if (!response.ok) {
+    throw new Error(`Session lookup failed with status ${response.status}.`);
+  }
+
+  const session = (await response.json()) as unknown;
+
+  if (session === null) {
+    return null;
+  }
+
+  return decodeOrganizationAccessSession(session);
 }
 
 export async function getCurrentServerOrganizationsDirect() {
   const { getRequestHeader } = await import("@tanstack/react-start/server");
-  return await observeAppServerOperation(
-    makeAppServerOperationContext({
-      getRequestHeader,
-      operation: "OrganizationsServer.listOrganizations",
-      targetOrigin: readServerAuthBaseURL(),
-    }),
-    async () => {
-      const authRequest = readServerAuthRequestStrict(getRequestHeader);
-      const response = await fetchOrganizations(authRequest);
+  const authRequest = readServerAuthRequestStrict(getRequestHeader);
+  const response = await fetchOrganizations(authRequest);
 
-      if (!response.ok) {
-        throw makeAppServerOperationFailure({
-          bucket: "upstream_status",
-          message: `Organization lookup failed with status ${response.status}.`,
-          status: response.status,
-        });
-      }
+  if (!response.ok) {
+    throw new Error(
+      `Organization lookup failed with status ${response.status}.`
+    );
+  }
 
-      const organizations = (await response.json()) as unknown;
+  const organizations = (await response.json()) as unknown;
 
-      if (!organizations) {
-        throw makeAppServerOperationFailure({
-          bucket: "invalid_upstream_payload",
-          message: "Organization lookup returned no data.",
-        });
-      }
+  if (!organizations) {
+    throw new Error("Organization lookup returned no data.");
+  }
 
-      return decodeOrganizationSummariesStrict(organizations);
-    }
-  );
+  return decodeOrganizationSummariesStrict(organizations);
 }
 
 export async function getCurrentServerOrganizationMemberRoleDirect(
   organizationId: OrganizationIdType
 ): Promise<OrganizationMemberRole> {
   const { getRequestHeader } = await import("@tanstack/react-start/server");
-  return await observeAppServerOperation(
-    makeAppServerOperationContext({
-      getRequestHeader,
-      operation: "OrganizationsServer.getMemberRole",
-      targetOrigin: readServerAuthBaseURL(),
-    }),
-    async () => {
-      const authRequest = readServerAuthRequestStrict(getRequestHeader);
-      const response = await fetch(
-        new URL(
-          `organization/get-active-member-role?organizationId=${encodeURIComponent(
-            organizationId
-          )}`,
-          `${authRequest.authBaseURL}/`
-        ),
-        {
-          headers: {
-            accept: "application/json",
-            cookie: authRequest.cookie,
-            ...authRequest.forwardedHeaders,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw makeAppServerOperationFailure({
-          bucket: "upstream_status",
-          message: `Organization member role lookup failed with status ${response.status}.`,
-          status: response.status,
-        });
-      }
-
-      const role = (await response.json()) as unknown;
-      return decodeOrganizationMemberRole(role);
+  const authRequest = readServerAuthRequestStrict(getRequestHeader);
+  const response = await fetch(
+    new URL(
+      `organization/get-active-member-role?organizationId=${encodeURIComponent(
+        organizationId
+      )}`,
+      `${authRequest.authBaseURL}/`
+    ),
+    {
+      headers: {
+        accept: "application/json",
+        cookie: authRequest.cookie,
+        ...authRequest.forwardedHeaders,
+      },
     }
   );
+
+  if (!response.ok) {
+    throw new Error(
+      `Organization member role lookup failed with status ${response.status}.`
+    );
+  }
+
+  const role = (await response.json()) as unknown;
+  return decodeOrganizationMemberRole(role);
 }
 
 export async function setCurrentServerActiveOrganizationDirect(
   organizationId: OrganizationIdType
 ): Promise<void> {
   const { getRequestHeader } = await import("@tanstack/react-start/server");
-  return await observeAppServerOperation(
-    makeAppServerOperationContext({
-      getRequestHeader,
-      operation: "OrganizationsServer.setActiveOrganization",
-      targetOrigin: readServerAuthBaseURL(),
-    }),
-    async () => {
-      const authRequest = readServerAuthRequestStrict(getRequestHeader);
-      const response = await fetch(
-        new URL("organization/set-active", `${authRequest.authBaseURL}/`),
-        {
-          method: "POST",
-          headers: {
-            accept: "application/json",
-            "content-type": "application/json",
-            cookie: authRequest.cookie,
-            ...authRequest.forwardedHeaders,
-          },
-          body: JSON.stringify({ organizationId }),
-        }
-      );
-
-      if (!response.ok) {
-        throw makeAppServerOperationFailure({
-          bucket: "upstream_status",
-          message: `Active organization sync failed with status ${response.status}.`,
-          status: response.status,
-        });
-      }
+  const authRequest = readServerAuthRequestStrict(getRequestHeader);
+  const response = await fetch(
+    new URL("organization/set-active", `${authRequest.authBaseURL}/`),
+    {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        cookie: authRequest.cookie,
+        ...authRequest.forwardedHeaders,
+      },
+      body: JSON.stringify({ organizationId }),
     }
   );
+
+  if (!response.ok) {
+    throw new Error(
+      `Active organization sync failed with status ${response.status}.`
+    );
+  }
 }
 
 function readServerSessionRequest(
@@ -288,15 +219,17 @@ function readServerSessionRequest(
   }
 
   const authBaseURL = readServerAuthBaseURL();
-  const forwardedHeaders =
-    readServerApiForwardedHeadersFromRequest(getRequestHeader);
+  const forwardedHeaders = readServerApiForwardedHeaders({
+    forwardedHost: getRequestHeader("x-forwarded-host"),
+    host: getRequestHeader("host"),
+    origin: getRequestHeader("origin"),
+    forwardedProto: getRequestHeader("x-forwarded-proto"),
+  });
 
   if (!authBaseURL) {
-    throw makeAppServerOperationFailure({
-      bucket: "auth_origin_unresolved",
-      message:
-        "Cannot resolve the auth base URL for organization auth requests.",
-    });
+    throw new Error(
+      "Cannot resolve the auth base URL for organization auth requests."
+    );
   }
 
   return {
@@ -312,22 +245,23 @@ function readServerAuthRequestStrict(
   const cookie = getRequestHeader("cookie");
 
   if (!cookie) {
-    throw makeAppServerOperationFailure({
-      bucket: "missing_auth_cookie",
-      message: "Cannot list organizations without the current auth cookie.",
-    });
+    throw new Error(
+      "Cannot list organizations without the current auth cookie."
+    );
   }
 
   const authBaseURL = readServerAuthBaseURL();
-  const forwardedHeaders =
-    readServerApiForwardedHeadersFromRequest(getRequestHeader);
+  const forwardedHeaders = readServerApiForwardedHeaders({
+    forwardedHost: getRequestHeader("x-forwarded-host"),
+    host: getRequestHeader("host"),
+    origin: getRequestHeader("origin"),
+    forwardedProto: getRequestHeader("x-forwarded-proto"),
+  });
 
   if (!authBaseURL) {
-    throw makeAppServerOperationFailure({
-      bucket: "auth_origin_unresolved",
-      message:
-        "Cannot resolve the auth base URL for organization auth requests.",
-    });
+    throw new Error(
+      "Cannot resolve the auth base URL for organization auth requests."
+    );
   }
 
   return {
@@ -405,10 +339,7 @@ async function readCreatedOrganization(
   try {
     return decodeOrganizationSummary((await response.json()) as unknown);
   } catch {
-    throw makeAppServerOperationFailure({
-      bucket: "invalid_upstream_payload",
-      message: "Organization creation returned an invalid payload.",
-    });
+    throw new Error("Organization creation returned an invalid payload.");
   }
 }
 
@@ -432,10 +363,7 @@ function decodeOrganizationSummariesStrict(
   try {
     return decodeOrganizationSummaryList(organizations);
   } catch {
-    throw makeAppServerOperationFailure({
-      bucket: "invalid_upstream_payload",
-      message: "Organization lookup returned an invalid payload.",
-    });
+    throw new Error("Organization lookup returned an invalid payload.");
   }
 }
 
@@ -445,10 +373,7 @@ function decodeOrganizationAccessSession(
   try {
     return Schema.decodeUnknownSync(OrganizationAccessSessionSchema)(session);
   } catch {
-    throw makeAppServerOperationFailure({
-      bucket: "invalid_upstream_payload",
-      message: "Session lookup returned an invalid payload.",
-    });
+    throw new Error("Session lookup returned an invalid payload.");
   }
 }
 
@@ -456,9 +381,8 @@ function decodeOrganizationMemberRole(role: unknown): OrganizationMemberRole {
   try {
     return decodeOrganizationMemberRoleResponse(role);
   } catch {
-    throw makeAppServerOperationFailure({
-      bucket: "invalid_upstream_payload",
-      message: "Organization member role lookup returned an invalid payload.",
-    });
+    throw new Error(
+      "Organization member role lookup returned an invalid payload."
+    );
   }
 }

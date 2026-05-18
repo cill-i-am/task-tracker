@@ -63,7 +63,6 @@ function logApiOperationFailure(
       ...(serializedFailure.details
         ? { apiFailureDetails: serializedFailure.details }
         : {}),
-      apiFailureBucket: bucketApiFailure(serializedFailure.tag),
       apiFailureMessage: serializedFailure.message,
       apiFailureTag: serializedFailure.tag,
       apiOperation: options.operation,
@@ -74,34 +73,6 @@ function logApiOperationFailure(
 
 function shouldWarnForApiFailure(tag: string) {
   return tag === "Defect" || tag.endsWith("StorageError");
-}
-
-function bucketApiFailure(tag: string) {
-  if (tag === "Defect") {
-    return "defect";
-  }
-
-  if (tag.endsWith("StorageError")) {
-    return "storage_failure";
-  }
-
-  if (tag.endsWith("AccessDeniedError")) {
-    return "access_denied";
-  }
-
-  if (tag.endsWith("NotFoundError")) {
-    return "not_found";
-  }
-
-  if (tag.endsWith("ValidationError")) {
-    return "validation_failed";
-  }
-
-  if (tag.startsWith("@ceird/")) {
-    return "typed_domain_failure";
-  }
-
-  return "unknown_failure";
 }
 
 function serializeFailure(error: unknown) {

@@ -5,7 +5,7 @@
 The authentication slice uses two closely related database paths:
 
 - regular Drizzle for Better Auth's adapter
-- Effect SQL plus `@effect/sql-drizzle` for future Effect-native slice code
+- Effect SQL for app-owned repository code
 
 Both target the same Postgres database, but they serve different jobs.
 
@@ -21,16 +21,20 @@ Because of that, the auth slice creates:
 
 This keeps the Better Auth boundary conventional and easy to reason about.
 
-## Why We Also Added Effect SQL And SQL-Drizzle
+## Why We Also Added Effect SQL
 
 The project is Effect-first, so it still helps to establish an Effect-native database path for future app code.
 
 The auth slice exposes:
 
 - `@effect/sql-pg` for Effect-native Postgres access
-- `@effect/sql-drizzle` for Drizzle-flavored queries inside Effect code
 
-That gives later slices an Effect-compatible way to access the same Postgres backend without forcing Better Auth itself through a custom abstraction.
+That gives repository slices an Effect-compatible way to access the same
+Postgres backend without forcing Better Auth itself through a custom
+abstraction. We intentionally do not keep an `@effect/sql-drizzle` runtime
+layer: app-owned repositories already use Effect SQL directly, and the v4
+Effect migration path does not have a matching SQL-Drizzle package to carry
+forward.
 
 ## Current Guidance
 
@@ -46,50 +50,71 @@ Use the Effect SQL layers when:
 - a service already lives naturally inside Effect layers
 - observability, dependency injection, or Effect-based composition matters
 
-## Cloudflare POC: Neon Postgres And Hyperdrive
+## Cloudflare Neon Postgres And Hyperdrive
 
-The Cloudflare Alchemy POC keeps Postgres as the source of truth.
+The Cloudflare Alchemy stack keeps Postgres as the source of truth.
 
-Neon Postgres is provisioned outside this repository and supplied to deploys as
-connection URL secrets. Alchemy manages the Cloudflare resources, including the
-Hyperdrive config that points at the Neon app database URL. The required
-operator inputs are bootstrap Cloudflare credentials plus database connection
-URLs:
+Neon Postgres is provisioned through native Alchemy resources. The parent
+Alchemy stage creates the shared Neon project and parent branch, while local
+and preview stages create isolated copy-on-write Neon branches from that parent
+branch. Parent branch protection is opt-in through
+`CEIRD_NEON_PARENT_BRANCH_PROTECTED` because not every Neon plan can create
+additional protected branches. The parent project declares
+`CEIRD_NEON_HISTORY_RETENTION_SECONDS` explicitly so Neon's provider-reported
+retention window does not produce repeat parent-project plans. Alchemy also
+manages the Cloudflare resources, including the Hyperdrive config that points
+at the active stage branch. The parent stage defaults the Hyperdrive config
+name to the adopted `ceird-production-postgres` resource, while non-parent
+stages use stage-scoped names. Local operators authenticate the Cloudflare
+provider through an Alchemy profile:
 
-1. Export bootstrap `CLOUDFLARE_ACCOUNT_ID`.
-2. Export bootstrap `CLOUDFLARE_API_TOKEN`.
-3. Export `GOOGLE_MAPS_API_KEY`.
-4. Export `NEON_DATABASE_URL`.
-5. Export `NEON_MIGRATION_DATABASE_URL` when `CEIRD_APPLY_MIGRATIONS=true`.
-   This should be a separate direct Neon connection URL for a migration-capable
-   role on the same host and database as the app role.
-6. Set `CEIRD_ZONE_NAME`.
-7. Set `AUTH_EMAIL_FROM`.
-8. Set `CEIRD_APPLY_MIGRATIONS=true` only when the deploy should apply Drizzle
-   migrations.
-9. Run `ALCHEMY_STAGE=main CEIRD_INFRA_STAGE=production pnpm infra:deploy` to
-   create or update the Hyperdrive config, Workers, queues,
-   runtime email token, and routes.
+1. Run `pnpm alchemy login` once for the local Alchemy profile that will manage
+   Cloudflare resources.
+2. Set deployment config in `.env.local` or another Alchemy env file:
+   `GOOGLE_MAPS_API_KEY`, `NEON_API_KEY`, and `AUTH_EMAIL_FROM`.
+   `CEIRD_ZONE_NAME` defaults to `ceird.app` and can be overridden for another
+   Cloudflare zone.
+3. Run
+   `CEIRD_CLOUDFLARE=1 pnpm alchemy deploy --env-file .env.local --stage main`
+   to create or update the Neon project/branch, refresh Alchemy Drizzle
+   migration snapshots, apply API SQL migrations, create or update the
+   Hyperdrive config, Workers, queues, Email Worker binding, and routes.
 
-The bootstrap Cloudflare token is not the Worker runtime email token. It is the
-credential Alchemy uses to manage Cloudflare. It needs write access for the
-resources in this POC, including Account API Tokens, Email Sending, Hyperdrive,
-Queues, Workers Scripts, Workers Routes, and DNS for `ceird.app`.
+`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are still used for
+non-interactive CI provider auth through GitHub secrets. They are deployment
+automation inputs, not normal local setup. The Worker runtime email delivery
+path uses the deployed Cloudflare Email Worker binding; package-local API runs
+use deterministic development email delivery.
 
-The current POC uses Alchemy v2 plus custom resource wrappers. Neon owns the
-database lifecycle outside the stack, while a custom Cloudflare Hyperdrive
-resource owns Hyperdrive REST calls until Alchemy v2 ships a first-class
-Hyperdrive resource.
+The current stack uses Alchemy v2 native Neon and Cloudflare Hyperdrive
+resources. API runtime code still uses the existing Effect 3 database layer;
+deploy-time migration drift is tracked with Alchemy `Drizzle.Schema`. The root `infra`
+directory models that handoff as an `alchemy-drizzle-schema`
+`NeonMigrationSource`, pointing at the `infra/api-drizzle-schema.ts` wrapper.
+That wrapper loads the API schema barrel at
+`apps/api/src/platform/database/schema.ts` through the TypeScript resolver
+Alchemy needs at deploy time. The checked-in Alchemy migration snapshots live
+under `apps/api/drizzle/alchemy`. The native Neon branch still applies the
+parent `apps/api/drizzle` directory so existing package-local SQL migrations
+remain the bootstrap sequence and future Alchemy-generated SQL is applied from
+the nested Alchemy directory. The infra contract names those paths separately as
+`generatedMigrationsDir` and `appliedMigrationsDir` so the dependency on
+`Drizzle.Schema` is explicit without losing historical migration coverage.
+
+Keep the root Alchemy stack on Alchemy's Effect 4 line, but keep API/app/shared
+runtime code on the current Effect 3 package line until the Effect
+platform/sql/rpc packages used by the API have a compatible v4 migration target.
+As of this migration pass, `@effect/platform`, `@effect/sql`, and
+`@effect/rpc` still publish the stable APIs this app uses against Effect 3
+peers, while Alchemy v2 uses Effect 4 unstable modules internally.
 
 The API Worker receives a `DATABASE` Hyperdrive binding and resolves the runtime
-Postgres URL from `env.DATABASE.connectionString`. Local Node and sandbox
-runtimes still read `DATABASE_URL`.
+Postgres URL from `env.DATABASE.connectionString`. Package-local Node runtimes
+still read `DATABASE_URL`.
 
-The Worker does not run migrations. When `CEIRD_APPLY_MIGRATIONS=true`, a custom
-`Drizzle.Migrations` Alchemy resource runs Drizzle's programmatic Node migrator
-from the deployment process using `NEON_MIGRATION_DATABASE_URL`. When migrations
-are disabled, the migration role falls back to `NEON_DATABASE_URL` only to keep
-the stack shape simple; no deploy-time schema changes are attempted.
+The Worker does not run migrations. During deploy, the native Neon branch
+resource depends on `Drizzle.Schema`, then applies SQL files from
+`apps/api/drizzle` before Hyperdrive and the API Worker are reconciled.
 
 ## Deferred Decisions
 
@@ -99,5 +124,6 @@ The following are intentionally left for later:
 - broader domain data services
 - auth-specific Effect wrappers
 - app-facing typed auth endpoints
+- full API/app/shared Effect 4 migration
 
 That keeps the current implementation simple while still leaving a clean path toward a more Effect-native backend as the project grows.

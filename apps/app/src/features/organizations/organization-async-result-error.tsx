@@ -1,16 +1,18 @@
 "use client";
-import { Result } from "@effect-atom/atom-react";
+import type { OrganizationAsyncResult } from "./organization-configuration-state";
 
 export function OrganizationAsyncResultError({
   result,
 }: {
-  readonly result: Result.Result<unknown, unknown>;
+  readonly result: OrganizationAsyncResult;
 }) {
-  return Result.builder(result)
-    .onError((error) => (
-      <p role="alert" className="text-sm text-destructive">
-        {error instanceof Error ? error.message : "Request failed."}
-      </p>
-    ))
-    .render();
+  if (!result.error) {
+    return null;
+  }
+
+  return (
+    <p role="alert" className="text-sm text-destructive">
+      {result.error instanceof Error ? result.error.message : "Request failed."}
+    </p>
+  );
 }

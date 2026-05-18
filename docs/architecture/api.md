@@ -10,19 +10,51 @@ Worker.
 
 ## Entry Points
 
-| File                                | Purpose                                                                                          |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `src/index.ts`                      | Node development entrypoint.                                                                     |
-| `src/server.ts`                     | Effect `HttpApi` construction, system endpoints, API layer composition, and web-handler factory. |
-| `src/worker.ts`                     | Cloudflare Worker entrypoint and request handling.                                               |
-| `src/platform/cloudflare/env.ts`    | Cloudflare environment decoding and binding access.                                              |
-| `src/platform/database/database.ts` | Database runtime layer.                                                                          |
-| `src/platform/database/schema.ts`   | Combined Drizzle schema barrel.                                                                  |
+| File                                 | Purpose                                                                                          |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `src/index.ts`                       | Node development entrypoint.                                                                     |
+| `src/server.ts`                      | Effect `HttpApi` construction, system endpoints, API layer composition, and web-handler factory. |
+| `src/worker.ts`                      | Thin Cloudflare Worker module adapter; runs the Effect runtime programs for fetch and queue.     |
+| `src/platform/cloudflare/runtime.ts` | Cloudflare runtime composition for API fetch handling, auth queue delivery, and Worker layers.   |
+| `src/platform/cloudflare/env.ts`     | Cloudflare environment decoding and binding access.                                              |
+| `src/platform/database/database.ts`  | Database runtime layer.                                                                          |
+| `src/platform/database/schema.ts`    | Combined Drizzle schema barrel.                                                                  |
 
 System endpoints are defined in `src/server.ts`:
 
 - `GET /` returns a plain API marker string.
-- `GET /health` returns a sandbox-compatible `HealthPayload`.
+- `GET /health` returns a stack- and stage-aware `HealthPayload`.
+
+The Cloudflare Worker module in `src/worker.ts` only adapts Cloudflare's
+promise-based `fetch` and `queue` handlers into Effect programs. Runtime
+composition lives in `src/platform/cloudflare/runtime.ts`: it installs the
+Worker config provider, builds the Hyperdrive-backed database layer, wires
+Better Auth background tasks through `context.waitUntil`, uses the Google site
+geocoder layer, and composes auth queue delivery with the Cloudflare email
+binding transport. Keeping this runtime boundary separate makes the current
+Worker compatible with Cloudflare's module handler contract while preserving
+the single Effect-threaded Worker runtime in
+`src/platform/cloudflare/runtime.ts`.
+The health handler reads `ALCHEMY_STACK_NAME` and `ALCHEMY_STAGE` through the
+same Effect config path and includes both values in its response, falling back
+to `local` for package-local Node runs.
+
+The runtime reads Cloudflare bindings from `src/platform/cloudflare/env.ts`.
+That file separates plain configuration vars from `ApiWorkerBindingRuntimeEnv`,
+the runtime binding contract for `DATABASE`, `AUTH_EMAIL_QUEUE`, and
+`AUTH_EMAIL`, while forwarding Alchemy's injected `ALCHEMY_STACK_NAME` and
+`ALCHEMY_STAGE` metadata into Effect config. The root infra stack owns the
+Alchemy binding resources in `infra/cloudflare-stack.ts` and derives
+`ApiWorkerBindingEnv` with `Cloudflare.InferEnv`. The infra test suite imports
+the API binding contract and asserts the Alchemy-inferred type has the same
+keys and assignable runtime binding types. The same infra tests also compare
+the stack-provided API Worker config keys against `ApiWorkerConfigEnv`. Secret
+and credential values stay typed as Alchemy deploy-time redacted inputs in
+`infra`, while the API runtime sees resolved strings through
+Cloudflare's Worker environment. Keep those bridges green when adding Worker
+resources or config vars. The API runtime intentionally stays on its Effect 3
+application dependencies and does not import Alchemy or Effect 4; the root
+infra helpers own those deploy-time dependencies and binding types.
 
 `src/server.ts` also intercepts MCP resource-server traffic before falling
 through to the Effect `HttpApi` handler. The MCP route defaults to `/mcp`, or
@@ -41,23 +73,13 @@ Better Auth adapter in the API runtime.
 The API enables a custom Effect HTTP request logger for both the Node server and
 the Cloudflare/web-handler path. It records method, status, and redacted path
 only; query strings are not logged, and `/health` is skipped to keep probe noise
-out of operational logs. When present, it annotates logs with the forwarded
-`x-ceird-request-id` and Cloudflare `cf-ray` so app Worker and API Worker logs
-can be correlated. Correlation headers are externally supplied at the public
-HTTP boundary, so they are validated through `@ceird/observability-core`; unsafe
-or oversized values are omitted, and direct API requests can use a safe
-Cloudflare Ray id as their request correlation id. Shared redacted path handling
-and the testable Effect log sink factory also live in
-`@ceird/observability-core`, which is used by both app and API observability
-adapters. Typed domain HTTP handlers also wrap service calls with
+out of operational logs. Typed domain HTTP handlers also wrap service calls with
 `observeApiOperation`, which adds an operation log span and emits structured
 fields when a jobs, rate-card, labels, sites, or service-area operation fails.
 Storage failures and defects log at warning level, while expected typed domain
 failures log at info level. Those fields include the API domain, service,
-operation, stable failure bucket, failure tag, failure message, safe entity
-identifiers when present, and failure cause when present. The bucket values are
-intended for Cloudflare queries and alert routing, while the exact typed error
-tags remain useful for debugging.
+operation, failure tag, failure message, safe entity identifiers when present,
+and failure cause when present.
 
 Background auth email delivery uses the same structured failure vocabulary.
 Password reset, verification, email-change confirmation, and organization
@@ -65,24 +87,6 @@ invitation delivery failures are reported through the authentication failure
 reporters. Cloudflare queue delivery failures log the email kind, delivery key,
 source tag, and source cause before retrying. Deployed Workers rely on
 Cloudflare observability logs and traces configured by the infra stack.
-
-Better Auth's native logger is wrapped by Ceird before it reaches stderr.
-Expected credential failures are downgraded into structured info logs with
-stable buckets such as `invalid_password` and `user_not_found`. Background task
-failures are logged once with redacted argument details, and arbitrary Better
-Auth warnings/errors redact email addresses plus token, URL, cookie, session,
-and password-shaped fields before writing to console.
-
-MCP traffic is handled before the Effect `HttpApi` fallback, so
-`src/server.ts` logs MCP-owned web responses at that pre-router boundary. Those
-logs use the message `MCP HTTP response` or `MCP HTTP error response` and
-record the MCP domain, method, status, duration, redacted path,
-`x-ceird-request-id`, and `cf-ray` when present. MCP logging intentionally does
-not include query strings, request bodies, bearer tokens, OAuth metadata
-payloads, cookies, or raw error messages. Synchronous API boundaries that sit
-outside an Effect program, such as Better Auth's logger callback and the MCP
-pre-router web handler, emit through the local Effect logging adapter in
-`src/domains/effect-log.ts` instead of calling `console.*` directly.
 
 ## Authentication Domain
 
@@ -96,26 +100,21 @@ Core files:
 | `config.ts`                                        | Better Auth runtime config, trusted origins, cookie-domain logic, and rate-limit config.                                 |
 | `schema.ts`                                        | Better Auth Drizzle tables and relations.                                                                                |
 | `auth-email.ts`                                    | Auth email payloads and send orchestration.                                                                              |
-| `auth-email-config.ts`                             | Auth email sender config and Cloudflare credential loading.                                                              |
-| `auth-email-transport.ts`                          | Auth email transport capability plus development, local, Cloudflare API, and Cloudflare binding provider layers.         |
+| `auth-email-config.ts`                             | Auth email sender config loaded from runtime configuration.                                                              |
+| `auth-email-transport.ts`                          | Auth email transport capability plus deterministic local/development and deployed Cloudflare binding provider layers.    |
 | `auth-email-queue.ts`                              | Queue payload handling.                                                                                                  |
 | `auth-email-scheduler.ts`                          | Background scheduling boundary for auth emails.                                                                          |
-| `cloudflare-auth-email-transport.ts`               | Cloudflare API email transport.                                                                                          |
 | `cloudflare-email-binding-auth-email-transport.ts` | Cloudflare Email Worker binding transport.                                                                               |
 
 Better Auth owns standard auth routes under `/api/auth/*`. The API also exposes
 a public invitation preview route matched by
 `/api/public/invitations/:invitationId/preview`, returning a masked email,
 organization name, and role for pending non-expired invitations.
-Better Auth rate limiting and session IP tracking use `cf-connecting-ip` first
-for deployed Cloudflare traffic, then fall back to `x-real-ip` and
-`x-forwarded-for` for other trusted proxy paths.
 
 Auth email senders depend on the `AuthEmailTransport` capability rather than a
-specific provider. Local Node and sandbox composition use
-`AuthEmailTransport.Local`, which selects the Cloudflare API provider only when
-both Cloudflare credentials are present and otherwise falls back to deterministic
-development delivery. The deployed Worker queue composes
+specific provider. Package-local Node composition uses
+`AuthEmailTransport.Local`, which always uses deterministic development
+delivery. The deployed Worker queue composes
 `AuthEmailTransport.CloudflareBinding` directly, so missing Worker bindings or
 invalid sender config fail through the Effect layer/config boundary instead of
 being selected by an environment variable.
@@ -286,7 +285,7 @@ Core files:
 
 Site and job services depend on the `SiteGeocoder` capability, not on a
 provider-specific implementation. Runtime entrypoints choose the provider layer:
-local Node/sandbox composition uses `SiteGeocoder.Local`, which selects Google
+package-local Node composition uses `SiteGeocoder.Local`, which selects Google
 when `GOOGLE_MAPS_API_KEY` is present and falls back to deterministic
 development coordinates when it is absent. The Cloudflare Worker composition
 uses `SiteGeocoder.Google`, so deployed API startup fails fast without the
@@ -343,11 +342,16 @@ The API uses Drizzle with Postgres.
 | Test database helpers | `src/platform/database/test-database.ts`             |
 | Schema barrel         | `src/platform/database/schema.ts`                    |
 | Migrations            | `drizzle/*.sql`, `drizzle/meta/*.json`               |
+| Alchemy snapshots     | `drizzle/alchemy/*/{migration.sql,snapshot.json}`    |
 | Drizzle CLI config    | `drizzle.config.ts`                                  |
 
 `databaseSchema` merges authentication, comments, labels, sites, and jobs
 tables. Keep schema changes in the domain that owns the tables, then export
-through the schema barrel.
+through the schema barrel. The Alchemy stack also loads this barrel through
+`Drizzle.Schema`. The native Neon branch applies `apps/api/drizzle`, so the
+historical SQL files remain the bootstrap path and future Alchemy-generated SQL
+under `drizzle/alchemy` is picked up by the same resource. In infra this is
+modeled as separate generated and applied migration directories.
 
 The `site_labels` table joins `sites` to organization `labels` and enforces the
 same organization on both sides through composite organization foreign keys.
@@ -372,17 +376,10 @@ Run them with:
 pnpm --filter api test
 ```
 
-When database-backed integration coverage is required from the host, run the
-sandbox-aware wrapper:
-
-```bash
-pnpm api:test:with-sandbox
-```
-
 Database-backed integration tests create an isolated database from a base
 Postgres URL. By default they use the local app database URL, but
-`API_TEST_DATABASE_URL` or `TEST_DATABASE_URL` can point them at any sandbox
-Postgres port.
+`API_TEST_DATABASE_URL` or `TEST_DATABASE_URL` can point them at a specific
+Postgres instance for focused coverage.
 
 High-risk API changes should include tests for the service behavior,
 authorization behavior, repository behavior when SQL is involved, and HTTP

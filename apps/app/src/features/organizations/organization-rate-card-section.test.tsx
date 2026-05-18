@@ -1,15 +1,16 @@
+import type { OrganizationId } from "@ceird/identity-core";
 import type {
   RateCard,
   RateCardIdType,
   RateCardLineIdType,
 } from "@ceird/jobs-core";
 /* oxlint-disable vitest/prefer-import-in-mock */
-import { RegistryProvider } from "@effect-atom/atom-react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Effect } from "effect";
 import type * as EffectPackage from "effect";
 
+import { OrganizationConfigurationProvider } from "./organization-configuration-state";
 import { OrganizationRateCardSection } from "./organization-rate-card-section";
 
 type EffectClientMock = (...args: unknown[]) => unknown;
@@ -21,6 +22,7 @@ const alternateRateCardId =
 const lineId = "44444444-4444-4444-8444-444444444444" as RateCardLineIdType;
 const secondLineId =
   "55555555-5555-4555-8555-555555555555" as RateCardLineIdType;
+const organizationId = "team_111111111111111111111111" as OrganizationId;
 
 const {
   mockedCreateRateCard,
@@ -305,9 +307,9 @@ describe("organization rate card section", () => {
 
 function renderRateCardSection() {
   return render(
-    <RegistryProvider>
+    <OrganizationConfigurationProvider organizationId={organizationId}>
       <OrganizationRateCardSection />
-    </RegistryProvider>
+    </OrganizationConfigurationProvider>
   );
 }
 

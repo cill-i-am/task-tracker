@@ -7,7 +7,6 @@ server locally and as a Cloudflare Worker in deployed environments.
 
 ```bash
 pnpm --filter api dev
-pnpm --filter api sandbox:dev
 pnpm --filter api test
 pnpm --filter api check-types
 pnpm --filter api build
@@ -16,11 +15,15 @@ pnpm --filter api db:migrate
 pnpm --filter api db:studio
 ```
 
-For full app/API/Postgres development, prefer the root sandbox:
+The `db:*` commands are the package-local database workflow. Stage deploys and
+cloud-backed local development apply migrations through the root Alchemy stack's
+native Neon branch resource.
+
+For full cloud-backed app/API/Postgres development, prefer the root Alchemy
+stage:
 
 ```bash
-pnpm sandbox:up
-pnpm sandbox:logs -- --service api
+pnpm dev -- --stage codex-my-task
 ```
 
 ## Important Paths
@@ -61,4 +64,4 @@ Related docs:
 - [../../docs/architecture/auth.md](../../docs/architecture/auth.md)
 - [../../docs/architecture/jobs-v1-spec.md](../../docs/architecture/jobs-v1-spec.md)
 - [../../docs/architecture/data-layer.md](../../docs/architecture/data-layer.md)
-- [../../docs/architecture/sandbox-and-infra.md](../../docs/architecture/sandbox-and-infra.md)
+- [../../docs/architecture/local-development-and-infra.md](../../docs/architecture/local-development-and-infra.md)

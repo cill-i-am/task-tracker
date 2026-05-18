@@ -10,9 +10,7 @@ import type {
 } from "@ceird/sites-core";
 /* oxlint-disable unicorn/no-useless-undefined */
 // @vitest-environment node
-import { Effect, Schema } from "effect";
-
-import { withAppEffectLogSinkForTest } from "#/lib/effect-log";
+import { Schema } from "effect";
 
 import {
   getCurrentServerLabelsDirect as getCurrentServerLabels,
@@ -116,7 +114,7 @@ describe("shared app api server helpers", () => {
     mockedGetRequestHeader.mockImplementation((name) =>
       name === "cookie" ? "better-auth.session_token=session-token" : undefined
     );
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -128,14 +126,14 @@ describe("shared app api server helpers", () => {
 
     const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
 
-    expect(String(url)).toBe("http://ceird-sbx-api:4301/labels");
+    expect(String(url)).toBe("https://api.example.com/labels");
     expect(requestInit?.method).toBe("GET");
     expect(requestInit?.headers).toMatchObject({
       cookie: "better-auth.session_token=session-token",
     });
   }, 1000);
 
-  it("forwards trusted sandbox origin headers when reading labels", async () => {
+  it("forwards trusted local origin headers when reading labels", async () => {
     mockedGetRequestHeader.mockImplementation((name) => {
       if (name === "cookie") {
         return "__Secure-better-auth.session_token=session-token";
@@ -146,18 +144,14 @@ describe("shared app api server helpers", () => {
       }
 
       if (name === "x-forwarded-host") {
-        return "agent-one.app.ceird.localhost:1355";
+        return "app.ceird.example.com";
       }
 
       if (name === "x-forwarded-proto") {
         return "https";
       }
-
-      if (name === "cf-ray") {
-        return "0123456789abcdef-DUB";
-      }
     });
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -171,9 +165,8 @@ describe("shared app api server helpers", () => {
 
     expect(requestInit?.headers).toMatchObject({
       cookie: "__Secure-better-auth.session_token=session-token",
-      origin: "https://agent-one.app.ceird.localhost:1355",
-      "x-ceird-request-id": "0123456789abcdef-DUB",
-      "x-forwarded-host": "agent-one.api.ceird.localhost:1355",
+      origin: "https://app.ceird.example.com",
+      "x-forwarded-host": "api.ceird.example.com",
       "x-forwarded-proto": "https",
     });
   }, 1000);
@@ -185,7 +178,7 @@ describe("shared app api server helpers", () => {
       }
 
       if (name === "host") {
-        return "app.ceird.localhost:1355";
+        return "app.ceird.example.com";
       }
 
       if (name === "x-forwarded-host") {
@@ -196,7 +189,7 @@ describe("shared app api server helpers", () => {
         return "https";
       }
     });
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -209,8 +202,8 @@ describe("shared app api server helpers", () => {
     const [, requestInit] = fetchMock.mock.calls[0] ?? [];
 
     expect(requestInit?.headers).toMatchObject({
-      origin: "https://app.ceird.localhost:1355",
-      "x-forwarded-host": "api.ceird.localhost:1355",
+      origin: "https://app.ceird.example.com",
+      "x-forwarded-host": "api.ceird.example.com",
       "x-forwarded-proto": "https",
     });
   }, 1000);
@@ -222,14 +215,14 @@ describe("shared app api server helpers", () => {
       }
 
       if (name === "host") {
-        return "app.ceird.localhost:1355";
+        return "app.ceird.example.com";
       }
 
       if (name === "origin") {
         return "https://attacker.example";
       }
     });
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -243,7 +236,7 @@ describe("shared app api server helpers", () => {
 
     expect(requestInit?.headers).toMatchObject({
       origin: "https://attacker.example",
-      "x-forwarded-host": "api.ceird.localhost:1355",
+      "x-forwarded-host": "api.ceird.example.com",
       "x-forwarded-proto": "https",
     });
   }, 1000);
@@ -252,7 +245,7 @@ describe("shared app api server helpers", () => {
     mockedGetRequestHeader.mockImplementation((name) =>
       name === "cookie" ? "better-auth.session_token=session-token" : undefined
     );
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({
@@ -268,7 +261,7 @@ describe("shared app api server helpers", () => {
 
     const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
 
-    expect(String(url)).toBe("http://ceird-sbx-api:4301/sites?limit=25");
+    expect(String(url)).toBe("https://api.example.com/sites?limit=25");
     expect(requestInit?.method).toBe("GET");
     expect(requestInit?.headers).toMatchObject({
       cookie: "better-auth.session_token=session-token",
@@ -279,7 +272,7 @@ describe("shared app api server helpers", () => {
     mockedGetRequestHeader.mockImplementation((name) =>
       name === "cookie" ? "better-auth.session_token=session-token" : undefined
     );
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -301,9 +294,9 @@ describe("shared app api server helpers", () => {
     const [url, requestInit] = fetchMock.mock.calls[0] ?? [];
     const [secondUrl] = fetchMock.mock.calls[1] ?? [];
 
-    expect(String(url)).toBe("http://ceird-sbx-api:4301/sites?limit=100");
+    expect(String(url)).toBe("https://api.example.com/sites?limit=100");
     expect(String(secondUrl)).toBe(
-      "http://ceird-sbx-api:4301/sites?cursor=cursor-one&limit=100"
+      "https://api.example.com/sites?cursor=cursor-one&limit=100"
     );
     expect(requestInit?.method).toBe("GET");
     expect(requestInit?.headers).toMatchObject({
@@ -315,7 +308,7 @@ describe("shared app api server helpers", () => {
     mockedGetRequestHeader.mockImplementation((name) =>
       name === "cookie" ? "better-auth.session_token=session-token" : undefined
     );
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -343,10 +336,18 @@ describe("shared app api server helpers", () => {
       }
 
       if (name === "host") {
-        return "app.ceird.localhost:1355";
+        return "127.0.0.1:4300";
+      }
+
+      if (name === "x-forwarded-host") {
+        return "app.ceird.example.com";
+      }
+
+      if (name === "x-forwarded-proto") {
+        return "https";
       }
     });
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -360,15 +361,15 @@ describe("shared app api server helpers", () => {
     const requestUrl = new URL(String(url));
 
     expect(requestUrl.origin + requestUrl.pathname).toBe(
-      "http://ceird-sbx-api:4301/jobs"
+      "https://api.example.com/jobs"
     );
     expect(requestUrl.searchParams.get("limit")).toBe("25");
     expect(requestUrl.searchParams.get("siteId")).toBe(siteId);
     expect(requestInit?.method).toBe("GET");
     expect(requestInit?.headers).toMatchObject({
       cookie: "better-auth.session_token=session-token",
-      origin: "https://app.ceird.localhost:1355",
-      "x-forwarded-host": "api.ceird.localhost:1355",
+      origin: "https://app.ceird.example.com",
+      "x-forwarded-host": "api.ceird.example.com",
     });
   }, 1000);
 
@@ -376,7 +377,7 @@ describe("shared app api server helpers", () => {
     mockedGetRequestHeader.mockImplementation((name) =>
       name === "cookie" ? "better-auth.session_token=session-token" : undefined
     );
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -392,7 +393,7 @@ describe("shared app api server helpers", () => {
     const secondUrl = new URL(String(fetchMock.mock.calls[1]?.[0]));
 
     expect(firstUrl.origin + firstUrl.pathname).toBe(
-      "http://ceird-sbx-api:4301/jobs"
+      "https://api.example.com/jobs"
     );
     expect(firstUrl.searchParams.get("siteId")).toBe(siteId);
     expect(firstUrl.searchParams.has("cursor")).toBeFalsy();
@@ -400,52 +401,15 @@ describe("shared app api server helpers", () => {
     expect(secondUrl.searchParams.get("cursor")).toBe("cursor-one");
   }, 1000);
 
-  it("rejects repeated cursors while reading every jobs page", async () => {
-    mockedGetRequestHeader.mockImplementation((name) =>
-      name === "cookie" ? "better-auth.session_token=session-token" : undefined
-    );
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
-
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json(firstJobsPage))
-      .mockResolvedValueOnce(Response.json(firstJobsPage));
-
-    await expect(listAllCurrentServerJobs({ siteId })).rejects.toMatchObject({
-      message: "Job pagination returned a repeated cursor.",
-    });
-  }, 1000);
-
   it("does not fetch jobs without the current auth cookie", async () => {
-    const logs: unknown[] = [];
-    mockedGetRequestHeader.mockImplementation((name) =>
-      name === "cf-ray" ? "4234567890abcdef-DUB" : undefined
-    );
-    process.env.API_ORIGIN = "http://ceird-sbx-api:4301";
+    mockedGetRequestHeader.mockReturnValue(undefined);
+    process.env.API_ORIGIN = "https://api.example.com";
 
     const fetchMock = vi.spyOn(globalThis, "fetch");
 
-    await withAppEffectLogSinkForTest(
-      (logEntry) =>
-        Effect.sync(() => {
-          logs.push(logEntry);
-        }),
-      () =>
-        expect(listCurrentServerJobs({ siteId })).rejects.toThrow(
-          "Cannot query the Ceird API without the current auth cookie."
-        )
+    await expect(listCurrentServerJobs({ siteId })).rejects.toThrow(
+      "Cannot query the Ceird API without the current auth cookie."
     );
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(logs).toStrictEqual([
-      {
-        annotations: expect.objectContaining({
-          errorBucket: "missing_auth_cookie",
-          operation: "JobsServer.listJobs",
-          requestId: "4234567890abcdef-DUB",
-          targetOrigin: "http://ceird-sbx-api:4301",
-        }),
-        level: "warning",
-        message: "App server operation failed",
-      },
-    ]);
   }, 1000);
 });

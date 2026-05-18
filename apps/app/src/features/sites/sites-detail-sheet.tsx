@@ -2,7 +2,6 @@
 import type { JobListItem, JobPriority, JobStatus } from "@ceird/jobs-core";
 import { SERVICE_AREA_NOT_FOUND_ERROR_TAG } from "@ceird/sites-core";
 import type { SiteIdType, SiteOption } from "@ceird/sites-core";
-import { Result, useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 import {
   ArrowUpRight01Icon,
   Cancel01Icon,
@@ -57,8 +56,10 @@ import type {
   SiteCreateFieldErrors as SitesCreateFieldErrors,
 } from "./site-create-form";
 import {
-  sitesOptionsStateAtom,
-  updateSiteMutationAtomFamily,
+  getSitesAsyncErrorMessage,
+  isSitesAsyncFailure,
+  useSitesOptions,
+  useUpdateSiteMutation,
 } from "./sites-state";
 
 interface SitesDetailSheetProps {
@@ -99,22 +100,19 @@ export function SitesDetailSheet({
   relatedJobs = EMPTY_RELATED_JOBS,
   siteId,
   viewer,
-  // The detail sheet owns the editable site draft while the atom-backed option can refresh underneath it.
+  // The detail sheet owns the editable site draft while the provider-backed option can refresh underneath it.
   // react-doctor-disable-next-line
 }: SitesDetailSheetProps) {
   const navigate = useNavigate({ from: "/sites/$siteId" });
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const options = useAtomValue(sitesOptionsStateAtom).data;
+  const options = useSitesOptions();
   const currentSite = React.useMemo(
     () => options.sites.find((site) => site.id === siteId) ?? initialSite,
     [initialSite, options.sites, siteId]
   );
-  const updateResult = useAtomValue(updateSiteMutationAtomFamily(siteId));
-  const updateSite = useAtomSet(updateSiteMutationAtomFamily(siteId), {
-    mode: "promiseExit",
-  });
+  const [updateResult, updateSite] = useUpdateSiteMutation(siteId);
   const canEdit = hasOrganizationElevatedAccess(viewer.role);
   const serviceAreaGroups = React.useMemo(
     () => buildSiteServiceAreaSelectionGroups(options.serviceAreas),
@@ -341,19 +339,16 @@ export function SitesDetailSheet({
         >
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              {Result.builder(updateResult)
-                .onError((error) =>
-                  isServiceAreaNotFoundError(error) ? null : (
-                    <Alert variant="destructive" className="mx-5 mt-4 sm:mx-6">
-                      <HugeiconsIcon icon={Location01Icon} strokeWidth={2} />
-                      <AlertTitle>
-                        We couldn&apos;t update that site.
-                      </AlertTitle>
-                      <AlertDescription>{error.message}</AlertDescription>
-                    </Alert>
-                  )
-                )
-                .render()}
+              {isSitesAsyncFailure(updateResult) &&
+              !isServiceAreaNotFoundError(updateResult.error) ? (
+                <Alert variant="destructive" className="mx-5 mt-4 sm:mx-6">
+                  <HugeiconsIcon icon={Location01Icon} strokeWidth={2} />
+                  <AlertTitle>We couldn&apos;t update that site.</AlertTitle>
+                  <AlertDescription>
+                    {getSitesAsyncErrorMessage(updateResult.error)}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
 
               <section
                 aria-label={`${currentSite.name} overview`}

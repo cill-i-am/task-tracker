@@ -9,7 +9,6 @@ import {
   getCurrentServerServiceAreas,
   listAllCurrentServerSites,
 } from "#/features/api/app-api-server";
-import { observeAppRouteOperation } from "#/features/api/app-route-observability";
 import type { ActiveOrganizationSync } from "#/features/organizations/organization-access";
 import {
   assertOrganizationInternalRole,
@@ -50,57 +49,46 @@ function toSitesRouteOrganizationAccess(
 export async function loadSitesRouteData(
   organizationAccess?: SitesRouteOrganizationAccess
 ) {
-  return await observeAppRouteOperation(
-    {
-      activeOrganizationSyncRequired:
-        organizationAccess?.activeOrganizationSync.required,
-      currentOrganizationRole: organizationAccess?.currentOrganizationRole,
-      operation: "loadSitesRouteData",
-      routeId: "/sites",
-    },
-    async () => {
-      const resolvedOrganizationAccess =
-        organizationAccess ??
-        toSitesRouteOrganizationAccess(await ensureActiveOrganizationId());
+  const resolvedOrganizationAccess =
+    organizationAccess ??
+    toSitesRouteOrganizationAccess(await ensureActiveOrganizationId());
 
-      if (resolvedOrganizationAccess.activeOrganizationSync.required) {
-        return {
-          options: EMPTY_SITE_OPTIONS,
-          viewer: {
-            role: "member",
-            userId: resolvedOrganizationAccess.currentUserId,
-          } satisfies OrganizationViewer,
-        };
-      }
+  if (resolvedOrganizationAccess.activeOrganizationSync.required) {
+    return {
+      options: EMPTY_SITE_OPTIONS,
+      viewer: {
+        role: "member",
+        userId: resolvedOrganizationAccess.currentUserId,
+      } satisfies OrganizationViewer,
+    };
+  }
 
-      const activeRole = await resolveSitesRouteOrganizationRole(
-        resolvedOrganizationAccess
-      );
-
-      assertOrganizationInternalRole({ role: activeRole });
-
-      const [sites, serviceAreas] = await Promise.all([
-        listAllCurrentServerSites(),
-        hasOrganizationElevatedAccess(activeRole)
-          ? getCurrentServerServiceAreas()
-          : Promise.resolve({ items: [] }),
-      ]);
-      const siteOptions = {
-        serviceAreas: hasOrganizationElevatedAccess(activeRole)
-          ? serviceAreas.items.map(({ id, name }) => ({ id, name }))
-          : deriveServiceAreasFromSites(sites.items),
-        sites: sites.items,
-      } satisfies SitesOptionsResponse;
-
-      return {
-        options: siteOptions,
-        viewer: {
-          role: activeRole,
-          userId: resolvedOrganizationAccess.currentUserId,
-        } satisfies OrganizationViewer,
-      };
-    }
+  const activeRole = await resolveSitesRouteOrganizationRole(
+    resolvedOrganizationAccess
   );
+
+  assertOrganizationInternalRole({ role: activeRole });
+
+  const [sites, serviceAreas] = await Promise.all([
+    listAllCurrentServerSites(),
+    hasOrganizationElevatedAccess(activeRole)
+      ? getCurrentServerServiceAreas()
+      : Promise.resolve({ items: [] }),
+  ]);
+  const siteOptions = {
+    serviceAreas: hasOrganizationElevatedAccess(activeRole)
+      ? serviceAreas.items.map(({ id, name }) => ({ id, name }))
+      : deriveServiceAreasFromSites(sites.items),
+    sites: sites.items,
+  } satisfies SitesOptionsResponse;
+
+  return {
+    options: siteOptions,
+    viewer: {
+      role: activeRole,
+      userId: resolvedOrganizationAccess.currentUserId,
+    } satisfies OrganizationViewer,
+  };
 }
 
 async function resolveSitesRouteOrganizationRole(

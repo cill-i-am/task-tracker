@@ -5,7 +5,8 @@
 Ceird is a job-tracking application for trades and construction teams. The
 current product surface includes authentication, organizations, members,
 invitations, jobs, sites, comments, labels, cost lines, collaborator access,
-service areas, rate cards, activity, settings, and a local sandbox workflow.
+service areas, rate cards, activity, settings, and Alchemy-native local
+development.
 
 The repository is still greenfield. Backward compatibility is not a constraint;
 clear APIs, strong type boundaries, and simple architecture matter more than
@@ -36,9 +37,11 @@ apps/api Cloudflare Worker
   -> Cloudflare Queues for auth email
 ```
 
-Local sandbox development runs the app, API, and Postgres through Docker
-Compose. Production deployment uses Alchemy to provision Cloudflare and
-connect to Neon Postgres.
+Local development and production deployment both use the root Alchemy stack.
+Alchemy provisions Cloudflare Workers/Vite, Hyperdrive, queues, routes, and
+stage-scoped Neon branches. The app and API health endpoints expose the
+resolved Alchemy stack and stage identity so a running Worker can be tied back
+to the stage that produced it.
 
 ## Monorepo Ownership
 
@@ -49,9 +52,7 @@ connect to Neon Postgres.
 | `packages/comments-core` | Shared comment ID, body, base DTO, editable DTO, and add-comment schemas.                                              | Target ownership, authorization, repositories, or UI state.  |
 | `packages/identity-core` | Organization IDs, organization role schemas, input decoders, and shared identity DTOs.                                 | Better Auth adapter setup or persistence.                    |
 | `packages/jobs-core`     | Jobs branded IDs, domain schemas, DTO schemas, Effect `HttpApi` contract, and typed HTTP errors.                       | Repository SQL or React state.                               |
-| `packages/sandbox-core`  | Pure sandbox naming, identity, ports, URLs, health payload, env decoding, runtime spec, and registry types.            | Process execution or Docker commands.                        |
-| `packages/sandbox-cli`   | CLI command parsing, Docker Compose lifecycle, health waiting, registry persistence, and user-facing sandbox output.   | App/API domain behavior.                                     |
-| `packages/infra`         | Production infrastructure resources and deployment config.                                                             | Local dev orchestration.                                     |
+| `infra`                  | Root Alchemy stage config, Cloudflare resources, Neon branches, Hyperdrive, queues, and deployment helpers.            | App/API domain behavior.                                     |
 
 ## Request And Data Flow
 
@@ -94,10 +95,15 @@ The API exports a combined Drizzle schema from
   labels, collaborators, and cost lines.
 - `sitesSchema` contains sites and service areas. Site access notes remain on
   the site record; site comments are separate internal collaboration records.
-- `databaseSchema` merges both for the full database runtime.
-- `appSchema` exposes the app-domain subset for app-specific repositories.
+- `databaseSchema` merges authentication, comments, labels, sites, and jobs for
+  the full database runtime.
 
-Migrations live in `apps/api/drizzle`. The sandbox applies them during startup.
+Migrations live in `apps/api/drizzle`. Package-local Drizzle CLI migrations
+remain there for development history, while the Alchemy deploy path uses
+`Drizzle.Schema` through `infra/api-drizzle-schema.ts` to maintain checked-in
+snapshots under `apps/api/drizzle/alchemy`. The native Neon branch resource
+applies `apps/api/drizzle`, so historical SQL and future Alchemy-generated SQL
+share the same deploy-time migration table.
 
 ## Boundary Rules
 
@@ -116,4 +122,5 @@ Migrations live in `apps/api/drizzle`. The sandbox applies them during startup.
 - Authentication details: [auth.md](auth.md)
 - Jobs product and API detail: [jobs-v1-spec.md](jobs-v1-spec.md)
 - Data-layer rationale: [data-layer.md](data-layer.md)
-- Local and deployed runtime: [sandbox-and-infra.md](sandbox-and-infra.md)
+- Local and deployed runtime:
+  [local-development-and-infra.md](local-development-and-infra.md)

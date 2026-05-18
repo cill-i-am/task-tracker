@@ -6,7 +6,7 @@ describe how the major systems fit together; `superpowers/specs` and
 
 ## Start Here
 
-- [Development Workflow](development.md) explains install, local dev, sandbox,
+- [Development Workflow](development.md) explains install, local dev,
   testing, formatting, migrations, and deployment commands.
 - [System Overview](architecture/system-overview.md) maps the monorepo,
   runtime services, request flow, data flow, and code ownership boundaries.
@@ -17,8 +17,8 @@ describe how the major systems fit together; `superpowers/specs` and
   Cloudflare Worker.
 - [Shared Packages](architecture/packages.md) explains each package under
   `packages/` and what code belongs there.
-- [Sandbox And Infrastructure](architecture/sandbox-and-infra.md) explains the
-  per-worktree sandbox, Docker runtime, Portless aliases, Alchemy stack, and
+- [Local Development And Infrastructure](architecture/local-development-and-infra.md)
+  explains Alchemy stages, local environment setup, the root Alchemy stack, and
   production infrastructure.
 
 ## Existing Architecture Notes
@@ -53,8 +53,8 @@ change:
   behavior, migrations, or runtime configuration: `architecture/api.md`
 - Shared schemas, DTOs, IDs, errors, or package ownership:
   `architecture/packages.md`
-- Sandbox commands, Docker runtime, env loading, Portless behavior, or deploy
-  infrastructure: `architecture/sandbox-and-infra.md`
+- Alchemy stages, local environment setup, or deploy infrastructure:
+  `architecture/local-development-and-infra.md`
 - Cross-system behavior or workspace layout: `architecture/system-overview.md`
 
 Prefer short, source-backed updates over broad rewrite notes. Link to exact code

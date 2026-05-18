@@ -11,7 +11,6 @@ Use root commands for cross-service work:
 
 ```bash
 pnpm dev
-pnpm sandbox:up
 pnpm test
 pnpm check-types
 ```

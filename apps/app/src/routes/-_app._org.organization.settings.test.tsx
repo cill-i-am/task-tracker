@@ -174,7 +174,7 @@ describe("settings route loader", () => {
       } as const;
 
       expect(() => assertSettingsRouteAccess(context)).not.toThrow();
-      await expect(loadSettingsRoute(context)).resolves.toStrictEqual({
+      expect(loadSettingsRoute(context)).toStrictEqual({
         organizationLabels: [],
       });
       expect(mockedGetCurrentServerLabels).not.toHaveBeenCalled();

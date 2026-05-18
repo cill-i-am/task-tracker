@@ -1,11 +1,12 @@
+import type { OrganizationId } from "@ceird/identity-core";
 import type { ServiceArea, ServiceAreaIdType } from "@ceird/sites-core";
 /* oxlint-disable vitest/prefer-import-in-mock */
-import { RegistryProvider } from "@effect-atom/atom-react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Effect } from "effect";
 import type * as EffectPackage from "effect";
 
+import { OrganizationConfigurationProvider } from "./organization-configuration-state";
 import { OrganizationServiceAreasSection } from "./organization-service-areas-section";
 
 type EffectClientMock = (...args: unknown[]) => unknown;
@@ -14,6 +15,7 @@ const serviceAreaId =
   "11111111-1111-4111-8111-111111111111" as ServiceAreaIdType;
 const secondServiceAreaId =
   "22222222-2222-4222-8222-222222222222" as ServiceAreaIdType;
+const organizationId = "team_111111111111111111111111" as OrganizationId;
 
 const {
   mockedCreateServiceArea,
@@ -156,6 +158,44 @@ describe("organization service areas section", () => {
     expect(screen.getByText("Northside")).toBeVisible();
   });
 
+  it("prefers server rows when a list response includes a local service area id", async () => {
+    const serviceAreasResponse = createDeferredServiceAreasResponse();
+    mockedListServiceAreas.mockReturnValue(
+      Effect.promise(() => serviceAreasResponse.promise)
+    );
+    mockedCreateServiceArea.mockReturnValue(
+      Effect.succeed(
+        buildServiceArea("Local draft", "Pending local value", serviceAreaId)
+      )
+    );
+    const user = userEvent.setup();
+    renderServiceAreasSection();
+
+    await screen.findByRole("heading", { name: "Service areas" });
+    await user.type(
+      screen.getByLabelText("New service area name"),
+      "Local draft"
+    );
+    await user.click(screen.getByRole("button", { name: /Add service area/ }));
+
+    await expect(screen.findByText("Local draft")).resolves.toBeVisible();
+
+    act(() => {
+      serviceAreasResponse.resolve({
+        items: [
+          buildServiceArea(
+            "Server canonical",
+            "Fresh server value",
+            serviceAreaId
+          ),
+        ],
+      });
+    });
+
+    await expect(screen.findByText("Server canonical")).resolves.toBeVisible();
+    expect(screen.queryByText("Local draft")).not.toBeInTheDocument();
+  });
+
   it("edits a service area through the jobs client group", async () => {
     const user = userEvent.setup();
     renderServiceAreasSection();
@@ -268,9 +308,9 @@ describe("organization service areas section", () => {
 
 function renderServiceAreasSection() {
   return render(
-    <RegistryProvider>
+    <OrganizationConfigurationProvider organizationId={organizationId}>
       <OrganizationServiceAreasSection />
-    </RegistryProvider>
+    </OrganizationConfigurationProvider>
   );
 }
 

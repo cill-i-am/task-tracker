@@ -100,68 +100,6 @@ Labels are organization-level labels. Jobs and sites may assign labels through
 their owning-domain assignment endpoints, but the label definitions themselves
 are not job- or site-owned.
 
-## `@ceird/sandbox-core`
-
-Path: `packages/sandbox-core`
-
-Exports pure sandbox primitives:
-
-- sandbox name, ID, hostname slug, and compose project name validation
-- sandbox identity derivation from repo root, worktree path, and preferred branch
-  name when available
-- port allocation and URL-building shapes
-- health payload schemas
-- sandbox record reconciliation
-- runtime spec construction for Docker Compose
-- shared sandbox environment decoding under the `./node` export
-- registry record schemas under the `./node` export
-
-This package should stay side-effect-light. Process execution, Docker, and CLI
-presentation belong in `packages/sandbox-cli`.
-
-## `@ceird/sandbox-cli`
-
-Path: `packages/sandbox-cli`
-
-Implements the local sandbox command:
-
-- `up`
-- `down`
-- `status`
-- `list`
-- `logs`
-- `url`
-
-The CLI uses Effect CLI and Node platform services. It validates a sandbox name,
-loads shared environment, allocates ports, resolves runtime assets, starts
-Docker Compose, applies migrations, waits for service health, persists registry
-state, and formats status output.
-
-Docker runtime assets live under `packages/sandbox-cli/docker`:
-
-- `sandbox.compose.yaml`
-- `sandbox-dev.Dockerfile`
-- `sandbox-entrypoint.sh`
-- `sandbox-bootstrap.mjs`
-- `sandbox-bootstrap.d.mts`
-
-## `@ceird/infra`
-
-Path: `packages/infra`
-
-Defines production infrastructure with Alchemy v2:
-
-- stage config and resource naming in `src/stages.ts`
-- Neon Postgres connection inputs for Hyperdrive and migrations
-- Cloudflare Hyperdrive wrapper in `src/cloudflare-hyperdrive.ts`
-- Drizzle migration resource in `src/drizzle-migrations.ts`
-- Cloudflare app/API/queue stack in `src/cloudflare-stack.ts`
-- stack entrypoint in `alchemy.run.ts`
-
-The stack deploys a Cloudflare Worker API, a Cloudflare Vite app, auth email
-queues and dead-letter queue, and Hyperdrive backed by Neon Postgres. It can
-also run API Drizzle migrations during deployment when configured.
-
 ## Dependency Direction
 
 Current intended dependency direction:
@@ -172,7 +110,6 @@ apps/app
   -> @ceird/jobs-core
   -> @ceird/sites-core
   -> @ceird/labels-core
-  -> @ceird/sandbox-core
 
 apps/api
   -> @ceird/comments-core
@@ -180,10 +117,6 @@ apps/api
   -> @ceird/jobs-core
   -> @ceird/sites-core
   -> @ceird/labels-core
-  -> @ceird/sandbox-core
-
-packages/sandbox-cli
-  -> @ceird/sandbox-core
 
 packages/jobs-core
   -> @ceird/comments-core
@@ -201,12 +134,14 @@ packages/comments-core
 
 packages/labels-core
   -> @ceird/identity-core
-
-packages/infra
-  -> apps/api migrations and worker/app entrypoints by path
 ```
 
 Core packages should not depend on `apps/*`.
+
+Root infrastructure lives outside the package workspace in `infra`, with the
+deploy stack entrypoint at `alchemy.run.ts`. It may point at app/API deploy
+entrypoints and API migrations by path, but shared packages should not import
+root infra code.
 
 ## Testing
 
@@ -219,9 +154,7 @@ pnpm --filter @ceird/comments-core test
 pnpm --filter @ceird/jobs-core test
 pnpm --filter @ceird/sites-core test
 pnpm --filter @ceird/labels-core test
-pnpm --filter @ceird/sandbox-core test
-pnpm --filter @ceird/sandbox-cli test
-pnpm --filter @ceird/infra check-types
+pnpm run check-types:infra
 ```
 
 When changing a package contract, test both the package and the consuming app or

@@ -1,17 +1,19 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import type { AuthEmailQueueMessage } from "../../domains/identity/authentication/auth-email-queue.js";
 import type { ApiWorkerEnv } from "./env.js";
 import { apiWorkerEnvConfigMap } from "./env.js";
 
 function makeWorkerEnv(): ApiWorkerEnv {
   return {
     AUTH_APP_ORIGIN: "https://app.example.com",
+    AUTH_EMAIL: {
+      send: () => Promise.resolve({ messageId: "email_123" }),
+    },
     AUTH_EMAIL_FROM: "auth@example.com",
     AUTH_EMAIL_FROM_NAME: "Ceird",
     AUTH_EMAIL_QUEUE: {
       send: () => Promise.resolve(),
-    } as unknown as Queue<AuthEmailQueueMessage>,
+    } as unknown as Queue<unknown>,
     BETTER_AUTH_BASE_URL: "https://api.example.com/api/auth",
     BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
     DATABASE: {
@@ -23,6 +25,19 @@ function makeWorkerEnv(): ApiWorkerEnv {
 }
 
 describe("Cloudflare Worker environment config", () => {
+  it("exposes the Alchemy runtime stage to Effect config", () => {
+    const config = apiWorkerEnvConfigMap({
+      ...makeWorkerEnv(),
+      ALCHEMY_STACK_NAME: "ceird",
+      ALCHEMY_STAGE: "codex-alchemy-v2-native-migration",
+    });
+
+    expect(config.get("ALCHEMY_STACK_NAME")).toBe("ceird");
+    expect(config.get("ALCHEMY_STAGE")).toBe(
+      "codex-alchemy-v2-native-migration"
+    );
+  });
+
   it("exposes the Google Maps API key to Effect config", () => {
     const config = apiWorkerEnvConfigMap(makeWorkerEnv());
 

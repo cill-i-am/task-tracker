@@ -3,7 +3,6 @@ import { WorkItemId } from "@ceird/jobs-core";
 import type { WorkItemIdType } from "@ceird/jobs-core";
 import { Schema } from "effect";
 
-import { observeAppRouteOperation } from "#/features/api/app-route-observability";
 import { getCurrentServerJobDetail } from "#/features/jobs/jobs-server";
 import {
   assertOrganizationAdministrationRouteContext,
@@ -28,33 +27,22 @@ export function loadJobDetailRouteData(
     readonly currentOrganizationRole?: OrganizationRole | undefined;
   }
 ): Promise<JobDetailRouteData> {
-  return observeAppRouteOperation(
-    {
-      activeOrganizationSyncRequired:
-        organizationAccess?.activeOrganizationSync.required,
-      currentOrganizationRole: organizationAccess?.currentOrganizationRole,
-      operation: "loadJobDetailRouteData",
-      routeId: "/jobs/$jobId",
-    },
-    () => {
-      if (workItemId === "new") {
-        if (organizationAccess !== undefined) {
-          assertOrganizationAdministrationRouteContext(organizationAccess);
-          return Promise.resolve(CREATE_JOB_ROUTE_DATA);
-        }
-
-        return requireOrganizationAdministrationAccess().then(
-          () => CREATE_JOB_ROUTE_DATA
-        );
-      }
-
-      const decodedWorkItemId = decodeWorkItemId(workItemId);
-
-      if (organizationAccess?.activeOrganizationSync.required) {
-        return Promise.resolve(null);
-      }
-
-      return getCurrentServerJobDetail(decodedWorkItemId);
+  if (workItemId === "new") {
+    if (organizationAccess !== undefined) {
+      assertOrganizationAdministrationRouteContext(organizationAccess);
+      return Promise.resolve(CREATE_JOB_ROUTE_DATA);
     }
-  );
+
+    return requireOrganizationAdministrationAccess().then(
+      () => CREATE_JOB_ROUTE_DATA
+    );
+  }
+
+  const decodedWorkItemId = decodeWorkItemId(workItemId);
+
+  if (organizationAccess?.activeOrganizationSync.required) {
+    return Promise.resolve(null);
+  }
+
+  return getCurrentServerJobDetail(decodedWorkItemId);
 }

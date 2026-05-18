@@ -1,11 +1,17 @@
-declare const __SERVER_API_ORIGIN__: string | null | undefined;
+import { env as cloudflareEnv } from "cloudflare:workers";
 
-export function readConfiguredServerApiOrigin(): string | undefined {
-  return readProcessServerApiOrigin() ?? readBuildTimeServerApiOrigin();
+interface ServerApiOriginEnv {
+  readonly API_ORIGIN?: string | undefined;
 }
 
-function readProcessServerApiOrigin(): string | undefined {
-  const origin = (
+function readOptionalOrigin(value: string | undefined) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+export function readConfiguredServerApiOrigin(
+  runtimeEnv: ServerApiOriginEnv = cloudflareEnv
+): string | undefined {
+  const processEnvOrigin = (
     globalThis as unknown as {
       readonly process?: {
         readonly env?: Record<string, string | undefined>;
@@ -13,17 +19,8 @@ function readProcessServerApiOrigin(): string | undefined {
     }
   ).process?.env?.API_ORIGIN;
 
-  return readNonEmptyOrigin(origin);
-}
-
-function readBuildTimeServerApiOrigin(): string | undefined {
-  if (typeof __SERVER_API_ORIGIN__ !== "string") {
-    return undefined;
-  }
-
-  return readNonEmptyOrigin(__SERVER_API_ORIGIN__);
-}
-
-function readNonEmptyOrigin(origin: string | null | undefined) {
-  return typeof origin === "string" && origin.length > 0 ? origin : undefined;
+  return (
+    readOptionalOrigin(runtimeEnv.API_ORIGIN) ??
+    readOptionalOrigin(processEnvOrigin)
+  );
 }

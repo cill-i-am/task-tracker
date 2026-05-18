@@ -3,10 +3,8 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { ConfigProvider, Effect, Layer, Redacted } from "effect";
 import type { Pool } from "pg";
 
-import { authSchema } from "../../domains/identity/authentication/schema.js";
 import {
   AppDatabase,
-  AppEffectDrizzle,
   AppEffectSqlLive,
   makeAppDatabaseRuntimeLive,
 } from "./database.js";
@@ -44,7 +42,6 @@ describe("shared app database effect layers", () => {
       Effect.scoped(
         Effect.all({
           appDatabase: AppDatabase,
-          drizzle: AppEffectDrizzle,
           sqlClient: PgClient.PgClient,
         }).pipe(
           Effect.provide(
@@ -60,7 +57,6 @@ describe("shared app database effect layers", () => {
       : undefined;
 
     expect(services.appDatabase.pool).toBe(pool);
-    expect(services.drizzle.db).toBeDefined();
     expect(databaseUrl).toBe(SHARED_POOL_DATABASE_URL);
   }, 10_000);
 });
@@ -75,7 +71,7 @@ function makeTestAppDatabaseLayer(pool: Pool) {
   return Layer.succeed(
     AppDatabase,
     AppDatabase.make({
-      authDb: drizzle(pool, { schema: authSchema }),
+      authDb: drizzle({ client: pool }),
       pool,
     })
   );

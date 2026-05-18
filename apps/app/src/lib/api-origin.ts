@@ -12,22 +12,13 @@ function toURL(input: string): URL | undefined {
 function mapAppOriginToApiOrigin(url: URL): URL | undefined {
   const mapped = new URL(url.toString());
 
-  if (mapped.hostname.includes(".app.ceird.localhost")) {
-    mapped.hostname = mapped.hostname.replace(
-      ".app.ceird.localhost",
-      ".api.ceird.localhost"
-    );
-    return mapped;
-  }
-
-  if (mapped.hostname === "app.ceird.localhost") {
-    mapped.hostname = "api.ceird.localhost";
-    return mapped;
-  }
-
   if (mapped.hostname === "app.localhost") {
     mapped.hostname = "api.localhost";
     return mapped;
+  }
+
+  if (mapped.hostname.endsWith(".localhost")) {
+    return undefined;
   }
 
   if (
@@ -43,6 +34,16 @@ function mapAppOriginToApiOrigin(url: URL): URL | undefined {
 
     if (remainingLabels.length >= 2) {
       mapped.hostname = ["api", ...remainingLabels].join(".");
+      return mapped;
+    }
+  }
+
+  if (mapped.hostname.startsWith("app-")) {
+    const [appLabel, ...remainingLabels] = mapped.hostname.split(".");
+    const stageSlug = appLabel?.slice("app-".length);
+
+    if (stageSlug && remainingLabels.length >= 2) {
+      mapped.hostname = [`api-${stageSlug}`, ...remainingLabels].join(".");
       return mapped;
     }
   }

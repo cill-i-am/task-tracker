@@ -3,7 +3,6 @@ import type {
   ServiceAreaIdType,
   SitesOptionsResponse,
 } from "@ceird/sites-core";
-import { useAtomSet, useAtomValue } from "@effect-atom/atom-react";
 import {
   Add01Icon,
   ArrowRight01Icon,
@@ -61,7 +60,7 @@ import { ShortcutHint } from "#/hotkeys/hotkey-display";
 import { HOTKEYS } from "#/hotkeys/hotkey-registry";
 import { useAppHotkey } from "#/hotkeys/use-app-hotkey";
 
-import { sitesNoticeAtom, sitesOptionsStateAtom } from "./sites-state";
+import { useSitesNotice, useSitesOptions } from "./sites-state";
 
 const SITE_COMMAND_LIMIT = 25;
 
@@ -86,9 +85,8 @@ export function SitesPage({
   readonly viewer: OrganizationViewer;
 }) {
   const navigate = useNavigate({ from: "/sites" });
-  const options = useAtomValue(sitesOptionsStateAtom).data;
-  const notice = useAtomValue(sitesNoticeAtom);
-  const setNotice = useAtomSet(sitesNoticeAtom);
+  const options = useSitesOptions();
+  const [notice, clearNotice] = useSitesNotice();
   const canCreateSites = hasOrganizationElevatedAccess(viewer.role);
   const isMobile = useIsMobile();
   const [query, setQuery] = React.useState("");
@@ -254,7 +252,7 @@ export function SitesPage({
               type="button"
               size="xs"
               variant="ghost"
-              onClick={() => setNotice(null)}
+              onClick={clearNotice}
             >
               Dismiss
             </Button>

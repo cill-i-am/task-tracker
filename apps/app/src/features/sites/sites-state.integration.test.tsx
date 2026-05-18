@@ -12,11 +12,6 @@ import type {
   UpdateSiteResponse,
 } from "@ceird/sites-core";
 /* oxlint-disable vitest/prefer-import-in-mock */
-import {
-  RegistryProvider,
-  useAtomSet,
-  useAtomValue,
-} from "@effect-atom/atom-react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Effect, Exit, Schema } from "effect";
@@ -24,17 +19,18 @@ import type * as EffectPackage from "effect";
 import { useState } from "react";
 
 import {
-  addSiteCommentMutationAtomFamily,
-  assignSiteLabelMutationAtomFamily,
-  createSiteMutationAtom,
-  createAndAssignSiteLabelMutationAtomFamily,
-  refreshSiteCommentsAtomFamily,
-  removeSiteLabelMutationAtomFamily,
-  seedSitesOptionsState,
-  siteCommentsStateAtomFamily,
-  sitesNoticeAtom,
-  sitesOptionsStateAtom,
-  updateSiteMutationAtomFamily,
+  SitesStateProvider,
+  useAddSiteCommentMutation,
+  useAssignSiteLabelMutation,
+  useCreateAndAssignSiteLabelMutation,
+  useCreateSiteMutation,
+  useRefreshSiteCommentsMutation,
+  useRemoveSiteLabelMutation,
+  useReplaceSitesOptionsState,
+  useSiteComments,
+  useSitesNotice,
+  useSitesOptions,
+  useUpdateSiteMutation,
 } from "./sites-state";
 
 type EffectClientMock = (...args: unknown[]) => unknown;
@@ -46,6 +42,8 @@ const createdSiteId = "22222222-2222-4222-8222-222222222222" as SiteIdType;
 const urgentLabelId = "33333333-3333-4333-8333-333333333333" as LabelIdType;
 const warrantyLabelId = "44444444-4444-4444-8444-444444444444" as LabelIdType;
 let resolveCreatedLabel: (label: Label) => void = () => {};
+let resolveCreatedSite: (site: CreateSiteResponse) => void = () => {};
+let resolveUpdatedSite: (site: UpdateSiteResponse) => void = () => {};
 
 const {
   mockedAddSiteComment,
@@ -167,6 +165,60 @@ describe("sites state integration", () => {
       expect(screen.getByTestId("notice")).toHaveTextContent(
         "updated:Updated Site"
       );
+    }
+  );
+
+  it(
+    "does not show a created-site notice after switching organizations",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedCreateSite.mockReturnValue(
+        Effect.async<CreateSiteResponse>((resume) => {
+          resolveCreatedSite = (site) => resume(Effect.succeed(site));
+        })
+      );
+
+      const user = userEvent.setup();
+      renderSitesStateProbe();
+
+      await user.click(screen.getByRole("button", { name: "Create site" }));
+      await user.click(screen.getByRole("button", { name: "Switch org" }));
+      resolveCreatedSite(buildSite(createdSiteId, "Draft Site"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("last-exit")).toHaveTextContent("success");
+      });
+      expect(screen.getByTestId("site-names")).toHaveTextContent("Other Site");
+      expect(screen.getByTestId("notice")).toBeEmptyDOMElement();
+    }
+  );
+
+  it(
+    "does not show an updated-site notice after switching organizations",
+    {
+      timeout: 10_000,
+    },
+    async () => {
+      mockedUpdateSite.mockReturnValue(
+        Effect.async<UpdateSiteResponse>((resume) => {
+          resolveUpdatedSite = (site) => resume(Effect.succeed(site));
+        })
+      );
+
+      const user = userEvent.setup();
+      renderSitesStateProbe();
+
+      await user.click(screen.getByRole("button", { name: "Update site" }));
+      await user.click(screen.getByRole("button", { name: "Switch org" }));
+      resolveUpdatedSite(buildSite(existingSiteId, "Updated Site"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("last-exit")).toHaveTextContent("success");
+      });
+      expect(screen.getByTestId("site-names")).toHaveTextContent("Other Site");
+      expect(screen.getByTestId("notice")).toBeEmptyDOMElement();
     }
   );
 
@@ -576,72 +628,42 @@ function renderSitesStateProbe({
   readonly site?: CreateSiteResponse & UpdateSiteResponse;
 } = {}) {
   return render(
-    <RegistryProvider
-      initialValues={[
-        [
-          sitesOptionsStateAtom,
-          seedSitesOptionsState(organizationId, {
-            serviceAreas: [],
-            sites: [site],
-          }),
-        ],
-        [siteCommentsStateAtomFamily(existingSiteId), comments],
-      ]}
+    <SitesStateProvider
+      activeOrganizationId={organizationId}
+      initialSiteComments={new Map([[existingSiteId, comments]])}
+      options={{
+        serviceAreas: [],
+        sites: [site],
+      }}
     >
       <SitesStateProbe />
-    </RegistryProvider>
+    </SitesStateProvider>
   );
 }
 
 function SitesStateProbe() {
   const [lastExit, setLastExit] = useState("");
-  const assignSiteLabel = useAtomSet(
-    assignSiteLabelMutationAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const createSite = useAtomSet(createSiteMutationAtom, {
-    mode: "promiseExit",
-  });
-  const createAndAssignSiteLabel = useAtomSet(
-    createAndAssignSiteLabelMutationAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const removeSiteLabel = useAtomSet(
-    removeSiteLabelMutationAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const updateSite = useAtomSet(updateSiteMutationAtomFamily(existingSiteId), {
-    mode: "promiseExit",
-  });
-  const refreshComments = useAtomSet(
-    refreshSiteCommentsAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const addComment = useAtomSet(
-    addSiteCommentMutationAtomFamily(existingSiteId),
-    {
-      mode: "promiseExit",
-    }
-  );
-  const options = useAtomValue(sitesOptionsStateAtom).data;
-  const comments = useAtomValue(siteCommentsStateAtomFamily(existingSiteId));
-  const notice = useAtomValue(sitesNoticeAtom);
-  const setSitesOptions = useAtomSet(sitesOptionsStateAtom);
+  const assignSiteLabel = useAssignSiteLabelMutation(existingSiteId);
+  const [, createSite] = useCreateSiteMutation();
+  const createAndAssignSiteLabel =
+    useCreateAndAssignSiteLabelMutation(existingSiteId);
+  const removeSiteLabel = useRemoveSiteLabelMutation(existingSiteId);
+  const [, updateSite] = useUpdateSiteMutation(existingSiteId);
+  const refreshComments = useRefreshSiteCommentsMutation(existingSiteId);
+  const addComment = useAddSiteCommentMutation(existingSiteId);
+  const options = useSitesOptions();
+  const comments = useSiteComments(existingSiteId);
+  const [notice] = useSitesNotice();
+  const replaceSitesOptionsState = useReplaceSitesOptionsState();
 
   return (
     <div>
       <button
         type="button"
         onClick={() => {
-          void createSite(buildCreateSiteInput("Draft Site"));
+          void createSite(buildCreateSiteInput("Draft Site")).then((exit) => {
+            setLastExit(Exit.isFailure(exit) ? "failure" : "success");
+          });
         }}
       >
         Create site
@@ -649,7 +671,9 @@ function SitesStateProbe() {
       <button
         type="button"
         onClick={() => {
-          void updateSite(buildUpdateSiteInput("Updated Site"));
+          void updateSite(buildUpdateSiteInput("Updated Site")).then((exit) => {
+            setLastExit(Exit.isFailure(exit) ? "failure" : "success");
+          });
         }}
       >
         Update site
@@ -675,12 +699,10 @@ function SitesStateProbe() {
       <button
         type="button"
         onClick={() => {
-          setSitesOptions(
-            seedSitesOptionsState(otherOrganizationId, {
-              serviceAreas: [],
-              sites: [buildSite(existingSiteId, "Other Site")],
-            })
-          );
+          void replaceSitesOptionsState(otherOrganizationId, {
+            serviceAreas: [],
+            sites: [buildSite(existingSiteId, "Other Site")],
+          });
         }}
       >
         Switch org

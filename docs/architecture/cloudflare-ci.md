@@ -1,9 +1,10 @@
 # Cloudflare Alchemy Mainline CI
 
-Ceird deploys the Cloudflare POC through Alchemy v2. The stack uses
-`Cloudflare.state({ workerName: "ceird-alchemy-state" })`, so CI and
-local deploys share state through Cloudflare rather than through checked-in
-`.alchemy` files.
+Ceird deploys the Cloudflare stack through Alchemy v2. The stack uses
+`Cloudflare.state()`, so CI and local deploys share Cloudflare-backed remote
+state rather than checked-in `.alchemy` files. The stack does not configure a
+custom state-store Worker name; it relies on Alchemy's default shared
+Cloudflare state store.
 
 This repository is not using per-PR preview infrastructure. The deploy workflow
 applies changes to the single shared live Cloudflare stack after `main` passes
@@ -11,25 +12,23 @@ the `Build` workflow.
 
 ## Alchemy Stage
 
-Alchemy has its own CLI stage in addition to the application naming stage loaded
-from `CEIRD_INFRA_STAGE`. Both must be stable in CI.
+Alchemy stage is the only infrastructure environment axis. CI must pass it
+explicitly so GitHub Actions never falls back to Alchemy's default
+`dev_${USER}` stage.
 
 For the mainline deployment:
 
-- `ALCHEMY_STAGE=main`
-- `CEIRD_ALCHEMY_STAGE=main`
-- `CEIRD_INFRA_STAGE=production`
+- `pnpm alchemy deploy --stage main --yes`
+- `CEIRD_CLOUDFLARE=1`
 
-The `packages/infra/scripts/alchemy-env.mjs` wrapper injects `--stage` from
-those environment variables when the caller does not pass one explicitly. This
-prevents GitHub Actions from falling back to Alchemy's default
-`dev_${USER}` stage, which would create a separate state namespace on every
-runner.
+The stage is passed as a CLI flag rather than through a separate environment
+variable. This prevents accidental per-runner state namespaces if a future
+GitHub runner environment changes.
 
-The current live resource names are intended to be `ceird-production-*`. The
-original local POC used `ceird-preview-*` under the local
-`dev_cillianbarron` Alchemy stage; those resources should be destroyed before
-the first `ceird-production` deploy, rather than adopted into CI.
+Resource names are derived from the Alchemy stage, for example
+`ceird-main-api`, `ceird-pr-42-api`, or `ceird-dev-cillian-api`. Any resources
+from older stage naming schemes should be handled intentionally before the
+corresponding native-stage deploy, rather than adopted accidentally.
 
 ## GitHub Secrets And Variables
 
@@ -41,12 +40,23 @@ Secrets:
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 - `GOOGLE_MAPS_API_KEY`
-- `NEON_DATABASE_URL`
-- `NEON_MIGRATION_DATABASE_URL`
+- `NEON_API_KEY`
 
 Variables:
 
 - `AUTH_EMAIL_FROM_NAME`
+- `NEON_ORG_ID` (optional)
+- `PLAYWRIGHT_API_URL`
+- `PLAYWRIGHT_BASE_URL`
+
+E2E secrets:
+
+- `PLAYWRIGHT_DATABASE_URL`
+
+The `Build` workflow's Playwright E2E job selects the `main` environment only on
+trusted pushes to `main`, so those environment-scoped variables and secrets are
+not exposed to pull-request code while still testing the live Alchemy stage
+before deployment.
 
 `CLOUDFLARE_API_TOKEN` must be able to read and update the Cloudflare state
 store, deploy Workers, manage custom domains, queues, Hyperdrive, and bind
@@ -65,37 +75,40 @@ secret binding.
 The workflow:
 
 - installs dependencies with pnpm
-- type-checks the app and infra package
-- deploys through `pnpm infra:deploy`
+- type-checks the app, API, and root infra helpers
+- bootstraps Cloudflare state through `pnpm alchemy cloudflare bootstrap`
+- deploys through `pnpm alchemy deploy --stage main --yes`
 - serializes deploys with a GitHub Actions concurrency group
-- applies migrations by default through `CEIRD_APPLY_MIGRATIONS=true`
-- caps Hyperdrive origin database connections before migration attempts, then
-  makes the API Worker wait for migrations when migrations are enabled
+- lets Alchemy `Drizzle.Schema` update API migration snapshots before the native
+  Neon branch resource applies `apps/api/drizzle`
+- caps Hyperdrive origin database connections and points Hyperdrive at the typed
+  Neon branch origin
 
-Use the manual `apply_migrations=false` input only when intentionally testing a
-deploy that must not touch the database schema.
+`NEON_API_KEY` is used by Alchemy's Neon provider. The parent Alchemy stage
+defaults to `main`; that stage creates the shared Neon project and `main`
+branch, while other stages reference the `main` project and fork their own
+branch from `main`. Set `CEIRD_NEON_PARENT_BRANCH_PROTECTED=true` only when the
+Neon plan can create another protected branch. `CEIRD_NEON_HISTORY_RETENTION_SECONDS`
+defaults to `21600` so the workflow declares the provider-reported Neon
+retention window instead of re-planning it on every deploy.
 
-`NEON_DATABASE_URL` is the least-privilege app role used by Hyperdrive.
-`NEON_MIGRATION_DATABASE_URL` must be a direct Neon URL for a migration-capable
-role on the same host and database whenever migrations are enabled. Mainline CI
-enables migrations by default, so the GitHub `main` environment should always
-define both Neon URL secrets.
-
-This branch removes the PlanetScale provider dependency. If the shared Alchemy
-state still contains old `PlanetScale.*` resources, clean them up or reset the
-state before the first Neon deploy; otherwise Alchemy may be unable to plan
-deletions for resource types whose provider is no longer installed.
+The main deploy workflow sets `CEIRD_APP_HOSTNAME=app.ceird.app` and
+`CEIRD_API_HOSTNAME=api.ceird.app` so the production stage keeps the canonical
+app/API routes. Other stages use stage-scoped hostnames such as
+`app.<stage>.ceird.app` and `api.<stage>.ceird.app` unless explicitly
+overridden.
 
 `CEIRD_HYPERDRIVE_ORIGIN_CONNECTION_LIMIT` defaults to `5`, Cloudflare
 Hyperdrive's minimum. Keep it below the Neon connection budget so there is room
-for direct migration connections and provider control-plane checks. The
-migration resource retries transient PostgreSQL slot exhaustion, but unrelated
-SQL or schema failures still fail immediately.
+for direct migration connections and provider control-plane checks. The parent
+stage defaults `CEIRD_HYPERDRIVE_NAME` to `ceird-production-postgres` to adopt
+the existing Cloudflare Hyperdrive config; override it only for a fresh
+provider name or a deliberate replacement.
 
-The infra package currently pins `alchemy@2.0.0-beta.28` with a pnpm patch that
-adds missing `.js` extensions to the package's published CLI imports. Without
-that patch, the Node-based GitHub Actions deploy job fails while loading the
-Alchemy CLI before it can bootstrap the Cloudflare state store.
+The root infra helpers track the current Alchemy v2 beta line documented by
+v2.alchemy.run. Older local patches for beta.28 and
+`@distilled.cloud/cloudflare@0.15.2` were removed after beta.40 published native
+ESM-safe CLI imports and Cloudflare observability support.
 
 ## Alchemy Docs Notes
 
@@ -103,12 +116,11 @@ The Alchemy v2 CI guide recommends:
 
 - using `state: Cloudflare.state()` for Cloudflare-backed state
 - using GitHub Actions secrets/variables for CI credentials
-- setting an explicit stage with `alchemy deploy --stage <stage>`
+- setting an explicit stage with `pnpm alchemy deploy --stage <stage>`
 - optionally using `--adopt` when importing existing cloud resources into a
   fresh state store
 
 The guide also describes a more advanced `stacks/github.ts` approach where
-Alchemy creates scoped provider credentials and writes them into GitHub. We are
-not adding that yet; for this POC, manually managed GitHub environment secrets
-are simpler and avoid giving the stack token-management authority until we
-decide the deployment model is worth keeping.
+Alchemy creates scoped provider credentials and writes them into GitHub. Ceird
+currently uses manually managed GitHub environment secrets to avoid giving the
+stack token-management authority until that deployment model is needed.

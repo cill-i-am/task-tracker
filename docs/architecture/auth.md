@@ -105,18 +105,20 @@ Current config decisions:
 - Better Auth remains the native owner of
   `/api/auth/request-password-reset` and `/api/auth/reset-password`
 - rate limiting is enabled and stored in the database
-- rate limiting and session IP tracking read Cloudflare's `cf-connecting-ip`
-  header first, then `x-real-ip`, then `x-forwarded-for`
-- Better Auth's logger is wrapped by Ceird so expected credential failures are
-  bucketed, background-task failures are redacted, and sensitive fields are not
-  written directly to console
 - `BETTER_AUTH_BASE_URL` is required
 - `MCP_RESOURCE_URL` is optional; when omitted the valid MCP resource audience
   defaults to the API origin plus `/mcp`
 - `OAUTH_ISSUER_URL` is optional; when omitted OAuth/OIDC issuer metadata
   defaults to `BETTER_AUTH_BASE_URL`; explicit issuer URLs are canonicalized to
   match Better Auth discovery metadata before token signing uses them
-- trusted origins are restricted to known local and sandbox app origins
+- trusted origins are restricted to known local and configured app origins
+- canonical deployed app/API sibling domains share the configured parent cookie
+  domain, for example `app.ceird.app` and `api.ceird.app` use `ceird.app`
+- nested stage domains share only their stage parent, for example
+  `app.main.ceird.app` and `api.main.ceird.app` use `main.ceird.app`
+- legacy stage-prefixed sibling hosts such as `app-main.ceird.app` and
+  `api-main.ceird.app` keep host-scoped cookies because sharing `ceird.app`
+  would leak cookies across unrelated stages
 
 Current OAuth/OIDC discovery endpoints provided by Better Auth under the auth
 base path:
@@ -185,11 +187,9 @@ Current defaulted value:
 
 - `AUTH_EMAIL_FROM_NAME`, which defaults to `"Ceird"`
 
-Environment variables configure credentials and email metadata, not transport
-topology. Local Node and sandbox runtimes compose `AuthEmailTransport.Local`,
-which uses the Cloudflare REST API only when `CLOUDFLARE_ACCOUNT_ID` and
-`CLOUDFLARE_API_TOKEN` are present; otherwise it falls back to deterministic
-development delivery. The Cloudflare Worker composes
+Environment variables configure email metadata, not transport topology.
+Package-local Node runtimes compose `AuthEmailTransport.Local`, which uses
+deterministic development delivery. The Cloudflare Worker composes
 `AuthEmailTransport.CloudflareBinding` directly and fails fast when the
 `AUTH_EMAIL` Worker binding is missing.
 
@@ -203,15 +203,12 @@ boundary in `apps/api`:
   verification, and organization invitation mail
 - `apps/api/src/domains/identity/authentication/auth-email-transport.ts`
   defines the provider-neutral `AuthEmailTransport` capability and its
-  `Development`, `CloudflareApi`, `CloudflareBinding`, and `Local` layers
+  `Development`, `CloudflareBinding`, and `Local` layers
 - `AuthEmailSender` validates each payload, renders the auth email content,
   and keeps the transport contract provider-neutral through `deliveryKey`
 - `apps/api/src/domains/identity/authentication/cloudflare-email-binding-auth-email-transport.ts`
   provides the Cloudflare Workers Email Service binding adapter for deployed
   queue consumers
-- `apps/api/src/domains/identity/authentication/cloudflare-auth-email-transport.ts`
-  keeps the Cloudflare REST API adapter available for explicit local/manual
-  delivery
 
 Rule:
 
@@ -227,7 +224,7 @@ Rule:
   the domain contract
 - verification and organization invitation mail now pass through the same
   `AuthEmailSender` boundary
-- Node and sandbox runtimes send auth email through the direct promise bridge
+- package-local Node runtimes send auth email through the direct promise bridge
   with `AuthEmailTransport.Local`
 - the Cloudflare Worker runtime enqueues auth email work to Cloudflare Queues
   and consumes it from the same Worker through the `queue()` handler with
@@ -235,7 +232,7 @@ Rule:
 
 ### Cloudflare Queue Scheduling
 
-In the Cloudflare POC runtime, auth email delivery is scheduled through
+In the Cloudflare Worker runtime, auth email delivery is scheduled through
 Cloudflare Queues instead of `queueMicrotask`.
 
 The API Worker enqueues validated auth email messages during Better Auth hooks.
@@ -243,8 +240,7 @@ The same Worker consumes the queue and sends through the existing
 `AuthEmailSender` and Cloudflare transport boundary. Queue retries and the
 dead-letter queue own durable failure handling.
 
-The Node sandbox runtime continues to use direct promise-based delivery until
-the sandbox is moved to Workers.
+Package-local Node runtime continues to use direct promise-based delivery.
 
 ### Base URL Strategy
 
@@ -256,26 +252,18 @@ Rules:
 
 - the API fails fast if `BETTER_AUTH_BASE_URL` is missing
 - we do not derive the backend auth base URL from request hosts anymore
-- local, test, and sandbox entry points are responsible for providing the value
-- deployed Cloudflare requests rely on the configured client IP header order:
-  `cf-connecting-ip`, `x-real-ip`, then `x-forwarded-for`
+- local, test, and Alchemy entry points are responsible for providing the value
 
 Current defaults by entry point:
 
-- local Portless dev injects `https://api.ceird.localhost:1355`
-- Playwright auth e2e injects `http://127.0.0.1:3001`
-- sandbox containers inject one explicit auth origin into both sides:
-  `BETTER_AUTH_BASE_URL` for the API and `VITE_AUTH_ORIGIN` for the app
-- when sandbox aliases are healthy, that injected origin is
-  `https://<slug>.api.ceird.localhost:1355`
-- when sandbox aliases are unavailable, that injected origin falls back to the
-  loopback API URL such as `http://127.0.0.1:4301`
+- package-local development injects `http://127.0.0.1:3001`
+- Playwright's package-local fallback injects `http://127.0.0.1:3001`
+- Alchemy stages inject one explicit auth origin into both sides through
+  `BETTER_AUTH_BASE_URL` for the API and app/API origin env for the app
 - local dev and Playwright launchers inject `AUTH_EMAIL_FROM` and
   `AUTH_EMAIL_FROM_NAME`
-- local dev uses Cloudflare email when real Cloudflare API credentials are
-  present, otherwise it uses the deterministic development transport
-- sandbox startup preflight validates the auth email sender address and allows
-  blank Cloudflare API credentials for development fallback
+- local dev uses the deterministic development transport
+- Alchemy stage config validates the deployed auth email sender address
 
 ### Trusted Origins and CORS
 
@@ -287,11 +275,10 @@ Allowed by default:
 - `http://localhost:3000`
 - `http://127.0.0.1:4173`
 - `http://localhost:4173`
-- `http://app.ceird.localhost:1355`
-- `https://app.ceird.localhost:1355`
-- sandbox app origins matching `http://*.app.ceird.localhost:1355`
-- sandbox app origins matching `https://*.app.ceird.localhost:1355`
-- the app-side origin derived from a configured `PORTLESS_URL`
+
+The configured `AUTH_APP_ORIGIN` is also added exactly when it is a valid
+absolute origin. The old worktree sandbox alias patterns are not trusted by
+default; Alchemy stages provide explicit app/API origins through stack env.
 
 Rules:
 
@@ -334,8 +321,8 @@ The API does not maintain a parallel app-specific session store.
 
 ### Database Wiring
 
-`apps/api/src/domains/identity/authentication/database.ts` owns Postgres access
-for the auth slice.
+`apps/api/src/platform/database/database.ts` owns Postgres access for the API,
+including the auth slice.
 
 Responsibilities:
 
@@ -375,11 +362,13 @@ Rules:
 
 The app resolves its auth base URL in two steps:
 
-- prefer an explicitly injected `VITE_AUTH_ORIGIN` when one exists
-- otherwise rewrite the current app origin to the matching API origin
+- prefer the explicitly injected API origin: `API_ORIGIN` on the app server and
+  `VITE_API_ORIGIN` in the browser bundle
+- otherwise rewrite the current app origin to the matching API origin in the
+  narrow fallback cases below
 
-The fallback host-rewrite behavior is intentionally limited to local and
-Portless-style development.
+The fallback host-rewrite behavior is intentionally limited to local and legacy
+localhost-alias development.
 
 ### OAuth Consent UI
 
@@ -399,26 +388,30 @@ Current behavior:
 
 Current mappings:
 
-- `*.app.ceird.localhost` -> `*.api.ceird.localhost`
-- `app.ceird.localhost` -> `api.ceird.localhost`
+- injected `API_ORIGIN` or `VITE_API_ORIGIN` wins when present
+- conventional `app.<domain>` origins map to matching `api.<domain>` origins
+- `app.localhost` maps to `api.localhost`
 - `localhost:3000` or `127.0.0.1:3000` -> port `3001`
 - `localhost:4173` or `127.0.0.1:4173` -> port `3001`
 
 This lets the app talk to the API auth handler without hardcoding a single
-deployment URL.
+deployment URL while keeping removed sandbox worktree aliases out of the
+runtime fallback path.
 
 ### Server-Side Session Lookup Bridge
 
-`apps/app/src/features/auth/get-server-auth-session.ts` is the server-side
-session bridge used by the TanStack Start app.
+`apps/app/src/features/auth/server-session.ts` is the server-side session
+bridge used by the TanStack Start app.
 
 Responsibilities:
 
-- run only on the server via `createServerFn`
+- run only on the server via `createServerOnlyFn`
 - read the incoming request `cookie` header
-- derive the correct auth base URL from the request protocol and host
-- create a request-scoped Better Auth client
-- call `getSession` against the API while forwarding the original cookies
+- resolve the server API origin from the Worker `API_ORIGIN` binding or local
+  process env
+- normalize Better Auth secure cookie names for local API handoffs
+- call `/api/auth/get-session` against the API while forwarding the original
+  cookies and public forwarded host/protocol headers
 
 Important rule:
 
@@ -676,11 +669,6 @@ messages.
 Rules:
 
 - we do not surface raw Better Auth error payloads directly to users
-- we do not write raw Better Auth logger args directly to stderr; email
-  addresses, URL/token-shaped values, cookies, sessions, secrets, and passwords
-  are redacted before logging
-- expected credential failures use stable auth failure buckets instead of
-  high-severity stderr noise
 - rate-limit responses (`429`) map to a specific retry-later message
 - other sign-in failures map to a generic credentials-oriented message
 - other sign-up failures map to a generic account-creation message
@@ -761,18 +749,19 @@ These are the important current rules we are following.
 - `apps/api/src/domains/identity/authentication/auth-email.ts`
   Defines the auth email boundary for password reset, verification, and
   organization invitation delivery.
-- `apps/api/src/domains/identity/authentication/cloudflare-auth-email-transport.ts`
-  Implements the current auth email transport adapter with Cloudflare.
+- `apps/api/src/domains/identity/authentication/cloudflare-email-binding-auth-email-transport.ts`
+  Implements the deployed auth email transport adapter for the Cloudflare Email
+  Worker binding.
 - `apps/api/src/domains/identity/authentication/schema.ts`
   Defines auth persistence tables.
-- `apps/api/src/domains/identity/authentication/database.ts`
-  Wires Postgres and Drizzle for the auth slice.
+- `apps/api/src/platform/database/schema.ts`
+  Re-exports the auth schema into the shared Drizzle database schema.
 
 ### Frontend
 
 - `apps/app/src/lib/auth-client.ts`
   Shared Better Auth client and app-origin to API-origin mapping.
-- `apps/app/src/features/auth/get-server-auth-session.ts`
+- `apps/app/src/features/auth/server-session.ts`
   SSR bridge that forwards cookies to Better Auth session lookup.
 - `apps/app/src/features/auth/require-authenticated-session.ts`
   Protected-route guard.

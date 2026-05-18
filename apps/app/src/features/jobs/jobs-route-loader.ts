@@ -8,9 +8,7 @@ import type {
 } from "@ceird/jobs-core";
 import type { Label } from "@ceird/labels-core";
 import type { ServiceAreaOption, SiteOption } from "@ceird/sites-core";
-import { Cause, Effect, Exit } from "effect";
 
-import { observeAppRouteOperation } from "#/features/api/app-route-observability";
 import {
   getCurrentServerJobDetail,
   getCurrentServerJobOptions,
@@ -40,7 +38,6 @@ const EMPTY_JOBS_LIST: JobListResponse = {
   items: [],
   nextCursor: undefined,
 };
-const EXTERNAL_JOB_DETAIL_CONCURRENCY = 4;
 
 interface JobsRouteOrganizationAccess {
   readonly activeOrganizationId: OrganizationId;
@@ -62,73 +59,56 @@ function toJobsRouteOrganizationAccess(
 export async function loadJobsRouteData(
   organizationAccess?: JobsRouteOrganizationAccess
 ) {
-  return await observeAppRouteOperation(
-    {
-      activeOrganizationSyncRequired:
-        organizationAccess?.activeOrganizationSync.required,
-      currentOrganizationRole: organizationAccess?.currentOrganizationRole,
-      operation: "loadJobsRouteData",
-      routeId: "/jobs",
-    },
-    async () => {
-      const resolvedOrganizationAccess =
-        organizationAccess ??
-        toJobsRouteOrganizationAccess(await ensureActiveOrganizationId());
+  const resolvedOrganizationAccess =
+    organizationAccess ??
+    toJobsRouteOrganizationAccess(await ensureActiveOrganizationId());
 
-      if (resolvedOrganizationAccess.activeOrganizationSync.required) {
-        return {
-          list: EMPTY_JOBS_LIST,
-          options: EMPTY_JOBS_OPTIONS,
-          viewer: {
-            role: "member",
-            userId: resolvedOrganizationAccess.currentUserId,
-          } satisfies JobsViewer,
-        };
-      }
-
-      const listPromise = listAllCurrentServerJobs({});
-      const activeRole = await resolveJobsRouteOrganizationRole(
-        resolvedOrganizationAccess
-      );
-      const viewer = {
-        role: activeRole,
+  if (resolvedOrganizationAccess.activeOrganizationSync.required) {
+    return {
+      list: EMPTY_JOBS_LIST,
+      options: EMPTY_JOBS_OPTIONS,
+      viewer: {
+        role: "member",
         userId: resolvedOrganizationAccess.currentUserId,
-      } satisfies JobsViewer;
-      const internalOptionsPromise = canUseInternalJobOptions(viewer)
-        ? getCurrentServerJobOptions()
-        : undefined;
-      const list = await listPromise;
-      let options = EMPTY_JOBS_OPTIONS;
+      } satisfies JobsViewer,
+    };
+  }
 
-      if (internalOptionsPromise) {
-        options = await internalOptionsPromise;
-      } else if (isExternalJobsViewer(viewer)) {
-        options = await loadExternalJobsScopedOptions(list);
-      }
-
-      return {
-        list,
-        options,
-        viewer,
-      };
-    }
+  const listPromise = listAllCurrentServerJobs({});
+  const activeRole = await resolveJobsRouteOrganizationRole(
+    resolvedOrganizationAccess
   );
+  const viewer = {
+    role: activeRole,
+    userId: resolvedOrganizationAccess.currentUserId,
+  } satisfies JobsViewer;
+  const internalOptionsPromise = canUseInternalJobOptions(viewer)
+    ? getCurrentServerJobOptions()
+    : undefined;
+  const list = await listPromise;
+  let options = EMPTY_JOBS_OPTIONS;
+
+  if (internalOptionsPromise) {
+    options = await internalOptionsPromise;
+  } else if (isExternalJobsViewer(viewer)) {
+    options = await loadExternalJobsScopedOptions(list);
+  }
+
+  return {
+    list,
+    options,
+    viewer,
+  };
 }
 
 async function loadExternalJobsScopedOptions(
   list: JobListResponse
 ): Promise<JobOptionsResponse> {
-  const detailsExit = await Effect.forEach(
-    list.items,
-    (item) => Effect.promise(() => getCurrentServerJobDetail(item.id)),
-    { concurrency: EXTERNAL_JOB_DETAIL_CONCURRENCY }
-  ).pipe(Effect.runPromiseExit);
+  const details = await Promise.all(
+    list.items.map((item) => getCurrentServerJobDetail(item.id))
+  );
 
-  if (Exit.isFailure(detailsExit)) {
-    throw Cause.squash(detailsExit.cause);
-  }
-
-  return deriveExternalJobsScopedOptions(detailsExit.value);
+  return deriveExternalJobsScopedOptions(details);
 }
 
 function deriveExternalJobsScopedOptions(

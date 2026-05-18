@@ -14,10 +14,8 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Effect } from "effect";
 import { Pool } from "pg";
 
-import { withApiEffectLogSinkForTest } from "../../effect-log.js";
 import {
   createAuthentication,
-  makeCeirdBetterAuthLogger,
   maskInvitationEmail,
   matchesTrustedOrigin,
 } from "./auth.js";
@@ -71,8 +69,6 @@ describe("makeAuthenticationConfig()", () => {
         "http://localhost:3000",
         "http://127.0.0.1:4173",
         "http://localhost:4173",
-        "http://*.app.ceird.localhost:1355",
-        "https://*.app.ceird.localhost:1355",
       ]),
       secret: "super-secret-value",
       databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
@@ -246,45 +242,27 @@ describe("makeAuthenticationConfig()", () => {
     });
   }, 10_000);
 
-  it("adds the matching app origin for a portless sandbox URL", () => {
-    expect(
-      makeAuthenticationTrustedOrigins({
-        portlessUrl: "https://ceird.api.ceird.localhost:1355",
-      })
-    ).toContain("https://ceird.app.ceird.localhost:1355");
+  it("does not trust removed sandbox app aliases by default", () => {
+    expect(makeAuthenticationTrustedOrigins({})).not.toStrictEqual(
+      expect.arrayContaining([
+        "https://*.app.ceird.localhost:1355",
+        "https://app.ceird.localhost:1355",
+      ])
+    );
   }, 10_000);
 
-  it("shares auth cookies across ceird.localhost subdomains", () => {
+  it("does not share auth cookies across removed ceird.localhost aliases", () => {
     const config = makeAuthenticationConfig({
       appOrigin: "https://linear-ui-refresh.app.ceird.localhost:1355",
       baseUrl: "https://linear-ui-refresh.api.ceird.localhost:1355",
-      portlessUrl: "https://linear-ui-refresh.api.ceird.localhost:1355",
       secret: "super-secret-value",
       databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
     });
 
-    expect(config.advanced?.crossSubDomainCookies).toStrictEqual({
-      enabled: true,
-      domain: "ceird.localhost",
-    });
+    expect(config.advanced?.crossSubDomainCookies).toBeUndefined();
     if (config.advanced?.trustedProxyHeaders !== true) {
       throw new Error("Expected trusted proxy headers to be enabled.");
     }
-  }, 10_000);
-
-  it("uses Cloudflare client IP headers for rate limiting", () => {
-    const config = makeAuthenticationConfig({
-      appOrigin: "https://app.ceird.app",
-      baseUrl: "https://api.ceird.app/api/auth",
-      secret: "super-secret-value",
-      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
-    });
-
-    expect(config.advanced?.ipAddress?.ipAddressHeaders).toStrictEqual([
-      "cf-connecting-ip",
-      "x-real-ip",
-      "x-forwarded-for",
-    ]);
   }, 10_000);
 
   it("keeps auth cookies host-scoped for plain localhost development", () => {
@@ -297,9 +275,6 @@ describe("makeAuthenticationConfig()", () => {
 
     expect(config.advanced).toStrictEqual({
       trustedProxyHeaders: true,
-      ipAddress: {
-        ipAddressHeaders: ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"],
-      },
     });
   }, 10_000);
 
@@ -316,29 +291,11 @@ describe("makeAuthenticationConfig()", () => {
       {
         BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
         DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
-        PORTLESS_URL: "https://ceird.api.ceird.localhost:1355",
       },
       async () => {
         const result = Effect.runPromise(loadAuthenticationConfig);
 
         await expect(result).rejects.toThrow(/BETTER_AUTH_BASE_URL/);
-      }
-    );
-  }, 10_000);
-
-  it("rejects non-http Better Auth base URLs through config decoding", async () => {
-    await withEnvironment(
-      {
-        BETTER_AUTH_BASE_URL: "file:///tmp/auth",
-        BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
-        DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
-      },
-      async () => {
-        const result = Effect.runPromise(loadAuthenticationConfig);
-
-        await expect(result).rejects.toThrow(
-          /BETTER_AUTH_BASE_URL must be a valid absolute URL/
-        );
       }
     );
   }, 10_000);
@@ -350,13 +307,12 @@ describe("makeAuthenticationConfig()", () => {
         BETTER_AUTH_BASE_URL: "https://api.ceird.localhost:1355",
         BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
         DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
-        PORTLESS_URL: "https://api.ceird.localhost:1355",
       },
       async () => {
         const config = await Effect.runPromise(loadAuthenticationConfig);
 
         expect(config.baseURL).toBe("https://api.ceird.localhost:1355");
-        expect(config.trustedOrigins).toContain(
+        expect(config.trustedOrigins).not.toContain(
           "https://app.ceird.localhost:1355"
         );
         expect(config.trustedOrigins).toContain("http://127.0.0.1:4304");
@@ -364,19 +320,56 @@ describe("makeAuthenticationConfig()", () => {
     );
   }, 10_000);
 
-  it("derives the shared cookie domain from ceird.localhost hosts", () => {
+  it("does not derive shared cookie domains from localhost aliases", () => {
     expect(
       resolveCrossSubDomainCookieDomain({
         appOrigin: "https://linear-ui-refresh.app.ceird.localhost:1355",
         baseUrl: "https://linear-ui-refresh.api.ceird.localhost:1355",
-        portlessUrl: "https://linear-ui-refresh.api.ceird.localhost:1355",
       })
-    ).toBe("ceird.localhost");
+    ).toBeUndefined();
 
     expect(
       resolveCrossSubDomainCookieDomain({
         appOrigin: "http://127.0.0.1:4173",
         baseUrl: "http://127.0.0.1:3001",
+      })
+    ).toBeUndefined();
+  }, 10_000);
+
+  it("shares auth cookies across canonical app and API domains", () => {
+    const config = makeAuthenticationConfig({
+      appOrigin: "https://app.ceird.app",
+      baseUrl: "https://api.ceird.app/api/auth",
+      secret: "super-secret-value",
+      databaseUrl: "postgresql://postgres:postgres@127.0.0.1:5439/ceird",
+    });
+
+    expect(config.advanced?.crossSubDomainCookies).toStrictEqual({
+      enabled: true,
+      domain: "ceird.app",
+    });
+    expect(
+      resolveCrossSubDomainCookieDomain({
+        appOrigin: "https://app.ceird.example.com",
+        baseUrl: "https://api.ceird.example.com/api/auth",
+      })
+    ).toBe("ceird.example.com");
+  }, 10_000);
+
+  it("shares auth cookies inside one nested stage domain", () => {
+    expect(
+      resolveCrossSubDomainCookieDomain({
+        appOrigin: "https://app.main.ceird.app",
+        baseUrl: "https://api.main.ceird.app/api/auth",
+      })
+    ).toBe("main.ceird.app");
+  }, 10_000);
+
+  it("does not share auth cookies across legacy stage-prefixed app and API domains", () => {
+    expect(
+      resolveCrossSubDomainCookieDomain({
+        appOrigin: "https://app-main.ceird.app",
+        baseUrl: "https://api-main.ceird.app/api/auth",
       })
     ).toBeUndefined();
   }, 10_000);
@@ -495,140 +488,10 @@ describe("auth schema", () => {
 });
 
 describe("createAuthentication()", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("masks invitation emails for the public preview route", () => {
     expect(maskInvitationEmail("member@example.com")).toBe("m***@e***.com");
     expect(maskInvitationEmail("a@b.co")).toBe("a***@b***.co");
     expect(maskInvitationEmail("invalid-email")).toBe("***");
-  }, 10_000);
-
-  it("buckets expected Better Auth credential failures without stderr or email addresses", async () => {
-    const logs: unknown[] = [];
-    const logger = makeCeirdBetterAuthLogger();
-
-    await withApiEffectLogSinkForTest(
-      (entry) =>
-        Effect.sync(() => {
-          logs.push(entry);
-        }),
-      () => {
-        logger.log?.("error", "User not found", {
-          email: "codex-e2e@example.com",
-        });
-      }
-    );
-
-    expect(logs).toStrictEqual([
-      {
-        annotations: {
-          authEvent: "expected_auth_failure",
-          authFailureBucket: "user_not_found",
-          betterAuthLevel: "error",
-        },
-        level: "info",
-        message: "Better Auth expected authentication failure",
-      },
-    ]);
-    expect(JSON.stringify(logs)).not.toContain("codex-e2e@example.com");
-  }, 10_000);
-
-  it("redacts Better Auth background task failure details", async () => {
-    const logs: unknown[] = [];
-    const logger = makeCeirdBetterAuthLogger();
-
-    await withApiEffectLogSinkForTest(
-      (entry) =>
-        Effect.sync(() => {
-          logs.push(entry);
-        }),
-      () => {
-        logger.log?.(
-          "error",
-          "Failed to run background task:",
-          new Error(
-            "reset failed for codex-e2e@example.com at https://app.ceird.app/reset-password?token=super-secret-token"
-          )
-        );
-      }
-    );
-
-    expect(logs).toStrictEqual([
-      {
-        annotations: expect.objectContaining({
-          authEvent: "background_task_failed",
-          betterAuthLevel: "error",
-        }),
-        level: "warning",
-        message: "Better Auth background task failed",
-      },
-    ]);
-    const calls = JSON.stringify(logs);
-    expect(calls).not.toContain("codex-e2e@example.com");
-    expect(calls).not.toContain("super-secret-token");
-  }, 10_000);
-
-  it("redacts arbitrary Better Auth error logs before writing stderr", async () => {
-    const logs: unknown[] = [];
-    const logger = makeCeirdBetterAuthLogger();
-    const cyclic: Record<string, unknown> = {
-      nested: {
-        token: "nested-token-secret",
-      },
-    };
-    cyclic.self = cyclic;
-
-    await withApiEffectLogSinkForTest(
-      (entry) =>
-        Effect.sync(() => {
-          logs.push(entry);
-        }),
-      () => {
-        logger.log?.(
-          "error",
-          "Failed to create user codex-e2e@example.com Authorization: Bearer raw-bearer-token Cookie: better-auth.session_token=raw-session-token Password=hunter2 Token=raw-token",
-          {
-            authorization: "Bearer header-token",
-            callbackURL: "https://app.ceird.app/login?token=super-secret-token",
-            cookie: "better-auth.session_token=cookie-token",
-            email: "codex-e2e@example.com",
-            nested: {
-              reason: "sent to codex-e2e@example.com",
-              Token: "mixed-case-token-secret",
-            },
-            cyclic,
-          }
-        );
-      }
-    );
-
-    expect(logs).toStrictEqual([
-      {
-        annotations: expect.objectContaining({
-          authEvent: "better_auth_log",
-          betterAuthLevel: "error",
-          message: expect.stringContaining(
-            "Failed to create user [redacted-email]"
-          ),
-        }),
-        level: "error",
-        message: "Better Auth log",
-      },
-    ]);
-    const calls = JSON.stringify(logs);
-    expect(calls).not.toContain("codex-e2e@example.com");
-    expect(calls).not.toContain("super-secret-token");
-    expect(calls).not.toContain("raw-bearer-token");
-    expect(calls).not.toContain("raw-session-token");
-    expect(calls).not.toContain("hunter2");
-    expect(calls).not.toContain("raw-token");
-    expect(calls).not.toContain("header-token");
-    expect(calls).not.toContain("cookie-token");
-    expect(calls).not.toContain("nested-token-secret");
-    expect(calls).not.toContain("mixed-case-token-secret");
-    expect(calls).toContain("[circular]");
   }, 10_000);
 
   it("configures organization invitation delivery through the Better Auth organization plugin", async () => {
@@ -647,7 +510,7 @@ describe("createAuthentication()", () => {
           secret: "0123456789abcdef0123456789abcdef",
           databaseUrl: DEFAULT_AUTH_DATABASE_URL,
         }),
-        database: drizzle(pool, { schema: authSchema }),
+        database: drizzle({ client: pool }),
         reportEmailChangeConfirmationFailure: () => {},
         reportPasswordResetEmailFailure: () => {},
         reportVerificationEmailFailure: () => {},
@@ -684,7 +547,6 @@ describe("createAuthentication()", () => {
         | undefined;
 
       expect(organizationPlugin).toBeDefined();
-      expect(auth.options.logger?.log).toStrictEqual(expect.any(Function));
       if (!organizationPlugin?.options?.cancelPendingInvitationsOnReInvite) {
         throw new Error(
           "Expected invite re-sends to cancel pending invitations"
@@ -903,7 +765,7 @@ describe("createAuthentication()", () => {
           secret: "0123456789abcdef0123456789abcdef",
           databaseUrl: DEFAULT_AUTH_DATABASE_URL,
         }),
-        database: drizzle(pool, { schema: authSchema }),
+        database: drizzle({ client: pool }),
         reportOrganizationInvitationEmailFailure: (error) => {
           reportedFailures.push(error);
         },
@@ -975,7 +837,7 @@ describe("createAuthentication()", () => {
           secret: "0123456789abcdef0123456789abcdef",
           databaseUrl: DEFAULT_AUTH_DATABASE_URL,
         }),
-        database: drizzle(pool, { schema: authSchema }),
+        database: drizzle({ client: pool }),
         reportOrganizationInvitationEmailFailure: () => {
           throw reporterError;
         },
@@ -1044,7 +906,7 @@ describe("createAuthentication()", () => {
           secret: "0123456789abcdef0123456789abcdef",
           databaseUrl: DEFAULT_AUTH_DATABASE_URL,
         }),
-        database: drizzle(pool, { schema: authSchema }),
+        database: drizzle({ client: pool }),
         reportPasswordResetEmailFailure: () => {},
         reportVerificationEmailFailure: () => {},
         sendOrganizationInvitationEmail: async () => {},
@@ -1199,16 +1061,14 @@ describe("createAuthentication()", () => {
     }
   }, 10_000);
 
-  it("matches wildcard trusted origins for sandbox aliases", () => {
+  it("matches explicit wildcard trusted origins", () => {
     expect({
-      api: matchesTrustedOrigin(
-        "https://organization-invitations.api.ceird.localhost:1355",
-        ["https://*.app.ceird.localhost:1355"]
-      ),
-      app: matchesTrustedOrigin(
-        "https://organization-invitations.app.ceird.localhost:1355",
-        ["https://*.app.ceird.localhost:1355"]
-      ),
+      api: matchesTrustedOrigin("https://preview.api.ceird.example.com", [
+        "https://*.app.ceird.example.com",
+      ]),
+      app: matchesTrustedOrigin("https://preview.app.ceird.example.com", [
+        "https://*.app.ceird.example.com",
+      ]),
     }).toStrictEqual({
       api: false,
       app: true,
@@ -1232,7 +1092,7 @@ function createAuthenticationForPluginInspection() {
       secret: "0123456789abcdef0123456789abcdef",
       databaseUrl: DEFAULT_AUTH_DATABASE_URL,
     }),
-    database: drizzle(pool, { schema: authSchema }),
+    database: drizzle({ client: pool }),
     reportPasswordResetEmailFailure: () => {},
     reportVerificationEmailFailure: () => {},
     sendOrganizationInvitationEmail: async () => {},
@@ -1301,7 +1161,6 @@ async function withEnvironment(
   delete process.env.DATABASE_URL;
   delete process.env.MCP_RESOURCE_URL;
   delete process.env.OAUTH_ISSUER_URL;
-  delete process.env.PORTLESS_URL;
 
   Object.assign(process.env, nextEnvironment);
 

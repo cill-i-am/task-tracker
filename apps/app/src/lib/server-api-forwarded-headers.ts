@@ -1,20 +1,10 @@
-import {
-  CEIRD_REQUEST_ID_HEADER,
-  CF_RAY_HEADER,
-  readSafeCorrelationId,
-} from "@ceird/observability-core";
-
 import { resolveApiOrigin } from "./api-origin";
-import { readCurrentAppStartRequestContext } from "./app-start-context";
 
 export interface ServerApiForwardedHeaders {
   readonly origin: string;
-  readonly [CEIRD_REQUEST_ID_HEADER]?: string;
   readonly "x-forwarded-host": string;
   readonly "x-forwarded-proto": "http" | "https";
 }
-
-type RequestHeaderReader = (name: string) => string | undefined;
 
 const SECURE_AUTH_COOKIE_PREFIX = "__Secure-better-auth.";
 const INSECURE_AUTH_COOKIE_PREFIX = "better-auth.";
@@ -48,18 +38,19 @@ function readCurrentRequestOrigin(input: {
   }
 
   const { forwardedProto } = input;
-  let protocol: "http" | "https" = isLocalRequestHost(host) ? "http" : "https";
-
-  if (
+  const protocol =
     trustsForwardedHost &&
     (forwardedProto === "http" || forwardedProto === "https")
-  ) {
-    protocol = forwardedProto;
-  } else if (host.includes("ceird.localhost")) {
-    protocol = "https";
-  }
+      ? forwardedProto
+      : publicHostProtocol(host);
 
   return `${protocol}://${host}`;
+}
+
+function publicHostProtocol(host: string): "http" | "https" {
+  return isLocalhostDomain(host) || isTrustedForwardingHost(host)
+    ? "http"
+    : "https";
 }
 
 function isTrustedForwardingHost(host: string | undefined): boolean {
@@ -80,15 +71,10 @@ function isTrustedForwardingHost(host: string | undefined): boolean {
   }
 }
 
-function isLocalRequestHost(host: string): boolean {
+function isLocalhostDomain(host: string): boolean {
   try {
     const url = new URL(`http://${host}`);
-    return (
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "localhost" ||
-      url.hostname === "[::1]" ||
-      url.hostname === "::1"
-    );
+    return url.hostname === "localhost" || url.hostname.endsWith(".localhost");
   } catch {
     return false;
   }
@@ -113,15 +99,12 @@ function splitCookieEntry(entry: string):
 }
 
 export function readServerApiForwardedHeaders(input: {
-  readonly cfRay?: string | undefined;
   readonly origin: string | undefined;
-  readonly requestId?: string | undefined;
   readonly forwardedHost: string | undefined;
   readonly host: string | undefined;
   readonly forwardedProto: string | undefined;
 }): ServerApiForwardedHeaders | undefined {
   const requestOrigin = readCurrentRequestOrigin(input);
-  const startContext = readCurrentAppStartRequestContext();
 
   if (!requestOrigin) {
     return undefined;
@@ -134,33 +117,12 @@ export function readServerApiForwardedHeaders(input: {
   }
 
   const url = new URL(publicApiOrigin);
-  const cfRay =
-    readSafeCorrelationId(input.cfRay) ??
-    readSafeCorrelationId(startContext?.cfRay);
-  const requestId =
-    readSafeCorrelationId(input.requestId) ??
-    readSafeCorrelationId(startContext?.requestId) ??
-    cfRay;
 
   return {
     origin: input.origin ?? requestOrigin,
-    ...(requestId ? { [CEIRD_REQUEST_ID_HEADER]: requestId } : {}),
     "x-forwarded-host": url.host,
     "x-forwarded-proto": url.protocol === "https:" ? "https" : "http",
   };
-}
-
-export function readServerApiForwardedHeadersFromRequest(
-  getRequestHeader: RequestHeaderReader
-): ServerApiForwardedHeaders | undefined {
-  return readServerApiForwardedHeaders({
-    cfRay: getRequestHeader(CF_RAY_HEADER),
-    forwardedHost: getRequestHeader("x-forwarded-host"),
-    forwardedProto: getRequestHeader("x-forwarded-proto"),
-    host: getRequestHeader("host"),
-    origin: getRequestHeader("origin"),
-    requestId: getRequestHeader(CEIRD_REQUEST_ID_HEADER),
-  });
 }
 
 export function normalizeServerApiCookieHeader(

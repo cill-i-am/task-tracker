@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "@effect/vitest";
-import { ConfigProvider, Effect, Layer } from "effect";
+import { Config, ConfigProvider, Effect, Layer } from "effect";
 
 import type { AuthEmailQueueMessage } from "./domains/identity/authentication/auth-email-queue.js";
+import { AuthenticationBackgroundTaskHandler } from "./domains/identity/authentication/auth.js";
 import type {
   CloudflareEmailBindingMessage,
   CloudflareEmailBindingSendResult,
@@ -9,7 +10,13 @@ import type {
 import type { SiteGeocoder } from "./domains/sites/geocoder.js";
 import type { ApiWorkerEnv } from "./platform/cloudflare/env.js";
 import { apiWorkerEnvConfigMap } from "./platform/cloudflare/env.js";
-import worker, { WorkerApiSiteGeocoderLive } from "./worker.js";
+import {
+  WorkerApiSiteGeocoderLive,
+  handleWorkerQueue,
+  makeWorkerApiRuntimeLayers,
+  makeWorkerAuthenticationBackgroundTaskHandlerLive,
+} from "./platform/cloudflare/runtime.js";
+import worker from "./worker.js";
 
 type TestSendEmail = (
   message: CloudflareEmailBindingMessage
@@ -48,6 +55,13 @@ function makeExecutionContext() {
 }
 
 async function runWorkerQueue(batch: MessageBatch<unknown>, env: ApiWorkerEnv) {
+  await Effect.runPromise(handleWorkerQueue(batch, env));
+}
+
+async function runWorkerQueueAdapter(
+  batch: MessageBatch<unknown>,
+  env: ApiWorkerEnv
+) {
   const queue = worker.queue as (
     batch: MessageBatch<unknown>,
     env: ApiWorkerEnv,
@@ -81,7 +95,7 @@ function makeEnv(
     AUTH_EMAIL_FROM_NAME: "Ceird",
     AUTH_EMAIL_QUEUE: {
       send: () => Promise.resolve(),
-    } as unknown as Queue<AuthEmailQueueMessage>,
+    } as unknown as Queue<unknown>,
     BETTER_AUTH_BASE_URL: "https://api.example.com/api/auth",
     BETTER_AUTH_SECRET: "0123456789abcdef0123456789abcdef",
     DATABASE: {
@@ -94,6 +108,52 @@ function makeEnv(
 }
 
 describe("worker queue auth email delivery", () => {
+  it("assembles request runtime layers from Cloudflare Worker bindings", async () => {
+    const env = makeEnv();
+    const runtimeLayers = makeWorkerApiRuntimeLayers(
+      env,
+      makeExecutionContext()
+    );
+
+    const baseUrl = await Effect.runPromise(
+      Config.string("BETTER_AUTH_BASE_URL").pipe(
+        Effect.provide(runtimeLayers.baseLive)
+      )
+    );
+    const geocoderRuntime = await Effect.runPromise(
+      Effect.runtime<SiteGeocoder>().pipe(
+        Effect.provide(runtimeLayers.siteGeocoderLive),
+        Effect.provide(runtimeLayers.baseLive),
+        Effect.either
+      )
+    );
+
+    expect(baseUrl).toBe(env.BETTER_AUTH_BASE_URL);
+    expect(geocoderRuntime._tag).toBe("Right");
+    expect(runtimeLayers.authenticationLive).toBeDefined();
+    expect(runtimeLayers.databaseRuntimeLive).toBeDefined();
+  }, 10_000);
+
+  it("routes authentication background tasks through Worker waitUntil", async () => {
+    const context = makeExecutionContext();
+    const task = Promise.resolve("done");
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const scheduleBackgroundTask =
+          yield* AuthenticationBackgroundTaskHandler;
+
+        scheduleBackgroundTask(task);
+      }).pipe(
+        Effect.provide(
+          makeWorkerAuthenticationBackgroundTaskHandlerLive(context)
+        )
+      )
+    );
+
+    expect(context.waitUntil).toHaveBeenCalledWith(task);
+  });
+
   it("uses the Google geocoder layer with Worker environment config", async () => {
     const result = await Effect.runPromise(
       Effect.runtime<SiteGeocoder>().pipe(
@@ -115,6 +175,17 @@ describe("worker queue auth email delivery", () => {
     const message = makeMessage(makePasswordResetQueueMessage());
 
     await runWorkerQueue(makeBatch([message]), makeEnv({ sendEmail }));
+
+    expect(sendEmail).toHaveBeenCalledOnce();
+    expect(message.ack).toHaveBeenCalledOnce();
+    expect(message.retry).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it("exposes queue delivery through the Cloudflare Worker adapter", async () => {
+    const sendEmail = makeSendEmailMock();
+    const message = makeMessage(makePasswordResetQueueMessage());
+
+    await runWorkerQueueAdapter(makeBatch([message]), makeEnv({ sendEmail }));
 
     expect(sendEmail).toHaveBeenCalledOnce();
     expect(message.ack).toHaveBeenCalledOnce();
@@ -152,7 +223,7 @@ describe("worker queue auth email delivery", () => {
       runWorkerQueue(
         makeBatch([message]),
         makeEnv({
-          AUTH_EMAIL: undefined,
+          AUTH_EMAIL: undefined as unknown as SendEmail,
           sendEmail,
         })
       )

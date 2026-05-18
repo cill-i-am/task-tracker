@@ -14,8 +14,6 @@ node_modules
 # Testing
 coverage
 
-# Turbo
-.turbo
 opensrc/
 
 # Vercel
@@ -39,10 +37,9 @@ yarn-error.log*
 .worktrees/
 node-compile-cache/
 
-packages/infra/.alchemy/
-.auto-research/
-
 .projects/cache
 .projects/vault
+.alchemy/
 .env
 .env.local
+.auto-research/

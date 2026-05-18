@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
@@ -49,7 +49,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
@@ -75,7 +75,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
@@ -114,7 +114,7 @@ jobs:
         if: steps.changes.outputs.react_app == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
@@ -134,25 +134,15 @@ jobs:
         run: pnpm --filter app react-doctor
 
   e2e:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: main
     needs:
       - check-types
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: task_tracker
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_USER: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d task_tracker"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/task_tracker
+      PLAYWRIGHT_API_URL: ${{ vars.PLAYWRIGHT_API_URL }}
+      PLAYWRIGHT_BASE_URL: ${{ vars.PLAYWRIGHT_BASE_URL }}
+      PLAYWRIGHT_DATABASE_URL: ${{ secrets.PLAYWRIGHT_DATABASE_URL }}
 
     steps:
       - name: Checkout
@@ -164,7 +154,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
@@ -180,9 +170,6 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm --filter app exec playwright install --with-deps chromium
 
-      - name: Apply auth migrations
-        run: pnpm --filter api db:migrate
-
       - name: Run E2E tests
         run: pnpm --filter app e2e
 
@@ -193,7 +180,6 @@ jobs:
       - format
       - check-types
       - react-doctor
-      - e2e
 
     steps:
       - name: Checkout
@@ -205,7 +191,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
