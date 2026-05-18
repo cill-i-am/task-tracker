@@ -132,7 +132,9 @@ secrets are scoped to the Alchemy credential restore, deploy, and state-read
 steps; Playwright receives only the stage URLs and the masked database URL. The
 workflow grants `issues: write` to `GITHUB_TOKEN` so the same-repository preview
 job can create or update a pull request comment with the app/API URLs after the
-health checks pass. Fork PRs still run the normal non-secret `Build` workflow.
+health checks pass. It also grants `pull-requests: write` because GitHub's PR
+comment endpoint accepts either issues or pull request write scope depending on
+repository policy. Fork PRs still run the normal non-secret `Build` workflow.
 
 For same-repository PR updates, the workflow:
 

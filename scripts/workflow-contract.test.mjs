@@ -544,6 +544,7 @@ test("preview workflow deploys same-repository PR stages for E2E", () => {
   assert.doesNotMatch(previewWorkflow, /pull_request_target/);
   assert.match(previewWorkflow, /contents:\s+read/);
   assert.match(previewWorkflow, /issues:\s+write/);
+  assert.match(previewWorkflow, /pull-requests:\s+write/);
   assert.match(
     previewWorkflow,
     /group: ceird-preview-pr-\$\{\{ github\.event\.pull_request\.number \|\| inputs\.pr_number \|\| github\.run_id \}\}/
