@@ -6,6 +6,9 @@ import type { Page } from "@playwright/test";
 import { CreateOrganizationPage } from "./pages/create-organization-page";
 import { JobDetailSheet, JobsCreateSheet, JobsPage } from "./pages/jobs-page";
 import { SignupPage } from "./pages/signup-page";
+import { APP_ORIGIN } from "./test-urls";
+
+const WORKSPACE_HOME_TIMEOUT_MS = 20_000;
 
 function createTestEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.com`;
@@ -28,9 +31,12 @@ async function signUpAndCreateOrganization(page: Page) {
   await createOrganizationPage.submit.click();
   await createOrganizationPage.skipInviteStep();
 
-  await expect(
-    page.getByRole("main", { name: "Workspace home" })
-  ).toBeVisible();
+  await expect(page).toHaveURL(`${APP_ORIGIN}/`, {
+    timeout: WORKSPACE_HOME_TIMEOUT_MS,
+  });
+  await expect(page.getByRole("main", { name: "Workspace home" })).toBeVisible({
+    timeout: WORKSPACE_HOME_TIMEOUT_MS,
+  });
 }
 
 test.describe("jobs flow", () => {
