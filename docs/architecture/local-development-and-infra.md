@@ -231,7 +231,9 @@ Playwright can test the same Cloudflare app/API surfaces that reviewers use,
 then destroys the stage when the PR closes. Deploy jobs run in the protected
 `preview-deploy` GitHub environment; cleanup runs in an unblocked
 `preview-cleanup` environment and also supports manual `workflow_dispatch`
-cleanup by PR number.
+cleanup by PR number. After app and API health checks pass, the deploy job
+creates or updates one pull request comment with links to the stage-scoped app
+and API URLs.
 
 Both preview environments include the Cloudflare state-store credentials secret
 so preview deploy and cleanup can use the existing state store directly instead

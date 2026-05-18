@@ -128,9 +128,11 @@ receive Cloudflare, Neon, or environment-scoped GitHub secrets from the preview
 jobs. Same-repository preview deploys run in the protected `preview-deploy`
 environment, so GitHub waits for environment approval before checking out and
 deploying PR code with provider secrets. Inside the preview job, provider
-secrets are scoped to the Alchemy credential restore, deploy, and state-read steps;
-Playwright receives only the stage URLs and the masked database URL. Fork PRs
-still run the normal non-secret `Build` workflow.
+secrets are scoped to the Alchemy credential restore, deploy, and state-read
+steps; Playwright receives only the stage URLs and the masked database URL. The
+workflow grants `issues: write` to `GITHUB_TOKEN` so the same-repository preview
+job can create or update a pull request comment with the app/API URLs after the
+health checks pass. Fork PRs still run the normal non-secret `Build` workflow.
 
 For same-repository PR updates, the workflow:
 
@@ -145,6 +147,7 @@ For same-repository PR updates, the workflow:
 - reads and masks `PLAYWRIGHT_DATABASE_URL` from the preview
   `PostgresBranch` state
 - waits for the preview app and API `/health` endpoints to respond
+- creates or updates a single PR comment containing the preview app/API URLs
 - runs `pnpm --filter app e2e`
 
 The workflow has a concurrency group per PR:

@@ -542,6 +542,8 @@ test("preview workflow deploys same-repository PR stages for E2E", () => {
     );
   }
   assert.doesNotMatch(previewWorkflow, /pull_request_target/);
+  assert.match(previewWorkflow, /contents:\s+read/);
+  assert.match(previewWorkflow, /issues:\s+write/);
   assert.match(
     previewWorkflow,
     /group: ceird-preview-pr-\$\{\{ github\.event\.pull_request\.number \|\| inputs\.pr_number \|\| github\.run_id \}\}/
@@ -582,6 +584,9 @@ test("preview workflow deploys same-repository PR stages for E2E", () => {
   assert.match(previewWorkflow, /Wait for preview health/);
   assert.match(previewWorkflow, /"\$PLAYWRIGHT_API_URL\/health"/);
   assert.match(previewWorkflow, /"\$PLAYWRIGHT_BASE_URL\/health"/);
+  assert.match(previewWorkflow, /actions\/github-script@v/);
+  assert.match(previewWorkflow, /ceird-preview-environment/);
+  assert.match(previewWorkflow, /Preview environment is ready/);
   assert.match(previewWorkflow, /pnpm --filter app e2e/);
 });
 
