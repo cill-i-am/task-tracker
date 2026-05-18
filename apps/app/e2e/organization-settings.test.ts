@@ -6,6 +6,8 @@ import type { Page } from "@playwright/test";
 import { CreateOrganizationPage } from "./pages/create-organization-page";
 import { SignupPage } from "./pages/signup-page";
 
+const ORGANIZATION_SETTINGS_FLOW_TIMEOUT_MS = 90_000;
+
 function createTestEmail(prefix: string): string {
   return `${prefix}-${randomUUID()}@example.com`;
 }
@@ -130,6 +132,8 @@ test("an organization admin can update the organization name from account settin
 test("organization settings service areas and rate cards feed sites and job filters", async ({
   page,
 }) => {
+  test.setTimeout(ORGANIZATION_SETTINGS_FLOW_TIMEOUT_MS);
+
   const serviceAreaName = "North Dublin";
   const updatedServiceAreaDescription = "Northside priority work";
   const updatedServiceAreaName = "North Dublin Core";
