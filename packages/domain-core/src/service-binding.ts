@@ -13,7 +13,8 @@ export function makeDomainServiceClient(
   binding: Pick<DomainServiceBinding, "fetch">
 ): DomainHttpClient {
   return {
-    request: (request) => binding.fetch(makeDomainBoundaryRequest(request)),
+    request: async (request) =>
+      binding.fetch(await makeDomainBoundaryRequest(request)),
   };
 }
 
@@ -24,22 +25,35 @@ export function makeDomainOriginClient(
   const normalizedOrigin = origin.replace(/\/+$/, "");
 
   return {
-    request: (request) => {
+    request: async (request) => {
       const sourceUrl = new URL(request.url);
       const targetUrl = `${normalizedOrigin}${sourceUrl.pathname}${sourceUrl.search}`;
 
-      return fetcher(makeDomainBoundaryRequest(request, targetUrl));
+      return fetcher(await makeDomainBoundaryRequest(request, targetUrl));
     },
   };
 }
 
-function makeDomainBoundaryRequest(request: Request, targetUrl = request.url) {
-  const forwardedRequest =
-    targetUrl === request.url ? request : new Request(targetUrl, request);
+async function makeDomainBoundaryRequest(
+  request: Request,
+  targetUrl = request.url
+) {
+  const headers = makeDomainBoundaryHeaders(request);
+  const init: RequestInit = {
+    headers,
+    method: request.method,
+    redirect: request.redirect,
+  };
 
-  return new Request(forwardedRequest, {
-    headers: makeDomainBoundaryHeaders(request),
-  });
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    request.body !== null
+  ) {
+    init.body = await request.arrayBuffer();
+  }
+
+  return new Request(targetUrl, init);
 }
 
 function makeDomainBoundaryHeaders(request: Request) {
