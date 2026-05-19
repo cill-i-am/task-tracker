@@ -772,6 +772,27 @@ function decodeCookieValue(value: string) {
   }
 }
 
+function isAuthenticationSessionRequest(request: Request) {
+  return (
+    request.method === "GET" &&
+    new URL(request.url).pathname === "/api/auth/get-session"
+  );
+}
+
+export function makeAuthenticationWebHandler(auth: CeirdAuthentication) {
+  return async (request: Request) => {
+    if (!isAuthenticationSessionRequest(request)) {
+      return auth.handler(request);
+    }
+
+    return Response.json(
+      await auth.api.getSession({
+        headers: request.headers,
+      })
+    );
+  };
+}
+
 function withAuthenticationCors(
   handler: (request: Request) => Promise<Response>,
   trustedOrigins: readonly string[]
@@ -886,7 +907,10 @@ export const AuthenticationHttpLive = HttpApiBuilder.Router.use((router) =>
     yield* router.mountApp(
       "/api/auth",
       HttpApp.fromWebHandler(
-        withAuthenticationCors(auth.handler, config.trustedOrigins)
+        withAuthenticationCors(
+          makeAuthenticationWebHandler(auth),
+          config.trustedOrigins
+        )
       ),
       {
         includePrefix: true,

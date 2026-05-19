@@ -16,9 +16,11 @@ import { Pool } from "pg";
 
 import {
   createAuthentication,
+  makeAuthenticationWebHandler,
   maskInvitationEmail,
   matchesTrustedOrigin,
 } from "./auth.js";
+import type { CeirdAuthentication } from "./auth.js";
 import {
   CEIRD_OAUTH_SCOPES,
   DEFAULT_AUTH_DATABASE_URL,
@@ -492,6 +494,66 @@ describe("createAuthentication()", () => {
     expect(maskInvitationEmail("member@example.com")).toBe("m***@e***.com");
     expect(maskInvitationEmail("a@b.co")).toBe("a***@b***.co");
     expect(maskInvitationEmail("invalid-email")).toBe("***");
+  }, 10_000);
+
+  it("serves mounted session lookups through the typed auth API", async () => {
+    const sessionCookie = "better-auth.session_token=session-1.signature";
+    let delegatedUrl: string | undefined;
+    let sessionHeaders: Headers | undefined;
+
+    const sessionPayload = {
+      session: {
+        activeOrganizationId: null,
+        id: "session-1",
+      },
+      user: {
+        email: "owner@example.com",
+        id: "user-1",
+      },
+    };
+    const auth = {
+      api: {
+        getSession: (options: { readonly headers: Headers }) => {
+          sessionHeaders = options.headers;
+          return Promise.resolve(sessionPayload);
+        },
+      },
+      handler: (request: Request) => {
+        delegatedUrl = request.url;
+        return Promise.resolve(Response.json({ delegated: true }));
+      },
+      options: {
+        plugins: [],
+      },
+    } as unknown as CeirdAuthentication;
+    const handler = makeAuthenticationWebHandler(auth);
+
+    const sessionResponse = await handler(
+      new Request("https://api.ceird.example/api/auth/get-session", {
+        headers: {
+          cookie: sessionCookie,
+        },
+      })
+    );
+    const sessionBody = await sessionResponse.json();
+
+    expect(sessionResponse.status).toBe(200);
+    expect(sessionBody).toStrictEqual(sessionPayload);
+    expect(sessionHeaders?.get("cookie")).toBe(sessionCookie);
+    expect(delegatedUrl).toBeUndefined();
+
+    const delegatedResponse = await handler(
+      new Request("https://api.ceird.example/api/auth/sign-up/email", {
+        method: "POST",
+      })
+    );
+    const delegatedBody = await delegatedResponse.json();
+
+    expect(delegatedResponse.status).toBe(200);
+    expect(delegatedBody).toStrictEqual({ delegated: true });
+    expect(delegatedUrl).toBe(
+      "https://api.ceird.example/api/auth/sign-up/email"
+    );
   }, 10_000);
 
   it("configures organization invitation delivery through the Better Auth organization plugin", async () => {
