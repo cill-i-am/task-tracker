@@ -597,6 +597,13 @@ test("preview workflow deploys same-repository PR stages for E2E", () => {
     previewWorkflow,
     /"\$PLAYWRIGHT_API_URL\/api\/auth\/get-session"/
   );
+  assert.match(previewWorkflow, /wait_for_auth_domain_forwarding/);
+  assert.match(previewWorkflow, /preview-health-%s@example\.com/);
+  assert.match(
+    previewWorkflow,
+    /"\$PLAYWRIGHT_API_URL\/api\/auth\/organization\/create"/
+  );
+  assert.match(previewWorkflow, /waiting for service binding propagation/);
   assert.match(previewWorkflow, /"\$PLAYWRIGHT_BASE_URL\/health"/);
   assert.match(previewWorkflow, /actions\/github-script@v/);
   assert.match(previewWorkflow, /ceird-preview-environment/);
