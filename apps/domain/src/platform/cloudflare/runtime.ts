@@ -57,7 +57,17 @@ export function makeWorkerAuthenticationBackgroundTaskHandlerLive(
   context: ExecutionContext
 ) {
   return Layer.succeed(AuthenticationBackgroundTaskHandler, (task) => {
-    context.waitUntil(task);
+    context.waitUntil(
+      (async () => {
+        try {
+          await task;
+        } catch (error) {
+          console.error("Authentication background task failed", {
+            cause: serializeFailureCause(error),
+          });
+        }
+      })()
+    );
   });
 }
 

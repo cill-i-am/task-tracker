@@ -145,6 +145,7 @@ describe("worker queue auth email delivery", () => {
 
   it("routes authentication background tasks through Worker waitUntil", async () => {
     const context = makeExecutionContext();
+    const waitUntil = vi.mocked(context.waitUntil);
     const task = Promise.resolve("done");
 
     await Effect.runPromise(
@@ -160,7 +161,41 @@ describe("worker queue auth email delivery", () => {
       )
     );
 
-    expect(context.waitUntil).toHaveBeenCalledWith(task);
+    expect(waitUntil).toHaveBeenCalledOnce();
+    await expect(waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined();
+  });
+
+  it("isolates failed authentication background tasks from Worker requests", async () => {
+    const context = makeExecutionContext();
+    const waitUntil = vi.mocked(context.waitUntil);
+    const task = Promise.reject(new Error("queue unavailable"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const scheduleBackgroundTask =
+            yield* AuthenticationBackgroundTaskHandler;
+
+          scheduleBackgroundTask(task);
+        }).pipe(
+          Effect.provide(
+            makeWorkerAuthenticationBackgroundTaskHandlerLive(context)
+          )
+        )
+      );
+
+      expect(waitUntil).toHaveBeenCalledOnce();
+      await expect(waitUntil.mock.calls[0]?.[0]).resolves.toBeUndefined();
+      expect(consoleError).toHaveBeenCalledWith(
+        "Authentication background task failed",
+        { cause: "queue unavailable" }
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("uses the Google geocoder layer with Worker environment config", async () => {
